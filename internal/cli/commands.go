@@ -7,8 +7,10 @@ import (
 	"github.com/Icemap/tdc/internal/config"
 	cfgconfigure "github.com/Icemap/tdc/internal/config/configure"
 	"github.com/Icemap/tdc/internal/db"
+	"github.com/Icemap/tdc/internal/db/connectionstring"
 	"github.com/Icemap/tdc/internal/dryrun"
 	"github.com/Icemap/tdc/internal/organization"
+	outputpkg "github.com/Icemap/tdc/internal/output"
 	"github.com/Icemap/tdc/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -83,9 +85,9 @@ func newDBCommand(info version.Info) *cobra.Command {
 		newDBListBranchesCommand(info),
 		newDBDescribeBranchCommand(info),
 		newDBDeleteBranchCommand(info),
-		newControlPlanePlaceholderCommand("prepare-db-query-access", "Prepare local SQL credentials for query execution.", mutatingCommand, authz.StarterSQLUserCreate, info),
-		newControlPlanePlaceholderCommand("create-db-connection-string", "Create a DB connection string from prepared credentials.", readOnlyCommand, authz.StarterSQLUserRead, info),
-		newControlPlanePlaceholderCommand("execute-sql-statement", "Execute one SQL statement.", readOnlyCommand, authz.StarterSQLExecute, info),
+		newDBPrepareQueryAccessCommand(info),
+		newDBCreateConnectionStringCommand(info),
+		newDBExecuteSQLCommand(info),
 	)
 	return cmd
 }
@@ -418,6 +420,111 @@ func newDBDeleteBranchCommand(info version.Info) *cobra.Command {
 	return cmd
 }
 
+func newDBPrepareQueryAccessCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "prepare-db-query-access",
+		Short:      "Prepare local SQL credentials for query execution.",
+		Mutation:   mutatingCommand,
+		Permission: authz.StarterSQLUserCreate,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := dbServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			clusterID, err := ctx.StringFlag("db-cluster-id")
+			if err != nil {
+				return nil, err
+			}
+			return service.PrepareQueryAccess(ctx.cmd.Context(), db.PrepareQueryAccessOptions{
+				Profile:   profile,
+				ClusterID: clusterID,
+			})
+		},
+		DryRun: func(ctx commandContext) (dryrun.Result, error) {
+			service, profile, err := dbServiceAndProfile(ctx)
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			clusterID, err := ctx.StringFlag("db-cluster-id")
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			return service.DryRunPrepareQueryAccess(ctx.cmd.Context(), ctx.CommandPath(), db.PrepareQueryAccessOptions{
+				Profile:   profile,
+				ClusterID: clusterID,
+			})
+		},
+	}, info)
+	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
+	return cmd
+}
+
+func newDBCreateConnectionStringCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "create-db-connection-string",
+		Short:      "Create a DB connection string from prepared credentials.",
+		Mutation:   readOnlyCommand,
+		Permission: authz.StarterSQLUserRead,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := dbServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			opts, err := connectionStringOptions(ctx, profile)
+			if err != nil {
+				return nil, err
+			}
+			result, err := service.CreateConnectionString(ctx.cmd.Context(), opts)
+			if err != nil {
+				return nil, err
+			}
+			if result.Format == connectionstring.FormatEnv {
+				return outputpkg.Raw{Bytes: []byte(result.ConnectionString)}, nil
+			}
+			return result, nil
+		},
+	}, info)
+	addSQLCredentialFlags(cmd)
+	cmd.Flags().String("database", "", "database/default schema name")
+	cmd.Flags().String("format", connectionstring.FormatMySQLURI, "connection string format: mysql-uri, jdbc, go-sql-driver, sqlalchemy, or env")
+	cmd.Flags().String("env-prefix", "TIDB_", "dotenv variable prefix for --format env")
+	cmd.Flags().Bool("env-include-database-url", false, "include a database URL variable with --format env")
+	cmd.Flags().String("env-database-url-name", "DATABASE_URL", "database URL variable name for --format env")
+	return cmd
+}
+
+func newDBExecuteSQLCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "execute-sql-statement",
+		Short:      "Execute one SQL statement.",
+		Mutation:   readOnlyCommand,
+		Permission: authz.StarterSQLExecute,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := dbServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			opts, err := executeSQLOptions(ctx, profile)
+			if err != nil {
+				return nil, err
+			}
+			return service.ExecuteSQL(ctx.cmd.Context(), opts)
+		},
+	}, info)
+	addSQLCredentialFlags(cmd)
+	cmd.Flags().String("database", "", "database/default schema name")
+	cmd.Flags().String("sql", "", "one SQL statement to execute")
+	cmd.Flags().String("transport", "http", "SQL execution transport: http or mysql")
+	return cmd
+}
+
+func addSQLCredentialFlags(cmd *cobra.Command) {
+	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
+	cmd.Flags().Bool("read-only", false, "use prepared read_only DB SQL credentials")
+	cmd.Flags().Bool("read-write", false, "use prepared read_write DB SQL credentials")
+	cmd.Flags().Bool("admin", false, "use prepared admin DB SQL credentials")
+}
+
 func dbServiceAndProfile(ctx commandContext) (db.Service, *config.Profile, error) {
 	profile, err := ctx.LoadProfile()
 	if err != nil {
@@ -531,6 +638,104 @@ func deleteBranchOptions(ctx commandContext, profile *config.Profile) (db.Delete
 		ClusterID:                  clusterID,
 		BranchID:                   branchID,
 		ConfirmDBClusterBranchName: confirmName,
+	}, nil
+}
+
+func connectionStringOptions(ctx commandContext, profile *config.Profile) (db.CreateConnectionStringOptions, error) {
+	common, err := sqlCommonOptions(ctx)
+	if err != nil {
+		return db.CreateConnectionStringOptions{}, err
+	}
+	format, err := ctx.StringFlag("format")
+	if err != nil {
+		return db.CreateConnectionStringOptions{}, err
+	}
+	envPrefix, err := ctx.StringFlag("env-prefix")
+	if err != nil {
+		return db.CreateConnectionStringOptions{}, err
+	}
+	envIncludeURL, err := ctx.BoolFlag("env-include-database-url")
+	if err != nil {
+		return db.CreateConnectionStringOptions{}, err
+	}
+	envURLName, err := ctx.StringFlag("env-database-url-name")
+	if err != nil {
+		return db.CreateConnectionStringOptions{}, err
+	}
+	return db.CreateConnectionStringOptions{
+		Profile:                profile,
+		ClusterID:              common.clusterID,
+		Database:               common.database,
+		ReadOnly:               common.readOnly,
+		ReadWrite:              common.readWrite,
+		Admin:                  common.admin,
+		Format:                 format,
+		EnvPrefix:              envPrefix,
+		EnvIncludeDatabaseURL:  envIncludeURL,
+		EnvDatabaseURLVariable: envURLName,
+	}, nil
+}
+
+func executeSQLOptions(ctx commandContext, profile *config.Profile) (db.ExecuteSQLOptions, error) {
+	common, err := sqlCommonOptions(ctx)
+	if err != nil {
+		return db.ExecuteSQLOptions{}, err
+	}
+	sql, err := ctx.StringFlag("sql")
+	if err != nil {
+		return db.ExecuteSQLOptions{}, err
+	}
+	transport, err := ctx.StringFlag("transport")
+	if err != nil {
+		return db.ExecuteSQLOptions{}, err
+	}
+	return db.ExecuteSQLOptions{
+		Profile:   profile,
+		ClusterID: common.clusterID,
+		Database:  common.database,
+		SQL:       sql,
+		ReadOnly:  common.readOnly,
+		ReadWrite: common.readWrite,
+		Admin:     common.admin,
+		Transport: transport,
+	}, nil
+}
+
+type sqlCommon struct {
+	clusterID string
+	database  string
+	readOnly  bool
+	readWrite bool
+	admin     bool
+}
+
+func sqlCommonOptions(ctx commandContext) (sqlCommon, error) {
+	clusterID, err := ctx.StringFlag("db-cluster-id")
+	if err != nil {
+		return sqlCommon{}, err
+	}
+	database, err := ctx.StringFlag("database")
+	if err != nil {
+		return sqlCommon{}, err
+	}
+	readOnly, err := ctx.BoolFlag("read-only")
+	if err != nil {
+		return sqlCommon{}, err
+	}
+	readWrite, err := ctx.BoolFlag("read-write")
+	if err != nil {
+		return sqlCommon{}, err
+	}
+	admin, err := ctx.BoolFlag("admin")
+	if err != nil {
+		return sqlCommon{}, err
+	}
+	return sqlCommon{
+		clusterID: clusterID,
+		database:  database,
+		readOnly:  readOnly,
+		readWrite: readWrite,
+		admin:     admin,
 	}, nil
 }
 

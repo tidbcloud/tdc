@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -78,7 +79,7 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 	mutatingDryRunCommands := [][]string{
 		{"db", "create-db-cluster-branch", "--db-cluster-id", "cluster-1", "--db-cluster-branch-name", "dev"},
 		{"db", "delete-db-cluster-branch", "--db-cluster-id", "cluster-1", "--db-cluster-branch-id", "branch-1", "--confirm-db-cluster-branch-name", "dev"},
-		{"db", "prepare-db-query-access"},
+		{"db", "prepare-db-query-access", "--db-cluster-id", "cluster-1"},
 		{"fs", "create-file-system"},
 		{"fs", "delete-file-system"},
 	}
@@ -167,9 +168,6 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 	placeholderCommands := [][]string{
 		{"cli", "check-update"},
 		{"cli", "update"},
-		{"db", "prepare-db-query-access"},
-		{"db", "create-db-connection-string"},
-		{"db", "execute-sql-statement"},
 		{"fs", "create-file-system"},
 		{"fs", "delete-file-system"},
 		{"fs", "check-file-system"},
@@ -230,6 +228,7 @@ func TestLiveDBClusterLifecycle(t *testing.T) {
 		t.Fatalf("unexpected created cluster: %#v\n%s", created, create.stdout)
 	}
 	clusterID = created.ID
+	defer cleanupLiveSQLCredentials(t, clusterID)
 
 	described := waitLiveCluster(t, bin, profileName, clusterID, func(cluster liveCluster) bool {
 		return cluster.ID == clusterID && cluster.DisplayName == clusterName && cluster.State == "ACTIVE"
@@ -237,6 +236,32 @@ func TestLiveDBClusterLifecycle(t *testing.T) {
 	if described.ClusterPlan != "" && described.ClusterPlan != "STARTER" {
 		t.Fatalf("expected STARTER cluster, got %#v", described)
 	}
+
+	prepare := runTDC(t, bin, "--profile", profileName, "db", "prepare-db-query-access", "--db-cluster-id", clusterID)
+	prepare.wantExitCode(0)
+	prepare.wantStdoutContains(`"read_only"`)
+	prepare.wantStdoutContains(`"read_write"`)
+	prepare.wantStdoutContains(`"admin"`)
+
+	prepareAgain := runTDC(t, bin, "--profile", profileName, "db", "prepare-db-query-access", "--db-cluster-id", clusterID)
+	prepareAgain.wantExitCode(0)
+	prepareAgain.wantStdoutContains(`"exists"`)
+
+	connectionString := runTDC(t, bin, "--profile", profileName, "db", "create-db-connection-string", "--db-cluster-id", clusterID, "--read-write", "--database", "test")
+	connectionString.wantExitCode(0)
+	connectionString.wantStdoutContains(`"format": "mysql-uri"`)
+	connectionString.wantStdoutContains(`"access_mode": "read_write"`)
+	connectionString.wantStdoutContains(`"connection_string"`)
+
+	connectionEnv := runTDC(t, bin, "--profile", profileName, "db", "create-db-connection-string", "--db-cluster-id", clusterID, "--read-only", "--format", "env")
+	connectionEnv.wantExitCode(0)
+	connectionEnv.wantStdoutContains("TIDB_HOST=")
+	connectionEnv.wantStdoutContains("TIDB_ACCESS_MODE=read_only")
+	connectionEnv.wantStdoutNotContains(`"connection_string"`)
+
+	waitLiveSQL(t, bin, profileName, clusterID, nil, "default read-write SQL execution")
+	waitLiveSQL(t, bin, profileName, clusterID, []string{"--read-only"}, "read-only SQL execution")
+	waitLiveSQL(t, bin, profileName, clusterID, []string{"--admin"}, "admin SQL execution")
 
 	branchName := "tdc-e2e-branch-" + suffix
 	branchID := ""
@@ -477,6 +502,27 @@ func waitLiveClusterDeleted(t *testing.T, bin, profileName, clusterID string, ti
 	}
 }
 
+func waitLiveSQL(t *testing.T, bin, profileName, clusterID string, modeArgs []string, description string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Minute)
+	var last commandResult
+	for {
+		args := []string{"--profile", profileName, "db", "execute-sql-statement", "--db-cluster-id", clusterID}
+		args = append(args, modeArgs...)
+		args = append(args, "--sql", "select 1")
+		last = runTDC(t, bin, args...)
+		if last.exitCode == 0 {
+			last.wantStdoutContains(`"transport": "http"`)
+			last.wantStdoutContains(`"row_count": 1`)
+			return
+		}
+		if time.Now().After(deadline) {
+			last.fail("timed out waiting for %s; got exit code %d", description, last.exitCode)
+		}
+		time.Sleep(10 * time.Second)
+	}
+}
+
 func waitLiveBranchDeleted(t *testing.T, bin, profileName, clusterID, branchID string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -502,6 +548,22 @@ func waitLiveBranchDeleted(t *testing.T, bin, profileName, clusterID, branchID s
 			t.Fatalf("timed out waiting for branch %s to be deleted", branchID)
 		}
 		time.Sleep(5 * time.Second)
+	}
+}
+
+func cleanupLiveSQLCredentials(t *testing.T, clusterID string) {
+	t.Helper()
+	if clusterID == "" {
+		return
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Logf("cannot determine home directory for SQL credential cleanup: %v", err)
+		return
+	}
+	path := filepath.Join(home, ".tdc", "db_users", clusterID)
+	if err := os.RemoveAll(path); err != nil {
+		t.Logf("cleanup SQL credentials failed for %s: %v", path, err)
 	}
 }
 

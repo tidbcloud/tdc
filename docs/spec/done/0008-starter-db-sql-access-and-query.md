@@ -45,10 +45,11 @@ tdc db execute-sql-statement --db-cluster-id <cluster-id> --admin --sql "show gr
 - SQL user GET/List responses do not expose passwords. Lost local passwords
   cannot be recovered from TiDB Cloud; `prepare-db-query-access` can only
   rotate/reset the password for a verified tdc-managed SQL user.
-- A remote user is considered tdc-managed only when both the stable username
-  suffix and the expected `builtinRole` match. If a matching suffix exists with
-  a different role or auth method, fail with a conflict error instead of
-  changing it.
+- A remote user is considered tdc-managed only when the stable username suffix
+  matches, the auth method is `mysql_native_password`, and `builtinRole` is
+  either the expected role or TiDB Cloud's auto-prefixed form ending in
+  `.<expected-role>`. If a matching suffix exists with a different role or auth
+  method, fail with a conflict error instead of changing it.
 - `create-db-connection-string` and `execute-sql-statement` use the
   `read_write` user by default.
 - `create-db-connection-string --read-write` and
@@ -192,7 +193,7 @@ explicit flags, and tdc never guesses from SQL content.
 
 ## Implementation Design
 
-- `internal/cli/db` registers `prepare-db-query-access`,
+- `internal/cli` registers `prepare-db-query-access`,
   `create-db-connection-string`, and `execute-sql-statement`.
 - `internal/db/sqlaccess` owns idempotent SQL user preparation, stable username
   planning, password generation, local credential persistence, and repair of
@@ -240,7 +241,8 @@ fallbacks unless product explicitly accepts the security and privilege tradeoff.
 3. Call `GET /v1beta1/clusters/{clusterId}/sqlUsers` and match the stable
    tdc-managed suffixes `tdc_ro`, `tdc_rw`, and `tdc_admin`. Store and compare
    full returned usernames because TiDB Cloud may apply an automatic prefix.
-   Confirm each match has the expected `builtinRole` and `authMethod`; role or
+   Confirm each match has the expected `builtinRole` or TiDB Cloud's
+   auto-prefixed `.<builtinRole>` form, plus the expected `authMethod`; role or
    auth-method mismatch is a conflict, not a repairable credential loss.
    Do not expect this API to return passwords.
 4. For each missing remote user, generate a password with `crypto/rand` and call
@@ -354,6 +356,10 @@ MySQL fallback call chain:
 - HTTP transport tests verify URL, Basic Auth, headers, body, success response,
   and error response handling.
 - MySQL transport tests verify one connection is opened and closed per query.
+- `make live-e2e` prepares SQL users on the temporary `tdc-e2e-*` Starter
+  cluster, verifies idempotent re-run, creates connection strings, executes
+  HTTP SQL with read-write/read-only/admin modes, and removes the local
+  `~/.tdc/db_users/<cluster-id>` test credentials after the run.
 
 ## Out Of Scope
 

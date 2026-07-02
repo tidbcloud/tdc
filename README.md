@@ -7,8 +7,8 @@ configuration/credentials flow, structured output, JMESPath query, shared
 dry-run behavior, and API client/auth foundation are implemented. Service
 commands are registered so users and agents can discover the product surface.
 Organization project listing, Starter DB cluster lifecycle commands, and
-Starter DB branch lifecycle commands are implemented remote service commands.
-DB SQL and fs service actions still return "not implemented" until their specs
+Starter DB branch and SQL access commands are implemented remote service
+commands. fs service actions still return "not implemented" until their specs
 are completed.
 
 ## Current Status
@@ -39,12 +39,14 @@ Implemented:
 - `tdc db list-db-cluster-branches`
 - `tdc db describe-db-cluster-branch`
 - `tdc db delete-db-cluster-branch`
+- `tdc db prepare-db-query-access`
+- `tdc db create-db-connection-string`
+- `tdc db execute-sql-statement`
 
 Registered but not implemented yet:
 
 - `tdc cli check-update`
 - `tdc cli update`
-- `tdc db ...` SQL commands
 - `tdc fs ...` remote service calls and data-plane actions
 
 ## Build
@@ -102,12 +104,14 @@ At the current implementation stage, `make live-e2e` validates the real binary,
 the `live-e2e` profile, real TiDB Cloud Digest-auth read-only API probes,
 `tdc organization list-projects`, the current command surface, mutating command
 dry-runs for unfinished commands, read-only dry-run rejection, and the full
-Starter DB cluster and branch lifecycles. The live DB lifecycle creates one
-uniquely named `tdc-e2e-*` Starter cluster without a spending limit, creates
-one `tdc-e2e-branch-*` branch on that cluster, lists/describes/deletes the
-branch, updates the cluster, reads it again, deletes it, and verifies deletion.
-As TiDB Cloud API commands are implemented, their real live tests must be added
-to this same target.
+Starter DB cluster, SQL access, and branch lifecycles. The live DB lifecycle
+creates one uniquely named `tdc-e2e-*` Starter cluster without a spending
+limit, prepares tdc-managed read-only/read-write/admin SQL users, creates
+connection strings, executes HTTP SQL with all three access modes, creates one
+`tdc-e2e-branch-*` branch on that cluster, lists/describes/deletes the branch,
+updates the cluster, reads it again, deletes it, and verifies deletion. As TiDB
+Cloud API commands are implemented, their real live tests must be added to this
+same target.
 
 Clean build artifacts:
 
@@ -305,24 +309,60 @@ display name before sending the delete request.
 ### DB SQL
 
 ```bash
-tdc db prepare-db-query-access
-tdc db prepare-db-query-access --dry-run
-tdc db create-db-connection-string
-tdc db execute-sql-statement
+tdc db prepare-db-query-access --db-cluster-id <cluster-id>
+tdc db prepare-db-query-access --db-cluster-id <cluster-id> --dry-run
+tdc db create-db-connection-string --db-cluster-id <cluster-id>
+tdc db create-db-connection-string --db-cluster-id <cluster-id> --read-write --format mysql-uri
+tdc db create-db-connection-string --db-cluster-id <cluster-id> --read-only --format env
+tdc db create-db-connection-string --db-cluster-id <cluster-id> --admin --format jdbc
+tdc db execute-sql-statement --db-cluster-id <cluster-id> --sql "select 1"
+tdc db execute-sql-statement --db-cluster-id <cluster-id> --read-write --sql "insert into t values (1)"
+tdc db execute-sql-statement --db-cluster-id <cluster-id> --read-only --sql "select * from t"
+tdc db execute-sql-statement --db-cluster-id <cluster-id> --admin --sql "show grants"
+tdc db execute-sql-statement --db-cluster-id <cluster-id> --transport mysql --sql "select 1"
 ```
 
-These commands are registered but not implemented yet, except that
-`prepare-db-query-access --dry-run` returns the shared dry-run envelope.
+`prepare-db-query-access` creates or repairs three stable tdc-managed SQL
+users for the cluster:
 
-The intended SQL access model is:
+- `read_only`, backed by TiDB Cloud role `role_readonly`
+- `read_write`, backed by TiDB Cloud role `role_readwrite`
+- `admin`, backed by TiDB Cloud role `role_admin`
 
-- `prepare-db-query-access` prepares stable tdc-managed DB users.
-- `create-db-connection-string` will emit connection strings from prepared
-  credentials, including `.env` component output for agents.
-- `execute-sql-statement` uses read-write credentials by default.
-- `--read-write`, `--read-only`, and `--admin` will be mutually exclusive
-  explicit selections once implemented. Read-write remains the default.
-- SQL mode selection must not be inferred from SQL text.
+Generated DB SQL usernames and passwords are stored under:
+
+```text
+~/.tdc/db_users/<cluster-id>/credentials
+```
+
+Re-running `prepare-db-query-access` is idempotent. It does not create a new
+user group when the tdc-managed users already exist. If local passwords are
+missing for verified tdc-managed remote users, it rotates those passwords
+through the SQL user API and writes the new local credentials.
+
+`create-db-connection-string` and `execute-sql-statement` use read-write
+credentials by default. `--read-write`, `--read-only`, and `--admin` are
+mutually exclusive explicit selections. tdc never infers access mode from SQL
+text.
+
+Connection string formats:
+
+- `mysql-uri`
+- `jdbc`
+- `go-sql-driver`
+- `sqlalchemy`
+- `env`
+
+`--format env` emits dotenv-compatible component variables directly, not JSON,
+so agents can compose framework-specific values without parsing URLs. Use
+`--env-include-database-url` to include a `DATABASE_URL`-style value.
+
+`execute-sql-statement` executes exactly one SQL statement per invocation. HTTP
+SQL is the default transport and uses `POST https://http-<cluster-host>/v1beta/sql`
+with Basic Auth from the prepared SQL credentials. `--transport mysql` is an
+explicit fallback that opens one MySQL connection, executes once, and closes it.
+Use `--output human` to render result sets as a terminal table. JSON remains
+the default output for agents and automation.
 
 ### tdc fs Control Plane
 
@@ -401,6 +441,17 @@ tdc_public_key = "..."
 tdc_private_key = "..."
 ```
 
+Profile selection order:
+
+1. Non-empty `--profile <name>`
+2. `TDC_PROFILE=<name>`
+3. `default`
+
+An explicit empty `--profile ""` is a usage error. Omitting `--profile` is not
+an error: the CLI uses `TDC_PROFILE` when it is set, otherwise it uses
+`default`. For shell scripts and CI jobs, prefer either a literal
+`--profile live-e2e` or an exported `TDC_PROFILE=live-e2e`.
+
 Future generated `tdc fs` resource credentials also live in
 `~/.tdc/credentials`:
 
@@ -409,7 +460,7 @@ Future generated `tdc fs` resource credentials also live in
 fs_api_key = "..."
 ```
 
-Future DB SQL user credentials live in a cluster-scoped credentials file:
+DB SQL user credentials live in a cluster-scoped credentials file:
 
 ```text
 ~/.tdc/db_users/<cluster-id>/credentials
@@ -446,6 +497,10 @@ internal responsibility derived from `cloud_provider` and `region_code`.
 TiDB Cloud control-plane requests use HTTP Digest authentication with
 `tdc_public_key` as the digest username and `tdc_private_key` as the digest
 password. The private key is not sent as Basic Auth.
+
+SQL HTTP execution uses the prepared DB SQL username and password as HTTP Basic
+Auth against `https://http-<cluster-host>/v1beta/sql`. Do not confuse these DB
+credentials with TiDB Cloud API keys.
 
 Endpoint routing is internal:
 

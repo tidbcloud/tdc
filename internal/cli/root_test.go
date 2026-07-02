@@ -332,6 +332,40 @@ func TestDryRunRequiresConfigAndCredentials(t *testing.T) {
 	}
 }
 
+func TestTDCProfileEnvironmentSelectsFileProfile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("TDC_PROFILE", "stage")
+	t.Setenv("TDC_CLOUD_PROVIDER", "")
+	t.Setenv("TDC_REGION_CODE", "")
+	t.Setenv("TDC_PUBLIC_KEY", "")
+	t.Setenv("TDC_PRIVATE_KEY", "")
+	writeCompleteProfile(t, home, "stage")
+
+	stdout, _, err := executeForTest("db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--db-cluster-type", "starter", "--project-id", "project-1", "--dry-run")
+	if err != nil {
+		t.Fatalf("expected dry-run to succeed, got %v", err)
+	}
+	if !strings.Contains(stdout, `profile \"stage\" loaded`) {
+		t.Fatalf("expected TDC_PROFILE to select stage profile, got:\n%s", stdout)
+	}
+}
+
+func TestExplicitEmptyProfileFails(t *testing.T) {
+	t.Setenv("TDC_PROFILE", "stage")
+
+	_, _, err := executeForTest("db", "list-db-clusters", "--profile", "")
+	if err == nil {
+		t.Fatal("expected empty profile to fail")
+	}
+	if got := apperr.ExitCodeFor(err); got != 2 {
+		t.Fatalf("expected exit code 2, got %d", got)
+	}
+	if got := apperr.MessageFor(err); !strings.Contains(got, "--profile cannot be empty") {
+		t.Fatalf("unexpected message %q", got)
+	}
+}
+
 func TestDryRunRejectedOnReadOnlyCommand(t *testing.T) {
 	_, _, err := executeForTest("db", "list-db-clusters", "--dry-run")
 	if err == nil {
@@ -351,6 +385,20 @@ func withConfigEnv(t *testing.T) {
 	t.Setenv("TDC_REGION_CODE", "us-east-1")
 	t.Setenv("TDC_PUBLIC_KEY", "test-public")
 	t.Setenv("TDC_PRIVATE_KEY", "test-private")
+}
+
+func writeCompleteProfile(t *testing.T, home, profileName string) {
+	t.Helper()
+	err := store.WriteProfile(home, profileName, store.ConfigProfile{
+		CloudProvider: "aws",
+		RegionCode:    "us-east-1",
+	}, store.CredentialsProfile{
+		TDCPublicKey:  "test-public",
+		TDCPrivateKey: "test-private",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func writeConfigOnlyProfile(t *testing.T, profileName string) {

@@ -31,6 +31,8 @@ Implemented:
   `docs/spec/done/0006-starter-db-cluster-lifecycle.md`
 - Starter DB branch lifecycle from
   `docs/spec/done/0007-starter-db-branch-lifecycle.md`
+- Starter DB SQL access and query from
+  `docs/spec/done/0008-starter-db-sql-access-and-query.md`
 - `tdc configure`
 - `tdc organization list-projects`
 - `tdc db create-db-cluster`
@@ -42,6 +44,9 @@ Implemented:
 - `tdc db list-db-cluster-branches`
 - `tdc db describe-db-cluster-branch`
 - `tdc db delete-db-cluster-branch`
+- `tdc db prepare-db-query-access`
+- `tdc db create-db-connection-string`
+- `tdc db execute-sql-statement`
 - help and version behavior at every command level
 - structured JSON/human rendering and JMESPath `--query`
 - `--dry-run` on mutating control-plane commands and placeholders
@@ -52,7 +57,6 @@ Registered but not implemented yet:
 
 - `tdc cli check-update`
 - `tdc cli update`
-- `tdc db ...` SQL commands
 - `tdc fs ...` remote service calls and data-plane actions
 
 Those commands are placeholders until their corresponding specs are implemented.
@@ -109,8 +113,11 @@ commands are implemented. For Starter DB clusters, the live suite creates a
 uniquely named `tdc-e2e-*` cluster without a spending limit and deletes only
 that cluster. For Starter DB branches, the live suite creates, reads, lists,
 and deletes only a `tdc-e2e-branch-*` branch on the cluster created by the same
-test run. When a service command is implemented, add its real live verification
-to `make live-e2e`; do not leave the target at profile, smoke-test-only, or
+test run. For Starter DB SQL access, the live suite prepares tdc-managed
+read-only, read-write, and admin SQL users on the temporary cluster, verifies
+connection string output, and executes HTTP SQL with all three access modes.
+When a service command is implemented, add its real live verification to
+`make live-e2e`; do not leave the target at profile, smoke-test-only, or
 mock-only coverage.
 
 For focused work, direct Go commands are also fine:
@@ -144,7 +151,14 @@ internal/config/configure/  interactive configure wizard
 internal/config/fsresource/ flat tdc fs config key names
 internal/config/region/     provider and region validation
 internal/config/store/      TOML read/write, file modes, atomic writes
-internal/db/                Starter DB cluster and branch use cases
+internal/db/                Starter DB cluster, branch, and SQL use cases
+internal/db/connectionstring/ DB connection string formatters
+internal/db/sqlaccess/      DB SQL user preparation logic
+internal/db/sqlcred/        cluster-scoped DB SQL credential store
+internal/db/sqlhttp/        HTTP SQL transport
+internal/db/sqlmysql/       explicit MySQL fallback transport
+internal/db/sqlresult/      SQL result model and decoding
+internal/db/sqlsingle/      one-statement validation
 internal/db/validate/       DB flag and request validation helpers
 internal/dryrun/            shared dry-run result envelope
 internal/output/            structured JSON/human/raw rendering
@@ -227,6 +241,17 @@ Implemented command behavior:
 - `tdc db describe-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id>`
 - `tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id> --confirm-db-cluster-branch-name <current-name>`
 - `tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id> --confirm-db-cluster-branch-name <current-name> --dry-run`
+- `tdc db prepare-db-query-access --db-cluster-id <cluster-id>`
+- `tdc db prepare-db-query-access --db-cluster-id <cluster-id> --dry-run`
+- `tdc db create-db-connection-string --db-cluster-id <cluster-id>`
+- `tdc db create-db-connection-string --db-cluster-id <cluster-id> --read-write --format mysql-uri`
+- `tdc db create-db-connection-string --db-cluster-id <cluster-id> --read-only --format env`
+- `tdc db create-db-connection-string --db-cluster-id <cluster-id> --admin --format jdbc`
+- `tdc db execute-sql-statement --db-cluster-id <cluster-id> --sql "select 1"`
+- `tdc db execute-sql-statement --db-cluster-id <cluster-id> --read-write --sql "select 1"`
+- `tdc db execute-sql-statement --db-cluster-id <cluster-id> --read-only --sql "select 1"`
+- `tdc db execute-sql-statement --db-cluster-id <cluster-id> --admin --sql "select 1"`
+- `tdc db execute-sql-statement --db-cluster-id <cluster-id> --transport mysql --sql "select 1"`
 
 Registered command surface:
 
@@ -306,7 +331,7 @@ Future generated `tdc fs` resource credentials also live in
 fs_api_key = "..."
 ```
 
-Future DB SQL user credentials live outside the main credentials file:
+DB SQL user credentials live outside the main credentials file:
 
 ```text
 ~/.tdc/db_users/<cluster-id>/credentials
@@ -337,7 +362,9 @@ not be required by MVP usage.
 TiDB Cloud control-plane API calls use HTTP Digest auth through
 `internal/api/transport`; never send `tdc_private_key` as Basic Auth for those
 APIs. SQL HTTP execution and tdc fs data-plane auth are separate authentication
-schemes defined by their later specs.
+schemes. SQL HTTP uses the prepared DB SQL username/password as Basic Auth
+against `https://http-<cluster-host>/v1beta/sql`; TiDB Cloud API keys must not
+be used for SQL HTTP Basic Auth.
 
 Use `internal/api/endpoints` for Starter, IAM/account, and fs endpoint
 selection. Do not add service URLs to user config. The default Starter host is

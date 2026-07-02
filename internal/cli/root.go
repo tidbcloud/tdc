@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 
@@ -313,9 +314,18 @@ func loadProfileForCommand(cmd *cobra.Command) (*config.Profile, error) {
 		return nil, err
 	}
 	profileFlag := cmd.Flag("profile")
+	profileExplicit := profileFlag != nil && profileFlag.Changed
+	if profileExplicit {
+		if strings.TrimSpace(profileName) == "" {
+			return nil, apperr.New("config.empty_profile", "usage", 2, "--profile cannot be empty")
+		}
+	} else if envProfile := strings.TrimSpace(os.Getenv("TDC_PROFILE")); envProfile != "" {
+		profileName = envProfile
+		profileExplicit = true
+	}
 	return auth.LoadProfile(cmd.Context(), config.LoadOptions{
 		Profile:         profileName,
-		ProfileExplicit: profileFlag != nil && profileFlag.Changed,
+		ProfileExplicit: profileExplicit,
 	})
 }
 

@@ -22,12 +22,15 @@ import (
 const monthlySpendingLimitUnset int32 = -1
 
 type Service struct {
-	Resolver    endpoints.Resolver
-	HTTPClient  *http.Client
-	Transport   http.RoundTripper
-	Timeout     time.Duration
-	Debug       bool
-	DebugWriter io.Writer
+	Resolver        endpoints.Resolver
+	HTTPClient      *http.Client
+	Transport       http.RoundTripper
+	Timeout         time.Duration
+	Debug           bool
+	DebugWriter     io.Writer
+	HomeDir         string
+	SQLHTTPBaseURL  string
+	MySQLDriverName string
 }
 
 type ListClustersOptions struct {
