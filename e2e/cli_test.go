@@ -46,9 +46,9 @@ func TestErrorsAreRenderedAtCLIBoundary(t *testing.T) {
 	unknown.wantExitCode(2)
 	unknown.wantStderrContains(`tdc [ERROR]: unknown command "missing-command" for "tdc db"`)
 
-	placeholder := runTDC(t, bin, "organization", "list-projects")
+	placeholder := runTDC(t, bin, "db", "list-db-clusters")
 	placeholder.wantExitCode(2)
-	placeholder.wantStderrContains("tdc [ERROR]: tdc organization list-projects is not implemented yet")
+	placeholder.wantStderrContains("tdc [ERROR]: tdc db list-db-clusters is not implemented yet")
 
 	invalidQuery := runTDCWithInput(t, bin, "", tdcConfigEnv(), "db", "create-db-cluster", "--dry-run", "--query", "command[")
 	invalidQuery.wantExitCode(2)

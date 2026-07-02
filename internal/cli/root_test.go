@@ -155,11 +155,11 @@ func TestServiceCommandsDeclarePermissions(t *testing.T) {
 }
 
 func TestPlaceholderCommandReturnsNotImplemented(t *testing.T) {
-	_, _, err := executeForTest("organization", "list-projects")
+	_, _, err := executeForTest("db", "list-db-clusters")
 	if err == nil {
 		t.Fatal("expected placeholder command to fail")
 	}
-	if got := apperr.MessageFor(err); got != "tdc organization list-projects is not implemented yet" {
+	if got := apperr.MessageFor(err); got != "tdc db list-db-clusters is not implemented yet" {
 		t.Fatalf("unexpected message: %q", got)
 	}
 }

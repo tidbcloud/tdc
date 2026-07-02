@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"time"
+
 	"github.com/Icemap/tdc/internal/authz"
 	cfgconfigure "github.com/Icemap/tdc/internal/config/configure"
+	"github.com/Icemap/tdc/internal/organization"
 	"github.com/Icemap/tdc/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -108,7 +111,47 @@ func newFSCommand(info version.Info) *cobra.Command {
 func newOrganizationCommand(info version.Info) *cobra.Command {
 	cmd := newParentCommand("organization", "Inspect TiDB Cloud organization resources.", info)
 	cmd.AddCommand(
-		newControlPlanePlaceholderCommand("list-projects", "List TiDB Cloud projects.", readOnlyCommand, authz.OrganizationProjectRead, info),
+		newOrganizationListProjectsCommand(info),
 	)
+	return cmd
+}
+
+func newOrganizationListProjectsCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "list-projects",
+		Short:      "List TiDB Cloud projects.",
+		Mutation:   readOnlyCommand,
+		Permission: authz.OrganizationProjectRead,
+		Run: func(ctx commandContext) (any, error) {
+			profile, err := ctx.LoadProfile()
+			if err != nil {
+				return nil, err
+			}
+			pageSize, err := ctx.Int32Flag("page-size")
+			if err != nil {
+				return nil, err
+			}
+			pageToken, err := ctx.StringFlag("page-token")
+			if err != nil {
+				return nil, err
+			}
+			debug, err := ctx.BoolFlag("debug")
+			if err != nil {
+				return nil, err
+			}
+			service := organization.Service{
+				Timeout:     30 * time.Second,
+				Debug:       debug,
+				DebugWriter: ctx.cmd.ErrOrStderr(),
+			}
+			return service.ListProjects(ctx.cmd.Context(), organization.ListProjectsOptions{
+				Profile:   profile,
+				PageSize:  pageSize,
+				PageToken: pageToken,
+			})
+		},
+	}, info)
+	cmd.Flags().Int32("page-size", 0, "number of projects to request; 0 uses the API default")
+	cmd.Flags().String("page-token", "", "page token returned by a previous list-projects call")
 	return cmd
 }

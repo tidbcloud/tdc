@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -113,10 +114,35 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		result.wantStderrContains("unknown flag: --dry-run")
 	}
 
+	projects := runTDC(t, bin, "--profile", profileName, "organization", "list-projects", "--page-size", "1")
+	projects.wantExitCode(0)
+	projects.wantStdoutContains(`"projects"`)
+	var projectList struct {
+		Projects []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"projects"`
+		NextPageToken string `json:"next_page_token"`
+	}
+	if err := json.Unmarshal([]byte(projects.stdout), &projectList); err != nil {
+		t.Fatalf("decode organization list-projects output: %v\n%s", err, projects.stdout)
+	}
+	if len(projectList.Projects) == 0 || projectList.Projects[0].ID == "" {
+		t.Fatalf("expected live profile %q to see at least one project with an id:\n%s", profileName, projects.stdout)
+	}
+
+	query := runTDC(t, bin, "--profile", profileName, "organization", "list-projects", "--page-size", "1", "--query", "projects[0].id")
+	query.wantExitCode(0)
+	query.wantStdoutContains(projectList.Projects[0].ID)
+
+	human := runTDC(t, bin, "--profile", profileName, "organization", "list-projects", "--page-size", "1", "--output", "human")
+	human.wantExitCode(0)
+	human.wantStdoutContains("ID")
+	human.wantStdoutContains(projectList.Projects[0].ID)
+
 	placeholderCommands := [][]string{
 		{"cli", "check-update"},
 		{"cli", "update"},
-		{"organization", "list-projects"},
 		{"db", "create-db-cluster"},
 		{"db", "list-db-clusters"},
 		{"db", "describe-db-cluster"},

@@ -5,9 +5,10 @@
 The project is in early MVP implementation. The CLI foundation, local
 configuration/credentials flow, structured output, JMESPath query, shared
 dry-run behavior, and API client/auth foundation are implemented. Service
-commands are registered so users and agents can discover the product surface,
-but most service actions still return "not implemented" until their specs are
-completed.
+commands are registered so users and agents can discover the product surface.
+`tdc organization list-projects` is the first implemented remote service
+command; most DB and fs service actions still return "not implemented" until
+their specs are completed.
 
 ## Current Status
 
@@ -27,6 +28,7 @@ Implemented:
 - TiDB Cloud Digest-auth API client foundation
 - provider/region endpoint resolver for Starter and IAM APIs
 - permission declarations and auth/authz error categories
+- `tdc organization list-projects`
 
 Registered but not implemented yet:
 
@@ -34,7 +36,6 @@ Registered but not implemented yet:
 - `tdc cli update`
 - `tdc db ...` remote service calls
 - `tdc fs ...` remote service calls and data-plane actions
-- `tdc organization list-projects`
 
 ## Build
 
@@ -88,10 +89,10 @@ make live-e2e
 ```
 
 At the current implementation stage, `make live-e2e` validates the real binary,
-the `live-e2e` profile, real TiDB Cloud Digest-auth read-only API probes, the
-current command surface, mutating command dry-runs, and read-only dry-run
-rejection. As TiDB Cloud API commands are implemented, their live tests must be
-added to this same target.
+the `live-e2e` profile, real TiDB Cloud Digest-auth read-only API probes,
+`tdc organization list-projects`, the current command surface, mutating command
+dry-runs, and read-only dry-run rejection. As TiDB Cloud API commands are
+implemented, their live tests must be added to this same target.
 
 Clean build artifacts:
 
@@ -227,9 +228,14 @@ These commands are registered but not implemented yet.
 
 ```bash
 tdc organization list-projects
+tdc organization list-projects --page-size 10
+tdc organization list-projects --page-token <next-page-token>
+tdc organization list-projects --query 'projects[0].id'
+tdc organization list-projects --output human
 ```
 
-This command is registered but not implemented yet.
+This command calls the TiDB Cloud IAM/account API with the active profile's
+Digest-auth API key pair and returns the projects visible to that profile.
 
 ### DB Cluster
 

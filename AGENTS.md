@@ -25,7 +25,10 @@ Implemented:
   `docs/spec/done/0003-output-error-query-dry-run.md`
 - API client auth, authorization, and region routing from
   `docs/spec/done/0004-api-client-auth-and-region-routing.md`
+- Organization project listing from
+  `docs/spec/done/0005-organization-management.md`
 - `tdc configure`
+- `tdc organization list-projects`
 - help and version behavior at every command level
 - structured JSON/human rendering and JMESPath `--query`
 - `--dry-run` on mutating control-plane command placeholders
@@ -38,7 +41,6 @@ Registered but not implemented yet:
 - `tdc cli update`
 - `tdc db ...` remote service calls
 - `tdc fs ...` remote service calls and data-plane actions
-- `tdc organization list-projects`
 
 Those commands are placeholders until their corresponding specs are implemented.
 Mutating control-plane placeholders may still return the shared dry-run envelope
@@ -126,6 +128,7 @@ internal/config/region/     provider and region validation
 internal/config/store/      TOML read/write, file modes, atomic writes
 internal/dryrun/            shared dry-run result envelope
 internal/output/            structured JSON/human/raw rendering
+internal/organization/      organization project command use cases
 internal/query/             JMESPath query application
 internal/secretinput/       no-echo secret input helper
 internal/version/           build version metadata
@@ -184,6 +187,9 @@ Implemented command behavior:
 - `tdc <command> <subcommand> help`
 - `tdc <command> --version`
 - `tdc <command> <subcommand> --version`
+- `tdc organization list-projects`
+- `tdc organization list-projects --query 'projects[0].id'`
+- `tdc organization list-projects --output human`
 - `tdc db create-db-cluster --dry-run`
 - `tdc db create-db-cluster --dry-run --output human`
 - `tdc db create-db-cluster --dry-run --query command`

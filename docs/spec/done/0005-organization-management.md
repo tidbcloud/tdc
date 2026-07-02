@@ -22,6 +22,7 @@ IAM API capability and kept within the two-level command rule.
 - Return project identifiers, names, organization IDs, cluster counts, user
   counts, create timestamps, and available metadata that is safe to expose.
 - Support `--profile`, `--output`, and `--query`.
+- Support optional `--page-size` and `--page-token` for API pagination.
 - Do not prompt.
 
 ## Inputs And Config
@@ -44,7 +45,10 @@ DB or fs resources:
 
 ```bash
 tdc organization list-projects
+tdc organization list-projects --page-size 10
+tdc organization list-projects --page-token <next-page-token>
 tdc organization list-projects --query 'projects[0].id'
+tdc organization list-projects --output human
 ```
 
 This is the first practical authentication and authorization validation path for
@@ -52,8 +56,8 @@ new users after `tdc configure`.
 
 ## Implementation Design
 
-- `internal/cli/organization` defines Cobra commands and translates flags into
-  service requests.
+- `internal/cli` defines Cobra commands and translates flags into service
+  requests.
 - `internal/organization` owns command use cases and applies the
   `organization.project.read` authorization requirement.
 - `internal/api/iam` contains IAM/account HTTP methods and response models.
@@ -71,8 +75,9 @@ Confirmed API:
 3. Call `GET /v1beta1/projects` with optional `pageSize` and `pageToken`.
 4. Decode `ApiListProjectsRsp`:
    - `projects[]`
-   - `next_page_token`
-5. Render JSON by default; apply `--query` after decoding.
+   - `nextPageToken`
+5. Normalize the CLI output field to `next_page_token`.
+6. Render JSON by default; apply `--query` after decoding.
 
 The confirmed project object fields are `id`, `name`, `org_id`,
 `cluster_count`, `user_count`, `create_timestamp`, and `aws_cmek_enabled`.
@@ -93,6 +98,8 @@ The confirmed project object fields are `id`, `name`, `org_id`,
 - Mock API tests cover successful project list output and pagination.
 - Tests cover permission-denied and unauthenticated errors.
 - Tests cover `--query` extracting a single project field.
+- `make live-e2e` covers the real `tdc organization list-projects` command
+  through JSON, query, and human output.
 
 ## Out Of Scope
 

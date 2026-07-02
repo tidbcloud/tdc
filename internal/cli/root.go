@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/Icemap/tdc/internal/apperr"
@@ -176,7 +177,15 @@ func (c commandContext) StringFlag(name string) (string, error) {
 }
 
 func (c commandContext) BoolFlag(name string) (bool, error) {
-	return c.cmd.Flags().GetBool(name)
+	flag := c.cmd.Flag(name)
+	if flag == nil {
+		return false, nil
+	}
+	return strconv.ParseBool(flag.Value.String())
+}
+
+func (c commandContext) Int32Flag(name string) (int32, error) {
+	return c.cmd.Flags().GetInt32(name)
 }
 
 func newControlPlanePlaceholderCommand(use, short string, mutation mutationMode, permission authz.Permission, info version.Info) *cobra.Command {
