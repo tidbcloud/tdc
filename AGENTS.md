@@ -21,19 +21,25 @@ Implemented:
 - CLI foundation from `docs/spec/done/0001-cli-foundation.md`
 - Local config and credentials from
   `docs/spec/done/0002-local-config-and-credentials.md`
+- Output, query, and dry-run contracts from
+  `docs/spec/done/0003-output-error-query-dry-run.md`
 - `tdc configure`
 - help and version behavior at every command level
+- structured JSON/human rendering and JMESPath `--query`
+- `--dry-run` on mutating control-plane command placeholders
 - Makefile build/test/e2e workflow
 
 Registered but not implemented yet:
 
 - `tdc cli check-update`
 - `tdc cli update`
-- `tdc db ...`
-- `tdc fs ...`
+- `tdc db ...` remote service calls
+- `tdc fs ...` remote service calls and data-plane actions
 - `tdc organization list-projects`
 
 Those commands are placeholders until their corresponding specs are implemented.
+Mutating control-plane placeholders may still return the shared dry-run envelope
+when invoked with `--dry-run`.
 
 ## Reference Code
 
@@ -106,6 +112,9 @@ internal/config/configure/  interactive configure wizard
 internal/config/fsresource/ flat tdc fs config key names
 internal/config/region/     provider and region validation
 internal/config/store/      TOML read/write, file modes, atomic writes
+internal/dryrun/            shared dry-run result envelope
+internal/output/            structured JSON/human/raw rendering
+internal/query/             JMESPath query application
 internal/secretinput/       no-echo secret input helper
 internal/version/           build version metadata
 e2e/                        black-box tests against the compiled binary
@@ -131,8 +140,15 @@ Follow these rules unless `docs/priciples.md` is updated:
 - Do not add short flags or one-letter aliases. The current CLI rejects short
   flags before invoking Cobra.
 - Do not prompt for input except inside `tdc configure`.
-- Successful control-plane commands output JSON by default once implemented.
-- Mutating control-plane commands support `--dry-run` once implemented.
+- Successful structured control-plane commands output JSON by default.
+- Implement DB, organization, and fs control-plane commands through
+  `controlPlaneCommandSpec` in `internal/cli`, so normal execution, dry-run,
+  output rendering, and query handling stay on the shared path.
+- Mutating control-plane commands support `--dry-run`.
+- `--dry-run` must validate local config, credentials, provider, and region
+  before reporting a planned mutation.
+- Read-only commands reject `--dry-run`.
+- Apply `--query` after command execution and before rendering.
 - Users provide cloud placement as `cloud_provider` plus `region_code`, never as
   server URLs.
 - Every command should be usable by scripts and agents without
@@ -154,6 +170,9 @@ Implemented command behavior:
 - `tdc <command> <subcommand> help`
 - `tdc <command> --version`
 - `tdc <command> <subcommand> --version`
+- `tdc db create-db-cluster --dry-run`
+- `tdc db create-db-cluster --dry-run --output human`
+- `tdc db create-db-cluster --dry-run --query command`
 
 Registered command surface:
 
@@ -310,12 +329,15 @@ classification or an automatic access mode.
 
 Use structured output contracts from the start.
 
-- JSON is the default for successful control-plane commands once implemented.
+- JSON is the default for successful structured control-plane commands.
 - Data-plane commands may stream bytes or plain file listings when JSON would
   break expected filesystem usage.
 - `--output json` and `--output human` are the initial output modes.
 - `--query` uses JMESPath semantics and is applied after command execution to
-  the structured result once implemented.
+  the structured result.
+- Raw output commands must reject `--query`.
+- Mutating control-plane commands use `internal/dryrun` for shared `--dry-run`
+  envelopes, load the active profile, and must stop before remote mutation.
 - Errors follow this shape:
 
 ```text

@@ -49,6 +49,41 @@ func TestErrorsAreRenderedAtCLIBoundary(t *testing.T) {
 	placeholder := runTDC(t, bin, "organization", "list-projects")
 	placeholder.wantExitCode(2)
 	placeholder.wantStderrContains("tdc [ERROR]: tdc organization list-projects is not implemented yet")
+
+	invalidQuery := runTDCWithInput(t, bin, "", tdcConfigEnv(), "db", "create-db-cluster", "--dry-run", "--query", "command[")
+	invalidQuery.wantExitCode(2)
+	invalidQuery.wantStderrContains("tdc [ERROR]: invalid --query expression")
+}
+
+func TestOutputQueryAndDryRun(t *testing.T) {
+	bin := tdcBinary(t)
+	env := tdcConfigEnv()
+
+	dryRun := runTDCWithInput(t, bin, "", env, "db", "create-db-cluster", "--dry-run")
+	dryRun.wantExitCode(0)
+	dryRun.wantStdoutContains(`"dry_run": true`)
+	dryRun.wantStdoutContains(`"would_send_request": true`)
+
+	human := runTDCWithInput(t, bin, "", env, "db", "create-db-cluster", "--dry-run", "--output", "human")
+	human.wantExitCode(0)
+	human.wantStdoutContains("Dry run: tdc db create-db-cluster")
+
+	query := runTDCWithInput(t, bin, "", env, "db", "create-db-cluster", "--dry-run", "--query", "command")
+	query.wantExitCode(0)
+	query.wantStdoutContains(`"tdc db create-db-cluster"`)
+
+	readOnlyDryRun := runTDC(t, bin, "db", "list-db-clusters", "--dry-run")
+	readOnlyDryRun.wantExitCode(2)
+	readOnlyDryRun.wantStderrContains("tdc [ERROR]: invalid flag for tdc db list-db-clusters: unknown flag: --dry-run")
+}
+
+func tdcConfigEnv() []string {
+	return []string{
+		"TDC_CLOUD_PROVIDER=aws",
+		"TDC_REGION_CODE=us-east-1",
+		"TDC_PUBLIC_KEY=e2e-public",
+		"TDC_PRIVATE_KEY=e2e-private",
+	}
 }
 
 func TestConfigureWritesLocalProfile(t *testing.T) {

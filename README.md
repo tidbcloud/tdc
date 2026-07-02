@@ -2,10 +2,11 @@
 
 `tdc` is an agent-friendly command-line interface for TiDB Cloud Starter.
 
-The project is in early MVP implementation. The CLI foundation and local
-configuration/credentials flow are implemented. Service commands are registered
-so users and agents can discover the product surface, but most service actions
-still return "not implemented" until their specs are completed.
+The project is in early MVP implementation. The CLI foundation, local
+configuration/credentials flow, structured output, JMESPath query, and shared
+dry-run behavior are implemented. Service commands are registered so users and
+agents can discover the product surface, but most service actions still return
+"not implemented" until their specs are completed.
 
 ## Current Status
 
@@ -19,13 +20,16 @@ Implemented:
 - `tdc <command> <subcommand> --version`
 - `tdc configure`
 - local TOML config and credentials under `~/.tdc/`
+- JSON and human output rendering for structured command results
+- JMESPath `--query` on structured command results
+- `--dry-run` on mutating control-plane command placeholders
 
 Registered but not implemented yet:
 
 - `tdc cli check-update`
 - `tdc cli update`
-- `tdc db ...`
-- `tdc fs ...`
+- `tdc db ...` remote service calls
+- `tdc fs ...` remote service calls and data-plane actions
 - `tdc organization list-projects`
 
 ## Build
@@ -159,6 +163,14 @@ exits with code 130.
 
 - Use long flags only. Short flags such as `-h` are rejected.
 - Help is available as an explicit command, for example `tdc db help`.
+- Successful structured command results render as JSON by default.
+- `--output json` and `--output human` are supported output modes.
+- `--query <jmespath-expression>` is applied after command execution and before
+  rendering.
+- Mutating control-plane commands support `--dry-run`.
+- `--dry-run` loads the active profile and validates local config, credentials,
+  provider, and region before reporting the planned mutation.
+- Read-only commands reject `--dry-run`.
 - Errors are rendered at the CLI boundary as:
 
 ```text
@@ -173,9 +185,6 @@ Global flags:
 - `--query <jmespath-expression>`
 - `--help`
 - `--version`
-
-`--output` and `--query` are foundation flags. Their full output behavior is
-implemented by later specs.
 
 ## Commands
 
@@ -218,34 +227,45 @@ This command is registered but not implemented yet.
 
 ```bash
 tdc db create-db-cluster
+tdc db create-db-cluster --dry-run
+tdc db create-db-cluster --dry-run --output human
+tdc db create-db-cluster --dry-run --query command
 tdc db list-db-clusters
 tdc db describe-db-cluster
 tdc db update-db-cluster
+tdc db update-db-cluster --dry-run
 tdc db delete-db-cluster
+tdc db delete-db-cluster --dry-run
 ```
 
-These commands are registered but not implemented yet.
+Remote service calls are not implemented yet. Mutating control-plane commands
+currently support the shared `--dry-run` envelope.
 
 ### DB Branch
 
 ```bash
 tdc db create-db-cluster-branch
+tdc db create-db-cluster-branch --dry-run
 tdc db list-db-cluster-branches
 tdc db describe-db-cluster-branch
 tdc db delete-db-cluster-branch
+tdc db delete-db-cluster-branch --dry-run
 ```
 
-These commands are registered but not implemented yet.
+Remote service calls are not implemented yet. Mutating control-plane commands
+currently support the shared `--dry-run` envelope.
 
 ### DB SQL
 
 ```bash
 tdc db prepare-db-query-access
+tdc db prepare-db-query-access --dry-run
 tdc db create-db-connection-string
 tdc db execute-sql-statement
 ```
 
-These commands are registered but not implemented yet.
+These commands are registered but not implemented yet, except that
+`prepare-db-query-access --dry-run` returns the shared dry-run envelope.
 
 The intended SQL access model is:
 
@@ -261,11 +281,14 @@ The intended SQL access model is:
 
 ```bash
 tdc fs create-file-system
+tdc fs create-file-system --dry-run
 tdc fs delete-file-system
+tdc fs delete-file-system --dry-run
 tdc fs check-file-system
 ```
 
-These commands are registered but not implemented yet.
+Remote service calls are not implemented yet. Mutating control-plane commands
+currently support the shared `--dry-run` envelope.
 
 ### tdc fs Data Plane
 

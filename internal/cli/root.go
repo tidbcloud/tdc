@@ -8,6 +8,9 @@ import (
 	"strings"
 
 	"github.com/Icemap/tdc/internal/apperr"
+	"github.com/Icemap/tdc/internal/config"
+	"github.com/Icemap/tdc/internal/dryrun"
+	"github.com/Icemap/tdc/internal/output"
 	"github.com/Icemap/tdc/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -132,6 +135,164 @@ func newPlaceholderCommand(use, short string, info version.Info) *cobra.Command 
 	}, info)
 }
 
+type mutationMode string
+
+const (
+	readOnlyCommand mutationMode = "read_only"
+	mutatingCommand mutationMode = "mutating"
+)
+
+type controlPlaneCommandSpec struct {
+	Use      string
+	Short    string
+	Long     string
+	Mutation mutationMode
+	Run      func(commandContext) (any, error)
+	DryRun   func(commandContext) (dryrun.Result, error)
+}
+
+type commandContext struct {
+	cmd *cobra.Command
+}
+
+func (c commandContext) CommandPath() string {
+	return c.cmd.CommandPath()
+}
+
+func (c commandContext) LoadProfile() (*config.Profile, error) {
+	return loadProfileForCommand(c.cmd)
+}
+
+func (c commandContext) StringFlag(name string) (string, error) {
+	return c.cmd.Flags().GetString(name)
+}
+
+func (c commandContext) BoolFlag(name string) (bool, error) {
+	return c.cmd.Flags().GetBool(name)
+}
+
+func newControlPlanePlaceholderCommand(use, short string, mutation mutationMode, info version.Info) *cobra.Command {
+	return newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:      use,
+		Short:    short,
+		Mutation: mutation,
+		Run: func(ctx commandContext) (any, error) {
+			return nil, apperr.NotImplemented(ctx.CommandPath())
+		},
+	}, info)
+}
+
+func newControlPlaneCommand(spec controlPlaneCommandSpec, info version.Info) *cobra.Command {
+	cmd := newCommand(commandSpec{
+		Use:   spec.Use,
+		Short: spec.Short,
+		Long:  spec.Long,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := commandContext{cmd: cmd}
+			if spec.Mutation == mutatingCommand {
+				isDryRun, err := cmd.Flags().GetBool("dry-run")
+				if err != nil {
+					return err
+				}
+				if isDryRun {
+					run := spec.DryRun
+					if run == nil {
+						run = defaultControlPlaneDryRun(spec)
+					}
+					result, err := run(ctx)
+					if err != nil {
+						return err
+					}
+					return renderStructured(cmd, result)
+				}
+			}
+
+			run := spec.Run
+			if run == nil {
+				run = func(ctx commandContext) (any, error) {
+					return nil, apperr.NotImplemented(ctx.CommandPath())
+				}
+			}
+			result, err := run(ctx)
+			if err != nil {
+				return err
+			}
+			return renderStructured(cmd, result)
+		},
+	}, info)
+	if spec.Mutation == mutatingCommand {
+		cmd.Flags().Bool("dry-run", false, "validate the request without creating, updating, or deleting remote resources")
+	}
+	return cmd
+}
+
+func defaultControlPlaneDryRun(spec controlPlaneCommandSpec) func(commandContext) (dryrun.Result, error) {
+	return func(ctx commandContext) (dryrun.Result, error) {
+		profile, err := ctx.LoadProfile()
+		if err != nil {
+			return dryrun.Result{}, err
+		}
+
+		return dryrun.New(
+			ctx.CommandPath(),
+			strings.ReplaceAll(spec.Use, "-", "_"),
+			dryrun.RequestSummary{
+				Description: "service-specific request construction is pending implementation",
+			},
+			dryrun.Check{
+				Name:    "config_and_credentials",
+				Status:  "passed",
+				Message: fmt.Sprintf("profile %q loaded", profile.Name),
+			},
+			dryrun.Check{
+				Name:    "endpoint_selection",
+				Status:  "passed",
+				Message: fmt.Sprintf("%s %s", profile.CloudProvider, profile.RegionCode),
+			},
+			dryrun.Check{
+				Name:    "request_construction",
+				Status:  "passed",
+				Message: "shared dry-run envelope constructed; service-specific request shape is pending command implementation",
+			},
+		), nil
+	}
+}
+
+func renderStructured(cmd *cobra.Command, result any) error {
+	format, err := stringFlag(cmd, "output")
+	if err != nil {
+		return err
+	}
+	expression, err := stringFlag(cmd, "query")
+	if err != nil {
+		return err
+	}
+	return output.Render(cmd.OutOrStdout(), result, output.Options{
+		Format: format,
+		Query:  expression,
+	})
+}
+
+func stringFlag(cmd *cobra.Command, name string) (string, error) {
+	flag := cmd.Flag(name)
+	if flag == nil {
+		return "", nil
+	}
+	return flag.Value.String(), nil
+}
+
+func loadProfileForCommand(cmd *cobra.Command) (*config.Profile, error) {
+	profileName, err := stringFlag(cmd, "profile")
+	if err != nil {
+		return nil, err
+	}
+	profileFlag := cmd.Flag("profile")
+	return config.Load(cmd.Context(), config.LoadOptions{
+		Profile:         profileName,
+		ProfileExplicit: profileFlag != nil && profileFlag.Changed,
+	})
+}
+
 func applyCommandDefaults(cmd *cobra.Command, info version.Info) {
 	cmd.Version = info.String()
 	cmd.SetVersionTemplate("{{.Version}}\n")
@@ -157,7 +318,7 @@ func flagErrorFunc(cmd *cobra.Command, err error) error {
 		"cli.invalid_flag",
 		"usage",
 		2,
-		fmt.Sprintf("invalid flag for %s", cmd.CommandPath()),
+		fmt.Sprintf("invalid flag for %s: %v", cmd.CommandPath(), err),
 		err,
 	)
 }

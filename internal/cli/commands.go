@@ -67,18 +67,18 @@ func newCLICommand(info version.Info) *cobra.Command {
 func newDBCommand(info version.Info) *cobra.Command {
 	cmd := newParentCommand("db", "Manage TiDB Cloud Starter database resources.", info)
 	cmd.AddCommand(
-		newPlaceholderCommand("create-db-cluster", "Create a Starter DB cluster.", info),
-		newPlaceholderCommand("list-db-clusters", "List Starter DB clusters.", info),
-		newPlaceholderCommand("describe-db-cluster", "Describe a Starter DB cluster.", info),
-		newPlaceholderCommand("update-db-cluster", "Update a Starter DB cluster.", info),
-		newPlaceholderCommand("delete-db-cluster", "Delete a Starter DB cluster.", info),
-		newPlaceholderCommand("create-db-cluster-branch", "Create a DB cluster branch.", info),
-		newPlaceholderCommand("list-db-cluster-branches", "List DB cluster branches.", info),
-		newPlaceholderCommand("describe-db-cluster-branch", "Describe a DB cluster branch.", info),
-		newPlaceholderCommand("delete-db-cluster-branch", "Delete a DB cluster branch.", info),
-		newPlaceholderCommand("prepare-db-query-access", "Prepare local SQL credentials for query execution.", info),
-		newPlaceholderCommand("create-db-connection-string", "Create a DB connection string from prepared credentials.", info),
-		newPlaceholderCommand("execute-sql-statement", "Execute one SQL statement.", info),
+		newControlPlanePlaceholderCommand("create-db-cluster", "Create a Starter DB cluster.", mutatingCommand, info),
+		newControlPlanePlaceholderCommand("list-db-clusters", "List Starter DB clusters.", readOnlyCommand, info),
+		newControlPlanePlaceholderCommand("describe-db-cluster", "Describe a Starter DB cluster.", readOnlyCommand, info),
+		newControlPlanePlaceholderCommand("update-db-cluster", "Update a Starter DB cluster.", mutatingCommand, info),
+		newControlPlanePlaceholderCommand("delete-db-cluster", "Delete a Starter DB cluster.", mutatingCommand, info),
+		newControlPlanePlaceholderCommand("create-db-cluster-branch", "Create a DB cluster branch.", mutatingCommand, info),
+		newControlPlanePlaceholderCommand("list-db-cluster-branches", "List DB cluster branches.", readOnlyCommand, info),
+		newControlPlanePlaceholderCommand("describe-db-cluster-branch", "Describe a DB cluster branch.", readOnlyCommand, info),
+		newControlPlanePlaceholderCommand("delete-db-cluster-branch", "Delete a DB cluster branch.", mutatingCommand, info),
+		newControlPlanePlaceholderCommand("prepare-db-query-access", "Prepare local SQL credentials for query execution.", mutatingCommand, info),
+		newControlPlanePlaceholderCommand("create-db-connection-string", "Create a DB connection string from prepared credentials.", readOnlyCommand, info),
+		newControlPlanePlaceholderCommand("execute-sql-statement", "Execute one SQL statement.", readOnlyCommand, info),
 	)
 	return cmd
 }
@@ -86,9 +86,9 @@ func newDBCommand(info version.Info) *cobra.Command {
 func newFSCommand(info version.Info) *cobra.Command {
 	cmd := newParentCommand("fs", "Manage and access tdc fs resources.", info)
 	cmd.AddCommand(
-		newPlaceholderCommand("create-file-system", "Create a tdc fs resource.", info),
-		newPlaceholderCommand("delete-file-system", "Delete a tdc fs resource.", info),
-		newPlaceholderCommand("check-file-system", "Check tdc fs resource health.", info),
+		newControlPlanePlaceholderCommand("create-file-system", "Create a tdc fs resource.", mutatingCommand, info),
+		newControlPlanePlaceholderCommand("delete-file-system", "Delete a tdc fs resource.", mutatingCommand, info),
+		newControlPlanePlaceholderCommand("check-file-system", "Check tdc fs resource health.", readOnlyCommand, info),
 		newPlaceholderCommand("copy-file", "Copy a file between local storage and tdc fs.", info),
 		newPlaceholderCommand("read-file", "Read a file from tdc fs.", info),
 		newPlaceholderCommand("list-files", "List files in tdc fs.", info),
@@ -107,7 +107,7 @@ func newFSCommand(info version.Info) *cobra.Command {
 func newOrganizationCommand(info version.Info) *cobra.Command {
 	cmd := newParentCommand("organization", "Inspect TiDB Cloud organization resources.", info)
 	cmd.AddCommand(
-		newPlaceholderCommand("list-projects", "List TiDB Cloud projects.", info),
+		newControlPlanePlaceholderCommand("list-projects", "List TiDB Cloud projects.", readOnlyCommand, info),
 	)
 	return cmd
 }

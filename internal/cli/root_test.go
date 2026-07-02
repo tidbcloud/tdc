@@ -3,10 +3,12 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/Icemap/tdc/internal/apperr"
+	"github.com/Icemap/tdc/internal/dryrun"
 	"github.com/Icemap/tdc/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -140,6 +142,189 @@ func TestPlaceholderCommandReturnsNotImplemented(t *testing.T) {
 	if got := apperr.MessageFor(err); got != "tdc organization list-projects is not implemented yet" {
 		t.Fatalf("unexpected message: %q", got)
 	}
+}
+
+func TestControlPlaneCommandSpecRendersImplementedResult(t *testing.T) {
+	root := newCommand(commandSpec{
+		Use: "tdc",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
+	}, testVersion())
+	root.PersistentFlags().String("output", "json", "output format")
+	root.PersistentFlags().String("query", "", "JMESPath query applied to JSON output")
+	root.AddCommand(newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:      "implemented-command",
+		Short:    "Implemented command.",
+		Mutation: readOnlyCommand,
+		Run: func(commandContext) (any, error) {
+			return map[string]any{
+				"items": []map[string]string{
+					{"id": "item-1"},
+				},
+			}, nil
+		},
+	}, testVersion()))
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Execute(context.Background(), root, []string{"implemented-command", "--query", "items[0].id"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("expected implemented command to succeed, got %v", err)
+	}
+	if got := stdout.String(); got != "\"item-1\"\n" {
+		t.Fatalf("unexpected output %q", got)
+	}
+	if stderr.String() != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestControlPlaneCommandSpecUsesCustomDryRun(t *testing.T) {
+	root := newCommand(commandSpec{Use: "tdc"}, testVersion())
+	root.PersistentFlags().String("output", "json", "output format")
+	root.PersistentFlags().String("query", "", "JMESPath query applied to JSON output")
+	root.AddCommand(newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:      "create-resource",
+		Short:    "Create a resource.",
+		Mutation: mutatingCommand,
+		Run: func(ctx commandContext) (any, error) {
+			return nil, apperr.NotImplemented(ctx.CommandPath())
+		},
+		DryRun: func(ctx commandContext) (dryrun.Result, error) {
+			return dryrun.New(
+				ctx.CommandPath(),
+				"create_resource",
+				dryrun.RequestSummary{
+					Method: "POST",
+					Path:   "/v1/resources",
+					Body: map[string]string{
+						"name": "demo",
+					},
+				},
+			), nil
+		},
+	}, testVersion()))
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Execute(context.Background(), root, []string{"create-resource", "--dry-run", "--query", "request.path"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("expected custom dry-run to succeed, got %v", err)
+	}
+	if got := stdout.String(); got != "\"/v1/resources\"\n" {
+		t.Fatalf("unexpected output %q", got)
+	}
+	if stderr.String() != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestMutatingControlPlaneDryRunRendersJSON(t *testing.T) {
+	withConfigEnv(t)
+
+	stdout, _, err := executeForTest("db", "create-db-cluster", "--dry-run")
+	if err != nil {
+		t.Fatalf("expected dry-run to succeed, got %v", err)
+	}
+
+	var got struct {
+		DryRun           bool   `json:"dry_run"`
+		Command          string `json:"command"`
+		Operation        string `json:"operation"`
+		WouldSendRequest bool   `json:"would_send_request"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("decode dry-run output: %v\n%s", err, stdout)
+	}
+	if !got.DryRun || !got.WouldSendRequest {
+		t.Fatalf("unexpected dry-run flags: %+v", got)
+	}
+	if got.Command != "tdc db create-db-cluster" {
+		t.Fatalf("unexpected command %q", got.Command)
+	}
+	if got.Operation != "create_db_cluster" {
+		t.Fatalf("unexpected operation %q", got.Operation)
+	}
+}
+
+func TestMutatingControlPlaneDryRunSupportsHumanOutput(t *testing.T) {
+	withConfigEnv(t)
+
+	stdout, _, err := executeForTest("db", "create-db-cluster", "--dry-run", "--output", "human")
+	if err != nil {
+		t.Fatalf("expected dry-run to succeed, got %v", err)
+	}
+	if !strings.Contains(stdout, "Dry run: tdc db create-db-cluster") {
+		t.Fatalf("unexpected human output:\n%s", stdout)
+	}
+}
+
+func TestQueryAppliesToDryRunResult(t *testing.T) {
+	withConfigEnv(t)
+
+	stdout, _, err := executeForTest("db", "create-db-cluster", "--dry-run", "--query", "command")
+	if err != nil {
+		t.Fatalf("expected query to succeed, got %v", err)
+	}
+	if got := stdout; got != "\"tdc db create-db-cluster\"\n" {
+		t.Fatalf("unexpected query output %q", got)
+	}
+}
+
+func TestInvalidQueryFails(t *testing.T) {
+	withConfigEnv(t)
+
+	_, _, err := executeForTest("db", "create-db-cluster", "--dry-run", "--query", "command[")
+	if err == nil {
+		t.Fatal("expected invalid query to fail")
+	}
+	if got := apperr.ExitCodeFor(err); got != 2 {
+		t.Fatalf("expected exit code 2, got %d", got)
+	}
+	if got := apperr.MessageFor(err); !strings.Contains(got, "invalid --query expression") {
+		t.Fatalf("unexpected message %q", got)
+	}
+}
+
+func TestDryRunRequiresConfigAndCredentials(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("TDC_CLOUD_PROVIDER", "")
+	t.Setenv("TDC_REGION_CODE", "")
+	t.Setenv("TDC_PUBLIC_KEY", "")
+	t.Setenv("TDC_PRIVATE_KEY", "")
+
+	_, _, err := executeForTest("db", "create-db-cluster", "--dry-run")
+	if err == nil {
+		t.Fatal("expected missing config to fail")
+	}
+	if got := apperr.ExitCodeFor(err); got != 2 {
+		t.Fatalf("expected exit code 2, got %d", got)
+	}
+	if got := apperr.MessageFor(err); !strings.Contains(got, "tdc configure") {
+		t.Fatalf("unexpected message %q", got)
+	}
+}
+
+func TestDryRunRejectedOnReadOnlyCommand(t *testing.T) {
+	_, _, err := executeForTest("db", "list-db-clusters", "--dry-run")
+	if err == nil {
+		t.Fatal("expected dry-run on read-only command to fail")
+	}
+	if got := apperr.ExitCodeFor(err); got != 2 {
+		t.Fatalf("expected exit code 2, got %d", got)
+	}
+	if got := apperr.MessageFor(err); !strings.Contains(got, "unknown flag: --dry-run") {
+		t.Fatalf("unexpected message %q", got)
+	}
+}
+
+func withConfigEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("TDC_CLOUD_PROVIDER", "aws")
+	t.Setenv("TDC_REGION_CODE", "us-east-1")
+	t.Setenv("TDC_PUBLIC_KEY", "test-public")
+	t.Setenv("TDC_PRIVATE_KEY", "test-private")
 }
 
 func executeForTest(args ...string) (string, string, error) {
