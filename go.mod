@@ -3,6 +3,7 @@ module github.com/Icemap/tdc
 go 1.26.1
 
 require (
+	github.com/icholy/digest v1.1.0
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/pelletier/go-toml/v2 v2.4.2
 	github.com/spf13/cobra v1.10.2

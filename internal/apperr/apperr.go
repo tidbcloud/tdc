@@ -14,6 +14,10 @@ type Error struct {
 	Cause    error
 }
 
+type appErrorer interface {
+	AppError() *Error
+}
+
 func (e *Error) Error() string {
 	if e == nil {
 		return ""
@@ -69,6 +73,13 @@ func ExitCodeFor(err error) int {
 		return appErr.ExitCode
 	}
 
+	var converted appErrorer
+	if errors.As(err, &converted) {
+		if appErr := converted.AppError(); appErr != nil && appErr.ExitCode > 0 {
+			return appErr.ExitCode
+		}
+	}
+
 	return 1
 }
 
@@ -80,6 +91,13 @@ func MessageFor(err error) string {
 	var appErr *Error
 	if errors.As(err, &appErr) && appErr.Message != "" {
 		return appErr.Message
+	}
+
+	var converted appErrorer
+	if errors.As(err, &converted) {
+		if appErr := converted.AppError(); appErr != nil && appErr.Message != "" {
+			return appErr.Message
+		}
 	}
 
 	return err.Error()

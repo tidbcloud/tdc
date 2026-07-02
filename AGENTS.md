@@ -23,10 +23,13 @@ Implemented:
   `docs/spec/done/0002-local-config-and-credentials.md`
 - Output, query, and dry-run contracts from
   `docs/spec/done/0003-output-error-query-dry-run.md`
+- API client auth, authorization, and region routing from
+  `docs/spec/done/0004-api-client-auth-and-region-routing.md`
 - `tdc configure`
 - help and version behavior at every command level
 - structured JSON/human rendering and JMESPath `--query`
 - `--dry-run` on mutating control-plane command placeholders
+- TiDB Cloud Digest-auth API client foundation and auth/authz error mapping
 - Makefile build/test/e2e workflow
 
 Registered but not implemented yet:
@@ -85,6 +88,10 @@ make clean
 `make live-e2e` builds `bin/tdc` and runs the live TiDB Cloud e2e suite using
 the `live-e2e` profile by default. Do not add a separate mutating/non-mutating
 live target; live e2e is the full live suite.
+Live e2e must strictly cover every implemented live-safe interface and command
+for the current project stage. When a service command is implemented, add its
+real live verification to `make live-e2e`; do not leave the target at profile
+or smoke-test-only coverage.
 
 For focused work, direct Go commands are also fine:
 
@@ -105,7 +112,12 @@ Current layout:
 
 ```text
 cmd/tdc/                    CLI entrypoint
+internal/api/               shared HTTP API client and service clients
+internal/api/endpoints/     provider/region endpoint resolver
+internal/api/transport/     Digest/Bearer/debug HTTP transports
 internal/apperr/            typed CLI errors and exit-code helpers
+internal/auth/              authenticated profile validation and transports
+internal/authz/             permission constants and permission errors
 internal/cli/               command wiring and command placeholders
 internal/config/            profile loading and precedence rules
 internal/config/configure/  interactive configure wizard
@@ -144,6 +156,8 @@ Follow these rules unless `docs/priciples.md` is updated:
 - Implement DB, organization, and fs control-plane commands through
   `controlPlaneCommandSpec` in `internal/cli`, so normal execution, dry-run,
   output rendering, and query handling stay on the shared path.
+- Each control-plane command must declare exactly one `authz.Permission` in its
+  command spec. Do not infer permissions from command names or SQL text.
 - Mutating control-plane commands support `--dry-run`.
 - `--dry-run` must validate local config, credentials, provider, and region
   before reporting a planned mutation.
@@ -280,6 +294,17 @@ responsibility based on `cloud_provider` and `region_code`. Test-only endpoint
 overrides, if added later, must be hidden from ordinary user workflows and must
 not be required by MVP usage.
 
+TiDB Cloud control-plane API calls use HTTP Digest auth through
+`internal/api/transport`; never send `tdc_private_key` as Basic Auth for those
+APIs. SQL HTTP execution and tdc fs data-plane auth are separate authentication
+schemes defined by their later specs.
+
+Use `internal/api/endpoints` for Starter, IAM/account, and fs endpoint
+selection. Do not add service URLs to user config. The default Starter host is
+`https://serverless.tidbapi.com`; the default IAM host is
+`https://iam.tidbapi.com`. The default tdc fs host is intentionally unavailable
+until product endpoint routing is confirmed.
+
 Credential lookup order for authenticated commands:
 
 1. If `--profile <name>` is explicitly provided, read that profile from
@@ -338,6 +363,8 @@ Use structured output contracts from the start.
 - Raw output commands must reject `--query`.
 - Mutating control-plane commands use `internal/dryrun` for shared `--dry-run`
   envelopes, load the active profile, and must stop before remote mutation.
+- API/auth errors must preserve categories and exit codes: `3` authentication,
+  `4` authorization, and `5` remote not found.
 - Errors follow this shape:
 
 ```text
@@ -390,7 +417,9 @@ Current expectations:
 - E2E tests should use temp `HOME` values and must not touch the user's real
   `~/.tdc/`.
 - API client tests should use mock HTTP servers once API specs are implemented.
-- Live cloud smoke tests, when added, must be opt-in and skipped by default.
+- Live cloud tests are opt-in, skipped by default, and run through
+  `make live-e2e`. They must use the `live-e2e` profile and verify the real
+  live-safe API/command surface for every implemented spec.
 
 Do not require live cloud credentials for ordinary `go test ./...`.
 

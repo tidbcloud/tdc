@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/Icemap/tdc/internal/apperr"
+	"github.com/Icemap/tdc/internal/authz"
+	"github.com/Icemap/tdc/internal/config/store"
 	"github.com/Icemap/tdc/internal/dryrun"
 	"github.com/Icemap/tdc/internal/version"
 	"github.com/spf13/cobra"
@@ -134,6 +136,24 @@ func TestNoCommandDefinesShortFlags(t *testing.T) {
 	}
 }
 
+func TestServiceCommandsDeclarePermissions(t *testing.T) {
+	root := NewRootCommand(testVersion())
+	visitCommands(root, func(cmd *cobra.Command) {
+		if cmd == root || cmd.Name() == "help" || cmd.HasSubCommands() {
+			return
+		}
+		path := cmd.CommandPath()
+		if !strings.HasPrefix(path, "tdc db ") &&
+			!strings.HasPrefix(path, "tdc fs ") &&
+			!strings.HasPrefix(path, "tdc organization ") {
+			return
+		}
+		if _, err := authz.ForCommand(path); err != nil {
+			t.Fatalf("missing permission for %s: %v", path, err)
+		}
+	})
+}
+
 func TestPlaceholderCommandReturnsNotImplemented(t *testing.T) {
 	_, _, err := executeForTest("organization", "list-projects")
 	if err == nil {
@@ -154,9 +174,10 @@ func TestControlPlaneCommandSpecRendersImplementedResult(t *testing.T) {
 	root.PersistentFlags().String("output", "json", "output format")
 	root.PersistentFlags().String("query", "", "JMESPath query applied to JSON output")
 	root.AddCommand(newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:      "implemented-command",
-		Short:    "Implemented command.",
-		Mutation: readOnlyCommand,
+		Use:        "implemented-command",
+		Short:      "Implemented command.",
+		Mutation:   readOnlyCommand,
+		Permission: authz.OrganizationProjectRead,
 		Run: func(commandContext) (any, error) {
 			return map[string]any{
 				"items": []map[string]string{
@@ -185,9 +206,10 @@ func TestControlPlaneCommandSpecUsesCustomDryRun(t *testing.T) {
 	root.PersistentFlags().String("output", "json", "output format")
 	root.PersistentFlags().String("query", "", "JMESPath query applied to JSON output")
 	root.AddCommand(newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:      "create-resource",
-		Short:    "Create a resource.",
-		Mutation: mutatingCommand,
+		Use:        "create-resource",
+		Short:      "Create a resource.",
+		Mutation:   mutatingCommand,
+		Permission: authz.StarterClusterCreate,
 		Run: func(ctx commandContext) (any, error) {
 			return nil, apperr.NotImplemented(ctx.CommandPath())
 		},
@@ -246,6 +268,9 @@ func TestMutatingControlPlaneDryRunRendersJSON(t *testing.T) {
 	if got.Operation != "create_db_cluster" {
 		t.Fatalf("unexpected operation %q", got.Operation)
 	}
+	if !strings.Contains(stdout, "permission_requirement") || !strings.Contains(stdout, string(authz.StarterClusterCreate)) {
+		t.Fatalf("dry-run output did not include permission requirement:\n%s", stdout)
+	}
 }
 
 func TestMutatingControlPlaneDryRunSupportsHumanOutput(t *testing.T) {
@@ -293,15 +318,16 @@ func TestDryRunRequiresConfigAndCredentials(t *testing.T) {
 	t.Setenv("TDC_REGION_CODE", "")
 	t.Setenv("TDC_PUBLIC_KEY", "")
 	t.Setenv("TDC_PRIVATE_KEY", "")
+	writeConfigOnlyProfile(t, "default")
 
 	_, _, err := executeForTest("db", "create-db-cluster", "--dry-run")
 	if err == nil {
 		t.Fatal("expected missing config to fail")
 	}
-	if got := apperr.ExitCodeFor(err); got != 2 {
-		t.Fatalf("expected exit code 2, got %d", got)
+	if got := apperr.ExitCodeFor(err); got != 3 {
+		t.Fatalf("expected exit code 3, got %d", got)
 	}
-	if got := apperr.MessageFor(err); !strings.Contains(got, "tdc configure") {
+	if got := apperr.MessageFor(err); !strings.Contains(got, "authentication required") {
 		t.Fatalf("unexpected message %q", got)
 	}
 }
@@ -325,6 +351,19 @@ func withConfigEnv(t *testing.T) {
 	t.Setenv("TDC_REGION_CODE", "us-east-1")
 	t.Setenv("TDC_PUBLIC_KEY", "test-public")
 	t.Setenv("TDC_PRIVATE_KEY", "test-private")
+}
+
+func writeConfigOnlyProfile(t *testing.T, profileName string) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	err := store.WriteProfile(home, profileName, store.ConfigProfile{
+		CloudProvider: "aws",
+		RegionCode:    "us-east-1",
+	}, store.CredentialsProfile{})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func executeForTest(args ...string) (string, string, error) {

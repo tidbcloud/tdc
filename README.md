@@ -3,10 +3,11 @@
 `tdc` is an agent-friendly command-line interface for TiDB Cloud Starter.
 
 The project is in early MVP implementation. The CLI foundation, local
-configuration/credentials flow, structured output, JMESPath query, and shared
-dry-run behavior are implemented. Service commands are registered so users and
-agents can discover the product surface, but most service actions still return
-"not implemented" until their specs are completed.
+configuration/credentials flow, structured output, JMESPath query, shared
+dry-run behavior, and API client/auth foundation are implemented. Service
+commands are registered so users and agents can discover the product surface,
+but most service actions still return "not implemented" until their specs are
+completed.
 
 ## Current Status
 
@@ -23,6 +24,9 @@ Implemented:
 - JSON and human output rendering for structured command results
 - JMESPath `--query` on structured command results
 - `--dry-run` on mutating control-plane command placeholders
+- TiDB Cloud Digest-auth API client foundation
+- provider/region endpoint resolver for Starter and IAM APIs
+- permission declarations and auth/authz error categories
 
 Registered but not implemented yet:
 
@@ -83,9 +87,11 @@ bin/tdc configure --profile live-e2e --non-interactive
 make live-e2e
 ```
 
-At the current implementation stage, `make live-e2e` validates that the real
-binary runs and that the `live-e2e` profile is loadable. As TiDB Cloud API
-commands are implemented, their live tests should be added to this same target.
+At the current implementation stage, `make live-e2e` validates the real binary,
+the `live-e2e` profile, real TiDB Cloud Digest-auth read-only API probes, the
+current command surface, mutating command dry-runs, and read-only dry-run
+rejection. As TiDB Cloud API commands are implemented, their live tests must be
+added to this same target.
 
 Clean build artifacts:
 
@@ -171,6 +177,8 @@ exits with code 130.
 - `--dry-run` loads the active profile and validates local config, credentials,
   provider, and region before reporting the planned mutation.
 - Read-only commands reject `--dry-run`.
+- Authenticated command failures use stable exit codes: `3` for
+  authentication, `4` for authorization, and `5` for remote not found.
 - Errors are rendered at the CLI boundary as:
 
 ```text
@@ -393,6 +401,22 @@ rejects that legacy shape.
 Do not configure TiDB Cloud API URLs, filesystem server URLs, metadata database
 URLs, or endpoint overrides in normal user config. Endpoint resolution is an
 internal responsibility derived from `cloud_provider` and `region_code`.
+
+## API Auth And Endpoints
+
+TiDB Cloud control-plane requests use HTTP Digest authentication with
+`tdc_public_key` as the digest username and `tdc_private_key` as the digest
+password. The private key is not sent as Basic Auth.
+
+Endpoint routing is internal:
+
+- Starter API: `https://serverless.tidbapi.com`
+- IAM/account API: `https://iam.tidbapi.com`
+- tdc fs API: resolved by provider/region once the product endpoint contract or
+  discovery API is confirmed
+
+Each control-plane command declares a permission requirement internally. Remote
+APIs remain the source of truth for the actual permission decision.
 
 ## Profile And Environment Lookup
 

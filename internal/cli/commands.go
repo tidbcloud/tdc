@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"github.com/Icemap/tdc/internal/authz"
 	cfgconfigure "github.com/Icemap/tdc/internal/config/configure"
 	"github.com/Icemap/tdc/internal/version"
 	"github.com/spf13/cobra"
@@ -67,18 +68,18 @@ func newCLICommand(info version.Info) *cobra.Command {
 func newDBCommand(info version.Info) *cobra.Command {
 	cmd := newParentCommand("db", "Manage TiDB Cloud Starter database resources.", info)
 	cmd.AddCommand(
-		newControlPlanePlaceholderCommand("create-db-cluster", "Create a Starter DB cluster.", mutatingCommand, info),
-		newControlPlanePlaceholderCommand("list-db-clusters", "List Starter DB clusters.", readOnlyCommand, info),
-		newControlPlanePlaceholderCommand("describe-db-cluster", "Describe a Starter DB cluster.", readOnlyCommand, info),
-		newControlPlanePlaceholderCommand("update-db-cluster", "Update a Starter DB cluster.", mutatingCommand, info),
-		newControlPlanePlaceholderCommand("delete-db-cluster", "Delete a Starter DB cluster.", mutatingCommand, info),
-		newControlPlanePlaceholderCommand("create-db-cluster-branch", "Create a DB cluster branch.", mutatingCommand, info),
-		newControlPlanePlaceholderCommand("list-db-cluster-branches", "List DB cluster branches.", readOnlyCommand, info),
-		newControlPlanePlaceholderCommand("describe-db-cluster-branch", "Describe a DB cluster branch.", readOnlyCommand, info),
-		newControlPlanePlaceholderCommand("delete-db-cluster-branch", "Delete a DB cluster branch.", mutatingCommand, info),
-		newControlPlanePlaceholderCommand("prepare-db-query-access", "Prepare local SQL credentials for query execution.", mutatingCommand, info),
-		newControlPlanePlaceholderCommand("create-db-connection-string", "Create a DB connection string from prepared credentials.", readOnlyCommand, info),
-		newControlPlanePlaceholderCommand("execute-sql-statement", "Execute one SQL statement.", readOnlyCommand, info),
+		newControlPlanePlaceholderCommand("create-db-cluster", "Create a Starter DB cluster.", mutatingCommand, authz.StarterClusterCreate, info),
+		newControlPlanePlaceholderCommand("list-db-clusters", "List Starter DB clusters.", readOnlyCommand, authz.StarterClusterRead, info),
+		newControlPlanePlaceholderCommand("describe-db-cluster", "Describe a Starter DB cluster.", readOnlyCommand, authz.StarterClusterRead, info),
+		newControlPlanePlaceholderCommand("update-db-cluster", "Update a Starter DB cluster.", mutatingCommand, authz.StarterClusterUpdate, info),
+		newControlPlanePlaceholderCommand("delete-db-cluster", "Delete a Starter DB cluster.", mutatingCommand, authz.StarterClusterDelete, info),
+		newControlPlanePlaceholderCommand("create-db-cluster-branch", "Create a DB cluster branch.", mutatingCommand, authz.StarterBranchCreate, info),
+		newControlPlanePlaceholderCommand("list-db-cluster-branches", "List DB cluster branches.", readOnlyCommand, authz.StarterBranchRead, info),
+		newControlPlanePlaceholderCommand("describe-db-cluster-branch", "Describe a DB cluster branch.", readOnlyCommand, authz.StarterBranchRead, info),
+		newControlPlanePlaceholderCommand("delete-db-cluster-branch", "Delete a DB cluster branch.", mutatingCommand, authz.StarterBranchDelete, info),
+		newControlPlanePlaceholderCommand("prepare-db-query-access", "Prepare local SQL credentials for query execution.", mutatingCommand, authz.StarterSQLUserCreate, info),
+		newControlPlanePlaceholderCommand("create-db-connection-string", "Create a DB connection string from prepared credentials.", readOnlyCommand, authz.StarterSQLUserRead, info),
+		newControlPlanePlaceholderCommand("execute-sql-statement", "Execute one SQL statement.", readOnlyCommand, authz.StarterSQLExecute, info),
 	)
 	return cmd
 }
@@ -86,9 +87,9 @@ func newDBCommand(info version.Info) *cobra.Command {
 func newFSCommand(info version.Info) *cobra.Command {
 	cmd := newParentCommand("fs", "Manage and access tdc fs resources.", info)
 	cmd.AddCommand(
-		newControlPlanePlaceholderCommand("create-file-system", "Create a tdc fs resource.", mutatingCommand, info),
-		newControlPlanePlaceholderCommand("delete-file-system", "Delete a tdc fs resource.", mutatingCommand, info),
-		newControlPlanePlaceholderCommand("check-file-system", "Check tdc fs resource health.", readOnlyCommand, info),
+		newControlPlanePlaceholderCommand("create-file-system", "Create a tdc fs resource.", mutatingCommand, authz.FSVolumeCreate, info),
+		newControlPlanePlaceholderCommand("delete-file-system", "Delete a tdc fs resource.", mutatingCommand, authz.FSVolumeDelete, info),
+		newControlPlanePlaceholderCommand("check-file-system", "Check tdc fs resource health.", readOnlyCommand, authz.FSVolumeRead, info),
 		newPlaceholderCommand("copy-file", "Copy a file between local storage and tdc fs.", info),
 		newPlaceholderCommand("read-file", "Read a file from tdc fs.", info),
 		newPlaceholderCommand("list-files", "List files in tdc fs.", info),
@@ -107,7 +108,7 @@ func newFSCommand(info version.Info) *cobra.Command {
 func newOrganizationCommand(info version.Info) *cobra.Command {
 	cmd := newParentCommand("organization", "Inspect TiDB Cloud organization resources.", info)
 	cmd.AddCommand(
-		newControlPlanePlaceholderCommand("list-projects", "List TiDB Cloud projects.", readOnlyCommand, info),
+		newControlPlanePlaceholderCommand("list-projects", "List TiDB Cloud projects.", readOnlyCommand, authz.OrganizationProjectRead, info),
 	)
 	return cmd
 }

@@ -63,7 +63,7 @@ func Validate(provider, regionCode string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("unsupported region %q for cloud provider %q", regionCode, provider)
+	return fmt.Errorf("unsupported region %q for cloud provider %q; supported regions: %s", regionCode, provider, joinRegions(regions))
 }
 
 func joinProviders() string {
@@ -74,6 +74,22 @@ func joinProviders() string {
 	out := providers[0]
 	for _, provider := range providers[1:] {
 		out += ", " + provider
+	}
+	return out
+}
+
+func joinRegions(regions []Region) string {
+	if len(regions) == 0 {
+		return ""
+	}
+	codes := make([]string, 0, len(regions))
+	for _, region := range regions {
+		codes = append(codes, region.Code)
+	}
+	sort.Strings(codes)
+	out := codes[0]
+	for _, code := range codes[1:] {
+		out += ", " + code
 	}
 	return out
 }

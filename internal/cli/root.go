@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/Icemap/tdc/internal/apperr"
+	"github.com/Icemap/tdc/internal/auth"
+	"github.com/Icemap/tdc/internal/authz"
 	"github.com/Icemap/tdc/internal/config"
 	"github.com/Icemap/tdc/internal/dryrun"
 	"github.com/Icemap/tdc/internal/output"
@@ -143,12 +145,13 @@ const (
 )
 
 type controlPlaneCommandSpec struct {
-	Use      string
-	Short    string
-	Long     string
-	Mutation mutationMode
-	Run      func(commandContext) (any, error)
-	DryRun   func(commandContext) (dryrun.Result, error)
+	Use        string
+	Short      string
+	Long       string
+	Mutation   mutationMode
+	Permission authz.Permission
+	Run        func(commandContext) (any, error)
+	DryRun     func(commandContext) (dryrun.Result, error)
 }
 
 type commandContext struct {
@@ -163,6 +166,11 @@ func (c commandContext) LoadProfile() (*config.Profile, error) {
 	return loadProfileForCommand(c.cmd)
 }
 
+func (c commandContext) Permission() authz.Permission {
+	permission, _ := authz.ForCommand(c.cmd.CommandPath())
+	return permission
+}
+
 func (c commandContext) StringFlag(name string) (string, error) {
 	return c.cmd.Flags().GetString(name)
 }
@@ -171,11 +179,12 @@ func (c commandContext) BoolFlag(name string) (bool, error) {
 	return c.cmd.Flags().GetBool(name)
 }
 
-func newControlPlanePlaceholderCommand(use, short string, mutation mutationMode, info version.Info) *cobra.Command {
+func newControlPlanePlaceholderCommand(use, short string, mutation mutationMode, permission authz.Permission, info version.Info) *cobra.Command {
 	return newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:      use,
-		Short:    short,
-		Mutation: mutation,
+		Use:        use,
+		Short:      short,
+		Mutation:   mutation,
+		Permission: permission,
 		Run: func(ctx commandContext) (any, error) {
 			return nil, apperr.NotImplemented(ctx.CommandPath())
 		},
@@ -183,6 +192,9 @@ func newControlPlanePlaceholderCommand(use, short string, mutation mutationMode,
 }
 
 func newControlPlaneCommand(spec controlPlaneCommandSpec, info version.Info) *cobra.Command {
+	if spec.Permission == "" {
+		panic(fmt.Sprintf("control-plane command %s must declare a permission", spec.Use))
+	}
 	cmd := newCommand(commandSpec{
 		Use:   spec.Use,
 		Short: spec.Short,
@@ -250,6 +262,11 @@ func defaultControlPlaneDryRun(spec controlPlaneCommandSpec) func(commandContext
 				Message: fmt.Sprintf("%s %s", profile.CloudProvider, profile.RegionCode),
 			},
 			dryrun.Check{
+				Name:    "permission_requirement",
+				Status:  "passed",
+				Message: string(spec.Permission),
+			},
+			dryrun.Check{
 				Name:    "request_construction",
 				Status:  "passed",
 				Message: "shared dry-run envelope constructed; service-specific request shape is pending command implementation",
@@ -287,7 +304,7 @@ func loadProfileForCommand(cmd *cobra.Command) (*config.Profile, error) {
 		return nil, err
 	}
 	profileFlag := cmd.Flag("profile")
-	return config.Load(cmd.Context(), config.LoadOptions{
+	return auth.LoadProfile(cmd.Context(), config.LoadOptions{
 		Profile:         profileName,
 		ProfileExplicit: profileFlag != nil && profileFlag.Changed,
 	})
@@ -331,6 +348,14 @@ func normalizeError(err error) error {
 	var appErr *apperr.Error
 	if errors.As(err, &appErr) {
 		return err
+	}
+	var converted interface {
+		AppError() *apperr.Error
+	}
+	if errors.As(err, &converted) {
+		if appErr := converted.AppError(); appErr != nil {
+			return appErr
+		}
 	}
 	if errors.Is(err, context.Canceled) {
 		return apperr.New("cli.interrupted", "runtime", 130, "interrupted")
