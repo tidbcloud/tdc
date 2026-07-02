@@ -79,10 +79,10 @@ func newDBCommand(info version.Info) *cobra.Command {
 		newDBDescribeClusterCommand(info),
 		newDBUpdateClusterCommand(info),
 		newDBDeleteClusterCommand(info),
-		newControlPlanePlaceholderCommand("create-db-cluster-branch", "Create a DB cluster branch.", mutatingCommand, authz.StarterBranchCreate, info),
-		newControlPlanePlaceholderCommand("list-db-cluster-branches", "List DB cluster branches.", readOnlyCommand, authz.StarterBranchRead, info),
-		newControlPlanePlaceholderCommand("describe-db-cluster-branch", "Describe a DB cluster branch.", readOnlyCommand, authz.StarterBranchRead, info),
-		newControlPlanePlaceholderCommand("delete-db-cluster-branch", "Delete a DB cluster branch.", mutatingCommand, authz.StarterBranchDelete, info),
+		newDBCreateBranchCommand(info),
+		newDBListBranchesCommand(info),
+		newDBDescribeBranchCommand(info),
+		newDBDeleteBranchCommand(info),
 		newControlPlanePlaceholderCommand("prepare-db-query-access", "Prepare local SQL credentials for query execution.", mutatingCommand, authz.StarterSQLUserCreate, info),
 		newControlPlanePlaceholderCommand("create-db-connection-string", "Create a DB connection string from prepared credentials.", readOnlyCommand, authz.StarterSQLUserRead, info),
 		newControlPlanePlaceholderCommand("execute-sql-statement", "Execute one SQL statement.", readOnlyCommand, authz.StarterSQLExecute, info),
@@ -275,6 +275,149 @@ func newDBDeleteClusterCommand(info version.Info) *cobra.Command {
 	return cmd
 }
 
+func newDBCreateBranchCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "create-db-cluster-branch",
+		Short:      "Create a Starter DB cluster branch.",
+		Mutation:   mutatingCommand,
+		Permission: authz.StarterBranchCreate,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := dbServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			opts, err := createBranchOptions(ctx, profile)
+			if err != nil {
+				return nil, err
+			}
+			return service.CreateBranch(ctx.cmd.Context(), opts)
+		},
+		DryRun: func(ctx commandContext) (dryrun.Result, error) {
+			service, profile, err := dbServiceAndProfile(ctx)
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			opts, err := createBranchOptions(ctx, profile)
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			return service.DryRunCreateBranch(ctx.cmd.Context(), ctx.CommandPath(), opts)
+		},
+	}, info)
+	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
+	cmd.Flags().String("db-cluster-branch-name", "", "Starter DB cluster branch display name")
+	return cmd
+}
+
+func newDBListBranchesCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "list-db-cluster-branches",
+		Short:      "List Starter DB cluster branches.",
+		Mutation:   readOnlyCommand,
+		Permission: authz.StarterBranchRead,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := dbServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			clusterID, err := ctx.StringFlag("db-cluster-id")
+			if err != nil {
+				return nil, err
+			}
+			pageSize, err := ctx.Int32Flag("page-size")
+			if err != nil {
+				return nil, err
+			}
+			pageToken, err := ctx.StringFlag("page-token")
+			if err != nil {
+				return nil, err
+			}
+			return service.ListBranches(ctx.cmd.Context(), db.ListBranchesOptions{
+				Profile:   profile,
+				ClusterID: clusterID,
+				PageSize:  pageSize,
+				PageToken: pageToken,
+			})
+		},
+	}, info)
+	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
+	cmd.Flags().Int32("page-size", 0, "number of branches to request; 0 uses the API default")
+	cmd.Flags().String("page-token", "", "page token returned by a previous list-db-cluster-branches call")
+	return cmd
+}
+
+func newDBDescribeBranchCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "describe-db-cluster-branch",
+		Short:      "Describe a Starter DB cluster branch.",
+		Mutation:   readOnlyCommand,
+		Permission: authz.StarterBranchRead,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := dbServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			clusterID, err := ctx.StringFlag("db-cluster-id")
+			if err != nil {
+				return nil, err
+			}
+			branchID, err := ctx.StringFlag("db-cluster-branch-id")
+			if err != nil {
+				return nil, err
+			}
+			view, err := ctx.StringFlag("view")
+			if err != nil {
+				return nil, err
+			}
+			return service.DescribeBranch(ctx.cmd.Context(), db.DescribeBranchOptions{
+				Profile:   profile,
+				ClusterID: clusterID,
+				BranchID:  branchID,
+				View:      view,
+			})
+		},
+	}, info)
+	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
+	cmd.Flags().String("db-cluster-branch-id", "", "Starter DB cluster branch id")
+	cmd.Flags().String("view", "", "detail level: BASIC or FULL")
+	return cmd
+}
+
+func newDBDeleteBranchCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "delete-db-cluster-branch",
+		Short:      "Delete a Starter DB cluster branch.",
+		Mutation:   mutatingCommand,
+		Permission: authz.StarterBranchDelete,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := dbServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			opts, err := deleteBranchOptions(ctx, profile)
+			if err != nil {
+				return nil, err
+			}
+			return service.DeleteBranch(ctx.cmd.Context(), opts)
+		},
+		DryRun: func(ctx commandContext) (dryrun.Result, error) {
+			service, profile, err := dbServiceAndProfile(ctx)
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			opts, err := deleteBranchOptions(ctx, profile)
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			return service.DryRunDeleteBranch(ctx.cmd.Context(), ctx.CommandPath(), opts)
+		},
+	}, info)
+	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
+	cmd.Flags().String("db-cluster-branch-id", "", "Starter DB cluster branch id")
+	cmd.Flags().String("confirm-db-cluster-branch-name", "", "required exact remote branch display name confirmation")
+	return cmd
+}
+
 func dbServiceAndProfile(ctx commandContext) (db.Service, *config.Profile, error) {
 	profile, err := ctx.LoadProfile()
 	if err != nil {
@@ -351,6 +494,43 @@ func deleteClusterOptions(ctx commandContext, profile *config.Profile) (db.Delet
 		Profile:              profile,
 		ClusterID:            clusterID,
 		ConfirmDBClusterName: confirmName,
+	}, nil
+}
+
+func createBranchOptions(ctx commandContext, profile *config.Profile) (db.CreateBranchOptions, error) {
+	clusterID, err := ctx.StringFlag("db-cluster-id")
+	if err != nil {
+		return db.CreateBranchOptions{}, err
+	}
+	name, err := ctx.StringFlag("db-cluster-branch-name")
+	if err != nil {
+		return db.CreateBranchOptions{}, err
+	}
+	return db.CreateBranchOptions{
+		Profile:     profile,
+		ClusterID:   clusterID,
+		DisplayName: name,
+	}, nil
+}
+
+func deleteBranchOptions(ctx commandContext, profile *config.Profile) (db.DeleteBranchOptions, error) {
+	clusterID, err := ctx.StringFlag("db-cluster-id")
+	if err != nil {
+		return db.DeleteBranchOptions{}, err
+	}
+	branchID, err := ctx.StringFlag("db-cluster-branch-id")
+	if err != nil {
+		return db.DeleteBranchOptions{}, err
+	}
+	confirmName, err := ctx.StringFlag("confirm-db-cluster-branch-name")
+	if err != nil {
+		return db.DeleteBranchOptions{}, err
+	}
+	return db.DeleteBranchOptions{
+		Profile:                    profile,
+		ClusterID:                  clusterID,
+		BranchID:                   branchID,
+		ConfirmDBClusterBranchName: confirmName,
 	}, nil
 }
 

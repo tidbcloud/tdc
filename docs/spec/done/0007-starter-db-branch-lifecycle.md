@@ -57,8 +57,8 @@ commands.
 
 ## Implementation Design
 
-- `internal/cli/db` registers branch subcommands next to cluster subcommands.
-- `internal/db/branch` owns branch use cases and authorization requirements.
+- `internal/cli` registers branch subcommands next to cluster subcommands.
+- `internal/db` owns branch use cases and authorization requirements.
 - `internal/api/starter` adds branch endpoints and response models under the
   same Starter client.
 - `internal/db/validate` validates cluster and branch identifiers.
@@ -111,6 +111,9 @@ Available but out of scope for this spec:
 - Tests cover dry-run for create and delete.
 - Tests cover branch not-found errors.
 - Tests cover `--query` over list output.
+- `make live-e2e` creates a temporary `tdc-e2e-branch-*` branch on the
+  temporary `tdc-e2e-*` Starter cluster, then lists, describes, deletes, and
+  verifies deletion for that branch without touching pre-existing branches.
 
 ## Out Of Scope
 

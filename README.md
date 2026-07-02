@@ -6,9 +6,10 @@ The project is in early MVP implementation. The CLI foundation, local
 configuration/credentials flow, structured output, JMESPath query, shared
 dry-run behavior, and API client/auth foundation are implemented. Service
 commands are registered so users and agents can discover the product surface.
-Organization project listing and Starter DB cluster lifecycle commands are
-implemented remote service commands. DB branch, DB SQL, and fs service actions
-still return "not implemented" until their specs are completed.
+Organization project listing, Starter DB cluster lifecycle commands, and
+Starter DB branch lifecycle commands are implemented remote service commands.
+DB SQL and fs service actions still return "not implemented" until their specs
+are completed.
 
 ## Current Status
 
@@ -24,7 +25,7 @@ Implemented:
 - local TOML config and credentials under `~/.tdc/`
 - JSON and human output rendering for structured command results
 - JMESPath `--query` on structured command results
-- `--dry-run` on mutating control-plane command placeholders
+- `--dry-run` on mutating control-plane commands and placeholders
 - TiDB Cloud Digest-auth API client foundation
 - provider/region endpoint resolver for Starter and IAM APIs
 - permission declarations and auth/authz error categories
@@ -34,12 +35,16 @@ Implemented:
 - `tdc db describe-db-cluster`
 - `tdc db update-db-cluster`
 - `tdc db delete-db-cluster`
+- `tdc db create-db-cluster-branch`
+- `tdc db list-db-cluster-branches`
+- `tdc db describe-db-cluster-branch`
+- `tdc db delete-db-cluster-branch`
 
 Registered but not implemented yet:
 
 - `tdc cli check-update`
 - `tdc cli update`
-- `tdc db ...` branch and SQL commands
+- `tdc db ...` SQL commands
 - `tdc fs ...` remote service calls and data-plane actions
 
 ## Build
@@ -97,10 +102,12 @@ At the current implementation stage, `make live-e2e` validates the real binary,
 the `live-e2e` profile, real TiDB Cloud Digest-auth read-only API probes,
 `tdc organization list-projects`, the current command surface, mutating command
 dry-runs for unfinished commands, read-only dry-run rejection, and the full
-Starter DB cluster lifecycle. The live DB lifecycle creates one uniquely named
-`tdc-e2e-*` Starter cluster without a spending limit, reads it, updates it,
-reads it again, deletes it, and verifies deletion. As TiDB Cloud API commands
-are implemented, their real live tests must be added to this same target.
+Starter DB cluster and branch lifecycles. The live DB lifecycle creates one
+uniquely named `tdc-e2e-*` Starter cluster without a spending limit, creates
+one `tdc-e2e-branch-*` branch on that cluster, lists/describes/deletes the
+branch, updates the cluster, reads it again, deletes it, and verifies deletion.
+As TiDB Cloud API commands are implemented, their real live tests must be added
+to this same target.
 
 Clean build artifacts:
 
@@ -275,16 +282,25 @@ name before sending the delete request.
 ### DB Branch
 
 ```bash
-tdc db create-db-cluster-branch
-tdc db create-db-cluster-branch --dry-run
-tdc db list-db-cluster-branches
-tdc db describe-db-cluster-branch
-tdc db delete-db-cluster-branch
-tdc db delete-db-cluster-branch --dry-run
+tdc db create-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-name dev
+tdc db create-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-name dev --dry-run
+tdc db list-db-cluster-branches --db-cluster-id <cluster-id>
+tdc db list-db-cluster-branches --db-cluster-id <cluster-id> --page-size 10
+tdc db list-db-cluster-branches --db-cluster-id <cluster-id> --query 'branches[].id'
+tdc db list-db-cluster-branches --db-cluster-id <cluster-id> --output human
+tdc db describe-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id>
+tdc db describe-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id> --view FULL
+tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id> --confirm-db-cluster-branch-name dev
+tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id> --confirm-db-cluster-branch-name dev --dry-run
 ```
 
-Remote service calls are not implemented yet. Mutating control-plane commands
-currently support the shared `--dry-run` envelope.
+These commands call the TiDB Cloud Starter branch API with the active profile's
+Digest-auth API key pair. Create currently sends the API-backed `displayName`
+field through `--db-cluster-branch-name`.
+
+Delete is non-interactive. Normal execution reads the remote branch first and
+requires `--confirm-db-cluster-branch-name` to exactly match the current remote
+display name before sending the delete request.
 
 ### DB SQL
 

@@ -78,6 +78,52 @@ func ClusterID(value string) (string, error) {
 	return trimmed, nil
 }
 
+func BranchName(value string) error {
+	if err := Required("--db-cluster-branch-name", value); err != nil {
+		return err
+	}
+	trimmed := strings.TrimSpace(value)
+	if len(trimmed) > 64 || strings.Contains(trimmed, "/") {
+		return apperr.New(
+			"db.invalid_branch_name",
+			"usage",
+			2,
+			"--db-cluster-branch-name must be 1-64 characters and must not contain /",
+		)
+	}
+	for _, r := range trimmed {
+		if r < 0x20 || r == 0x7f {
+			return apperr.New(
+				"db.invalid_branch_name",
+				"usage",
+				2,
+				"--db-cluster-branch-name must not contain control characters",
+			)
+		}
+	}
+	return nil
+}
+
+func BranchID(value string) (string, error) {
+	if err := Required("--db-cluster-branch-id", value); err != nil {
+		return "", err
+	}
+	trimmed := strings.TrimSpace(value)
+	if idx := strings.LastIndex(trimmed, "/branches/"); idx >= 0 {
+		trimmed = trimmed[idx+len("/branches/"):]
+	}
+	trimmed = strings.TrimPrefix(trimmed, "branches/")
+	if trimmed == "" || strings.Contains(trimmed, "/") {
+		return "", apperr.New(
+			"db.invalid_branch_id",
+			"usage",
+			2,
+			"--db-cluster-branch-id must be a TiDB Cloud branch id, optionally prefixed with branches/ or clusters/<cluster-id>/branches/",
+		)
+	}
+	return trimmed, nil
+}
+
 func View(value string) error {
 	switch strings.TrimSpace(value) {
 	case "", "BASIC", "FULL":

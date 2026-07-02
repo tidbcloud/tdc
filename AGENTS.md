@@ -29,6 +29,8 @@ Implemented:
   `docs/spec/done/0005-organization-management.md`
 - Starter DB cluster lifecycle from
   `docs/spec/done/0006-starter-db-cluster-lifecycle.md`
+- Starter DB branch lifecycle from
+  `docs/spec/done/0007-starter-db-branch-lifecycle.md`
 - `tdc configure`
 - `tdc organization list-projects`
 - `tdc db create-db-cluster`
@@ -36,9 +38,13 @@ Implemented:
 - `tdc db describe-db-cluster`
 - `tdc db update-db-cluster`
 - `tdc db delete-db-cluster`
+- `tdc db create-db-cluster-branch`
+- `tdc db list-db-cluster-branches`
+- `tdc db describe-db-cluster-branch`
+- `tdc db delete-db-cluster-branch`
 - help and version behavior at every command level
 - structured JSON/human rendering and JMESPath `--query`
-- `--dry-run` on mutating control-plane command placeholders
+- `--dry-run` on mutating control-plane commands and placeholders
 - TiDB Cloud Digest-auth API client foundation and auth/authz error mapping
 - Makefile build/test/e2e workflow
 
@@ -46,7 +52,7 @@ Registered but not implemented yet:
 
 - `tdc cli check-update`
 - `tdc cli update`
-- `tdc db ...` branch and SQL commands
+- `tdc db ...` SQL commands
 - `tdc fs ...` remote service calls and data-plane actions
 
 Those commands are placeholders until their corresponding specs are implemented.
@@ -101,9 +107,11 @@ Live e2e must strictly cover every implemented interface and command for the
 current project stage, including real create/update/delete flows when those
 commands are implemented. For Starter DB clusters, the live suite creates a
 uniquely named `tdc-e2e-*` cluster without a spending limit and deletes only
-that cluster. When a service command is implemented, add its real live
-verification to `make live-e2e`; do not leave the target at profile,
-smoke-test-only, or mock-only coverage.
+that cluster. For Starter DB branches, the live suite creates, reads, lists,
+and deletes only a `tdc-e2e-branch-*` branch on the cluster created by the same
+test run. When a service command is implemented, add its real live verification
+to `make live-e2e`; do not leave the target at profile, smoke-test-only, or
+mock-only coverage.
 
 For focused work, direct Go commands are also fine:
 
@@ -136,7 +144,7 @@ internal/config/configure/  interactive configure wizard
 internal/config/fsresource/ flat tdc fs config key names
 internal/config/region/     provider and region validation
 internal/config/store/      TOML read/write, file modes, atomic writes
-internal/db/                Starter DB cluster use cases
+internal/db/                Starter DB cluster and branch use cases
 internal/db/validate/       DB flag and request validation helpers
 internal/dryrun/            shared dry-run result envelope
 internal/output/            structured JSON/human/raw rendering
@@ -211,6 +219,14 @@ Implemented command behavior:
 - `tdc db update-db-cluster --db-cluster-id <cluster-id> --monthly-spending-limit-usd-cents 1000 --dry-run`
 - `tdc db delete-db-cluster --db-cluster-id <cluster-id> --confirm-db-cluster-name <current-name>`
 - `tdc db delete-db-cluster --db-cluster-id <cluster-id> --confirm-db-cluster-name <current-name> --dry-run`
+- `tdc db create-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-name dev`
+- `tdc db create-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-name dev --dry-run`
+- `tdc db list-db-cluster-branches --db-cluster-id <cluster-id>`
+- `tdc db list-db-cluster-branches --db-cluster-id <cluster-id> --query 'branches[].id'`
+- `tdc db list-db-cluster-branches --db-cluster-id <cluster-id> --output human`
+- `tdc db describe-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id>`
+- `tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id> --confirm-db-cluster-branch-name <current-name>`
+- `tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id> --confirm-db-cluster-branch-name <current-name> --dry-run`
 
 Registered command surface:
 

@@ -76,8 +76,8 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 	}
 
 	mutatingDryRunCommands := [][]string{
-		{"db", "create-db-cluster-branch"},
-		{"db", "delete-db-cluster-branch"},
+		{"db", "create-db-cluster-branch", "--db-cluster-id", "cluster-1", "--db-cluster-branch-name", "dev"},
+		{"db", "delete-db-cluster-branch", "--db-cluster-id", "cluster-1", "--db-cluster-branch-id", "branch-1", "--confirm-db-cluster-branch-name", "dev"},
 		{"db", "prepare-db-query-access"},
 		{"fs", "create-file-system"},
 		{"fs", "delete-file-system"},
@@ -167,10 +167,6 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 	placeholderCommands := [][]string{
 		{"cli", "check-update"},
 		{"cli", "update"},
-		{"db", "create-db-cluster-branch"},
-		{"db", "list-db-cluster-branches"},
-		{"db", "describe-db-cluster-branch"},
-		{"db", "delete-db-cluster-branch"},
 		{"db", "prepare-db-query-access"},
 		{"db", "create-db-connection-string"},
 		{"db", "execute-sql-statement"},
@@ -242,6 +238,85 @@ func TestLiveDBClusterLifecycle(t *testing.T) {
 		t.Fatalf("expected STARTER cluster, got %#v", described)
 	}
 
+	branchName := "tdc-e2e-branch-" + suffix
+	branchID := ""
+	branchDeleted := false
+	defer func() {
+		if branchID == "" || branchDeleted {
+			return
+		}
+		cleanup := runTDC(
+			t,
+			bin,
+			"--profile", profileName,
+			"db", "delete-db-cluster-branch",
+			"--db-cluster-id", clusterID,
+			"--db-cluster-branch-id", branchID,
+			"--confirm-db-cluster-branch-name", branchName,
+		)
+		if cleanup.exitCode != 0 && cleanup.exitCode != 5 {
+			t.Logf("cleanup delete failed for branch %s: exit=%d stdout=%s stderr=%s", branchID, cleanup.exitCode, cleanup.stdout, cleanup.stderr)
+		}
+	}()
+
+	branchCreate := runTDC(
+		t,
+		bin,
+		"--profile", profileName,
+		"db", "create-db-cluster-branch",
+		"--db-cluster-id", clusterID,
+		"--db-cluster-branch-name", branchName,
+	)
+	branchCreate.wantExitCode(0)
+	createdBranch := decodeLiveBranch(t, branchCreate)
+	if createdBranch.ID == "" || createdBranch.DisplayName != branchName {
+		t.Fatalf("unexpected created branch: %#v\n%s", createdBranch, branchCreate.stdout)
+	}
+	branchID = createdBranch.ID
+
+	waitLiveBranch(t, bin, profileName, clusterID, branchID, func(branch liveBranch) bool {
+		return branch.ID == branchID && branch.DisplayName == branchName && branch.State == "ACTIVE"
+	}, 5*time.Minute, "become ACTIVE after create")
+
+	branches := runTDC(t, bin, "--profile", profileName, "db", "list-db-cluster-branches", "--db-cluster-id", clusterID, "--page-size", "100")
+	branches.wantExitCode(0)
+	branches.wantStdoutContains(`"branches"`)
+	branches.wantStdoutContains(branchID)
+
+	branchQuery := runTDC(t, bin, "--profile", profileName, "db", "list-db-cluster-branches", "--db-cluster-id", clusterID, "--query", "branches[].id")
+	branchQuery.wantExitCode(0)
+	branchQuery.wantStdoutContains(branchID)
+
+	branchHuman := runTDC(t, bin, "--profile", profileName, "db", "list-db-cluster-branches", "--db-cluster-id", clusterID, "--output", "human")
+	branchHuman.wantExitCode(0)
+	branchHuman.wantStdoutContains("ID")
+	branchHuman.wantStdoutContains(branchName)
+
+	branchDescribe := runTDC(t, bin, "--profile", profileName, "db", "describe-db-cluster-branch", "--db-cluster-id", clusterID, "--db-cluster-branch-id", branchID, "--view", "FULL")
+	branchDescribe.wantExitCode(0)
+	describedBranch := decodeLiveBranch(t, branchDescribe)
+	if describedBranch.ID != branchID || describedBranch.DisplayName != branchName {
+		t.Fatalf("unexpected described branch: %#v\n%s", describedBranch, branchDescribe.stdout)
+	}
+
+	branchDelete := runTDC(
+		t,
+		bin,
+		"--profile", profileName,
+		"db", "delete-db-cluster-branch",
+		"--db-cluster-id", clusterID,
+		"--db-cluster-branch-id", branchID,
+		"--confirm-db-cluster-branch-name", branchName,
+	)
+	branchDelete.wantExitCode(0)
+	deletedBranch := decodeLiveBranch(t, branchDelete)
+	if deletedBranch.ID != branchID {
+		t.Fatalf("delete response did not reference created branch %s:\n%s", branchID, branchDelete.stdout)
+	}
+	branchDeleted = true
+
+	waitLiveBranchDeleted(t, bin, profileName, clusterID, branchID, 5*time.Minute)
+
 	update := runTDC(
 		t,
 		bin,
@@ -311,6 +386,13 @@ type liveCluster struct {
 	ClusterPlan string `json:"cluster_plan"`
 }
 
+type liveBranch struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+	ClusterID   string `json:"cluster_id"`
+	State       string `json:"state"`
+}
+
 func decodeLiveCluster(t *testing.T, result commandResult) liveCluster {
 	t.Helper()
 	var cluster liveCluster
@@ -318,6 +400,15 @@ func decodeLiveCluster(t *testing.T, result commandResult) liveCluster {
 		t.Fatalf("decode cluster output: %v\n%s", err, result.stdout)
 	}
 	return cluster
+}
+
+func decodeLiveBranch(t *testing.T, result commandResult) liveBranch {
+	t.Helper()
+	var branch liveBranch
+	if err := json.Unmarshal([]byte(result.stdout), &branch); err != nil {
+		t.Fatalf("decode branch output: %v\n%s", err, result.stdout)
+	}
+	return branch
 }
 
 func waitLiveCluster(t *testing.T, bin, profileName, clusterID string, ready func(liveCluster) bool, timeout time.Duration, description string) liveCluster {
@@ -335,6 +426,24 @@ func waitLiveCluster(t *testing.T, bin, profileName, clusterID string, ready fun
 			t.Fatalf("timed out waiting for cluster %s to %s; last=%#v", clusterID, description, last)
 		}
 		time.Sleep(10 * time.Second)
+	}
+}
+
+func waitLiveBranch(t *testing.T, bin, profileName, clusterID, branchID string, ready func(liveBranch) bool, timeout time.Duration, description string) liveBranch {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var last liveBranch
+	for {
+		describe := runTDC(t, bin, "--profile", profileName, "db", "describe-db-cluster-branch", "--db-cluster-id", clusterID, "--db-cluster-branch-id", branchID, "--view", "FULL")
+		describe.wantExitCode(0)
+		last = decodeLiveBranch(t, describe)
+		if ready(last) {
+			return last
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for branch %s to %s; last=%#v", branchID, description, last)
+		}
+		time.Sleep(5 * time.Second)
 	}
 }
 
@@ -365,6 +474,34 @@ func waitLiveClusterDeleted(t *testing.T, bin, profileName, clusterID string, ti
 			t.Fatalf("timed out waiting for cluster %s to be deleted", clusterID)
 		}
 		time.Sleep(10 * time.Second)
+	}
+}
+
+func waitLiveBranchDeleted(t *testing.T, bin, profileName, clusterID, branchID string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		describe := runTDC(t, bin, "--profile", profileName, "db", "describe-db-cluster-branch", "--db-cluster-id", clusterID, "--db-cluster-branch-id", branchID)
+		switch describe.exitCode {
+		case 0:
+			branch := decodeLiveBranch(t, describe)
+			if branch.ID != branchID {
+				t.Fatalf("post-delete read returned a different branch: %#v", branch)
+			}
+			if branch.State == "DELETED" {
+				return
+			}
+		case 5:
+			return
+		case 4:
+			return
+		default:
+			describe.fail("post-delete branch read should return deleted branch state, not found, or no longer readable; got exit code %d", describe.exitCode)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for branch %s to be deleted", branchID)
+		}
+		time.Sleep(5 * time.Second)
 	}
 }
 
