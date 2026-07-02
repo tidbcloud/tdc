@@ -1,0 +1,9 @@
+[submodule "ref/drive9"]
+	path = ref/drive9
+	url = git@github.com:mem9-ai/drive9.git
+[submodule "ref/tidbcloud-cli"]
+	path = ref/tidbcloud-cli
+	url = git@github.com:tidbcloud/tidbcloud-cli.git
+[submodule "ref/serverless-js"]
+	path = ref/serverless-js
+	url = git@github.com:tidbcloud/serverless-js.git
