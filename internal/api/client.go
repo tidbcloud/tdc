@@ -227,6 +227,22 @@ func (c *Client) statusError(req *http.Request, res *http.Response) error {
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 64*1024))
 	apiMessage := responseMessage(body)
 	switch res.StatusCode {
+	case http.StatusBadRequest:
+		message := messageOrDefault(apiMessage, "remote API rejected the request: check command flags and try again")
+		code := "api.invalid_request"
+		lowerMessage := strings.ToLower(message)
+		if strings.Contains(lowerMessage, "quota") || strings.Contains(lowerMessage, "capacity") || strings.Contains(lowerMessage, "limit") {
+			code = "api.quota_or_capacity"
+			message = "quota or capacity limit hit: " + message
+		}
+		return &Error{
+			Code:       code,
+			Category:   "api",
+			ExitCode:   2,
+			StatusCode: res.StatusCode,
+			Message:    message,
+			Body:       string(body),
+		}
 	case http.StatusUnauthorized:
 		return &Error{
 			Code:       "auth.invalid_credentials",
@@ -261,6 +277,15 @@ func (c *Client) statusError(req *http.Request, res *http.Response) error {
 			ExitCode:   1,
 			StatusCode: res.StatusCode,
 			Message:    fmt.Sprintf("API gap: %s %s is not available from the remote service; keep this command behind its service-specific client until the API contract is confirmed", req.Method, req.URL.Path),
+			Body:       string(body),
+		}
+	case http.StatusPaymentRequired:
+		return &Error{
+			Code:       "api.payment_required",
+			Category:   "api",
+			ExitCode:   1,
+			StatusCode: res.StatusCode,
+			Message:    "payment required: " + messageOrDefault(apiMessage, "the remote service rejected the request because payment could not be processed"),
 			Body:       string(body),
 		}
 	case http.StatusTooManyRequests:

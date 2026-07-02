@@ -29,7 +29,7 @@ e2e: build
 	TDC_E2E_BIN="$(abspath $(TDC_BIN))" $(GO) test ./e2e -count=1 -v
 
 live-e2e: build
-	TDC_E2E_BIN="$(abspath $(TDC_BIN))" TDC_LIVE=1 TDC_PROFILE="$(LIVE_E2E_PROFILE)" $(GO) test ./e2e -count=1 -v -run '^TestLive'
+	TDC_E2E_BIN="$(abspath $(TDC_BIN))" TDC_LIVE=1 TDC_PROFILE="$(LIVE_E2E_PROFILE)" $(GO) test ./e2e -count=1 -v -timeout 30m -run '^TestLive'
 
 clean:
 	rm -rf $(BIN_DIR)

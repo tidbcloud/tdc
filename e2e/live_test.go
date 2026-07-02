@@ -76,9 +76,6 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 	}
 
 	mutatingDryRunCommands := [][]string{
-		{"db", "create-db-cluster"},
-		{"db", "update-db-cluster"},
-		{"db", "delete-db-cluster"},
 		{"db", "create-db-cluster-branch"},
 		{"db", "delete-db-cluster-branch"},
 		{"db", "prepare-db-query-access"},
@@ -140,14 +137,36 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 	human.wantStdoutContains("ID")
 	human.wantStdoutContains(projectList.Projects[0].ID)
 
+	clusters := runTDC(t, bin, "--profile", profileName, "db", "list-db-clusters", "--page-size", "1")
+	clusters.wantExitCode(0)
+	clusters.wantStdoutContains(`"clusters"`)
+	var clusterList struct {
+		Clusters []struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"display_name"`
+		} `json:"clusters"`
+	}
+	if err := json.Unmarshal([]byte(clusters.stdout), &clusterList); err != nil {
+		t.Fatalf("decode db list-db-clusters output: %v\n%s", err, clusters.stdout)
+	}
+
+	clusterQuery := runTDC(t, bin, "--profile", profileName, "db", "list-db-clusters", "--page-size", "1", "--query", "clusters[].id")
+	clusterQuery.wantExitCode(0)
+
+	clusterHuman := runTDC(t, bin, "--profile", profileName, "db", "list-db-clusters", "--page-size", "1", "--output", "human")
+	clusterHuman.wantExitCode(0)
+	clusterHuman.wantStdoutContains("ID")
+
+	if len(clusterList.Clusters) > 0 && clusterList.Clusters[0].ID != "" {
+		describe := runTDC(t, bin, "--profile", profileName, "db", "describe-db-cluster", "--db-cluster-id", clusterList.Clusters[0].ID)
+		describe.wantExitCode(0)
+		describe.wantStdoutContains(`"id"`)
+		describe.wantStdoutContains(clusterList.Clusters[0].ID)
+	}
+
 	placeholderCommands := [][]string{
 		{"cli", "check-update"},
 		{"cli", "update"},
-		{"db", "create-db-cluster"},
-		{"db", "list-db-clusters"},
-		{"db", "describe-db-cluster"},
-		{"db", "update-db-cluster"},
-		{"db", "delete-db-cluster"},
 		{"db", "create-db-cluster-branch"},
 		{"db", "list-db-cluster-branches"},
 		{"db", "describe-db-cluster-branch"},
@@ -177,10 +196,175 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 	}
 }
 
+func TestLiveDBClusterLifecycle(t *testing.T) {
+	requireLive(t)
+
+	bin := tdcBinary(t)
+	profileName := liveProfileName(t)
+	projectID := liveProjectID(t, bin, profileName)
+
+	suffix := time.Now().UTC().Format("20060102150405")
+	clusterName := "tdc-e2e-" + suffix
+	updatedName := clusterName + "-u"
+	var clusterID string
+	currentName := clusterName
+	deleted := false
+	defer func() {
+		if clusterID == "" || deleted {
+			return
+		}
+		cleanup := runTDC(t, bin, "--profile", profileName, "db", "delete-db-cluster", "--db-cluster-id", clusterID, "--confirm-db-cluster-name", currentName)
+		if cleanup.exitCode != 0 && cleanup.exitCode != 5 {
+			t.Logf("cleanup delete failed for cluster %s: exit=%d stdout=%s stderr=%s", clusterID, cleanup.exitCode, cleanup.stdout, cleanup.stderr)
+		}
+	}()
+
+	create := runTDC(
+		t,
+		bin,
+		"--profile", profileName,
+		"db", "create-db-cluster",
+		"--db-cluster-name", clusterName,
+		"--db-cluster-type", "starter",
+		"--project-id", projectID,
+	)
+	create.wantExitCode(0)
+	created := decodeLiveCluster(t, create)
+	if created.ID == "" || created.DisplayName != clusterName {
+		t.Fatalf("unexpected created cluster: %#v\n%s", created, create.stdout)
+	}
+	clusterID = created.ID
+
+	described := waitLiveCluster(t, bin, profileName, clusterID, func(cluster liveCluster) bool {
+		return cluster.ID == clusterID && cluster.DisplayName == clusterName && cluster.State == "ACTIVE"
+	}, 12*time.Minute, "become ACTIVE after create")
+	if described.ClusterPlan != "" && described.ClusterPlan != "STARTER" {
+		t.Fatalf("expected STARTER cluster, got %#v", described)
+	}
+
+	update := runTDC(
+		t,
+		bin,
+		"--profile", profileName,
+		"db", "update-db-cluster",
+		"--db-cluster-id", clusterID,
+		"--db-cluster-name", updatedName,
+	)
+	update.wantExitCode(0)
+	updated := decodeLiveCluster(t, update)
+	if updated.ID != clusterID || updated.DisplayName != updatedName {
+		t.Fatalf("unexpected updated cluster: %#v\n%s", updated, update.stdout)
+	}
+	currentName = updatedName
+
+	waitLiveCluster(t, bin, profileName, clusterID, func(cluster liveCluster) bool {
+		return cluster.ID == clusterID && cluster.DisplayName == updatedName
+	}, 3*time.Minute, "show updated display name")
+
+	remove := runTDC(
+		t,
+		bin,
+		"--profile", profileName,
+		"db", "delete-db-cluster",
+		"--db-cluster-id", clusterID,
+		"--confirm-db-cluster-name", updatedName,
+	)
+	remove.wantExitCode(0)
+	removed := decodeLiveCluster(t, remove)
+	if removed.ID != clusterID {
+		t.Fatalf("delete response did not reference created cluster %s:\n%s", clusterID, remove.stdout)
+	}
+	deleted = true
+
+	waitLiveClusterDeleted(t, bin, profileName, clusterID, 12*time.Minute)
+}
+
 func requireLive(t *testing.T) {
 	t.Helper()
 	if os.Getenv("TDC_LIVE") != "1" {
 		t.Skip("TDC_LIVE=1 is required; run make live-e2e")
+	}
+}
+
+func liveProjectID(t *testing.T, bin, profileName string) string {
+	t.Helper()
+	projects := runTDC(t, bin, "--profile", profileName, "organization", "list-projects", "--page-size", "1")
+	projects.wantExitCode(0)
+	var projectList struct {
+		Projects []struct {
+			ID string `json:"id"`
+		} `json:"projects"`
+	}
+	if err := json.Unmarshal([]byte(projects.stdout), &projectList); err != nil {
+		t.Fatalf("decode live projects: %v\n%s", err, projects.stdout)
+	}
+	if len(projectList.Projects) == 0 || projectList.Projects[0].ID == "" {
+		t.Fatalf("live profile %q cannot see a project:\n%s", profileName, projects.stdout)
+	}
+	return projectList.Projects[0].ID
+}
+
+type liveCluster struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+	State       string `json:"state"`
+	ClusterPlan string `json:"cluster_plan"`
+}
+
+func decodeLiveCluster(t *testing.T, result commandResult) liveCluster {
+	t.Helper()
+	var cluster liveCluster
+	if err := json.Unmarshal([]byte(result.stdout), &cluster); err != nil {
+		t.Fatalf("decode cluster output: %v\n%s", err, result.stdout)
+	}
+	return cluster
+}
+
+func waitLiveCluster(t *testing.T, bin, profileName, clusterID string, ready func(liveCluster) bool, timeout time.Duration, description string) liveCluster {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var last liveCluster
+	for {
+		describe := runTDC(t, bin, "--profile", profileName, "db", "describe-db-cluster", "--db-cluster-id", clusterID, "--view", "FULL")
+		describe.wantExitCode(0)
+		last = decodeLiveCluster(t, describe)
+		if ready(last) {
+			return last
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for cluster %s to %s; last=%#v", clusterID, description, last)
+		}
+		time.Sleep(10 * time.Second)
+	}
+}
+
+func waitLiveClusterDeleted(t *testing.T, bin, profileName, clusterID string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		describe := runTDC(t, bin, "--profile", profileName, "db", "describe-db-cluster", "--db-cluster-id", clusterID)
+		switch describe.exitCode {
+		case 0:
+			cluster := decodeLiveCluster(t, describe)
+			if cluster.ID != clusterID {
+				t.Fatalf("post-delete read returned a different cluster: %#v", cluster)
+			}
+			if cluster.State == "DELETED" {
+				return
+			}
+		case 5:
+			return
+		case 4:
+			// TiDB Cloud can return 403 for a just-deleted cluster that was
+			// readable before the successful DELETE.
+			return
+		default:
+			describe.fail("post-delete read should return deleted cluster state, not found, or no longer readable; got exit code %d", describe.exitCode)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for cluster %s to be deleted", clusterID)
+		}
+		time.Sleep(10 * time.Second)
 	}
 }
 

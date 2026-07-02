@@ -27,8 +27,15 @@ Implemented:
   `docs/spec/done/0004-api-client-auth-and-region-routing.md`
 - Organization project listing from
   `docs/spec/done/0005-organization-management.md`
+- Starter DB cluster lifecycle from
+  `docs/spec/done/0006-starter-db-cluster-lifecycle.md`
 - `tdc configure`
 - `tdc organization list-projects`
+- `tdc db create-db-cluster`
+- `tdc db list-db-clusters`
+- `tdc db describe-db-cluster`
+- `tdc db update-db-cluster`
+- `tdc db delete-db-cluster`
 - help and version behavior at every command level
 - structured JSON/human rendering and JMESPath `--query`
 - `--dry-run` on mutating control-plane command placeholders
@@ -39,7 +46,7 @@ Registered but not implemented yet:
 
 - `tdc cli check-update`
 - `tdc cli update`
-- `tdc db ...` remote service calls
+- `tdc db ...` branch and SQL commands
 - `tdc fs ...` remote service calls and data-plane actions
 
 Those commands are placeholders until their corresponding specs are implemented.
@@ -90,10 +97,13 @@ make clean
 `make live-e2e` builds `bin/tdc` and runs the live TiDB Cloud e2e suite using
 the `live-e2e` profile by default. Do not add a separate mutating/non-mutating
 live target; live e2e is the full live suite.
-Live e2e must strictly cover every implemented live-safe interface and command
-for the current project stage. When a service command is implemented, add its
-real live verification to `make live-e2e`; do not leave the target at profile
-or smoke-test-only coverage.
+Live e2e must strictly cover every implemented interface and command for the
+current project stage, including real create/update/delete flows when those
+commands are implemented. For Starter DB clusters, the live suite creates a
+uniquely named `tdc-e2e-*` cluster without a spending limit and deletes only
+that cluster. When a service command is implemented, add its real live
+verification to `make live-e2e`; do not leave the target at profile,
+smoke-test-only, or mock-only coverage.
 
 For focused work, direct Go commands are also fine:
 
@@ -126,6 +136,8 @@ internal/config/configure/  interactive configure wizard
 internal/config/fsresource/ flat tdc fs config key names
 internal/config/region/     provider and region validation
 internal/config/store/      TOML read/write, file modes, atomic writes
+internal/db/                Starter DB cluster use cases
+internal/db/validate/       DB flag and request validation helpers
 internal/dryrun/            shared dry-run result envelope
 internal/output/            structured JSON/human/raw rendering
 internal/organization/      organization project command use cases
@@ -190,9 +202,15 @@ Implemented command behavior:
 - `tdc organization list-projects`
 - `tdc organization list-projects --query 'projects[0].id'`
 - `tdc organization list-projects --output human`
-- `tdc db create-db-cluster --dry-run`
-- `tdc db create-db-cluster --dry-run --output human`
-- `tdc db create-db-cluster --dry-run --query command`
+- `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id>`
+- `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id> --dry-run`
+- `tdc db list-db-clusters`
+- `tdc db list-db-clusters --query 'clusters[].id'`
+- `tdc db describe-db-cluster --db-cluster-id <cluster-id>`
+- `tdc db update-db-cluster --db-cluster-id <cluster-id> --db-cluster-name new-name`
+- `tdc db update-db-cluster --db-cluster-id <cluster-id> --monthly-spending-limit-usd-cents 1000 --dry-run`
+- `tdc db delete-db-cluster --db-cluster-id <cluster-id> --confirm-db-cluster-name <current-name>`
+- `tdc db delete-db-cluster --db-cluster-id <cluster-id> --confirm-db-cluster-name <current-name> --dry-run`
 
 Registered command surface:
 
@@ -425,7 +443,9 @@ Current expectations:
 - API client tests should use mock HTTP servers once API specs are implemented.
 - Live cloud tests are opt-in, skipped by default, and run through
   `make live-e2e`. They must use the `live-e2e` profile and verify the real
-  live-safe API/command surface for every implemented spec.
+  API/command surface for every implemented spec. Implemented mutating commands
+  must have real live mutation coverage with resource names scoped to the test
+  run and cleanup that only targets resources created by that run.
 
 Do not require live cloud credentials for ordinary `go test ./...`.
 

@@ -46,11 +46,11 @@ func TestErrorsAreRenderedAtCLIBoundary(t *testing.T) {
 	unknown.wantExitCode(2)
 	unknown.wantStderrContains(`tdc [ERROR]: unknown command "missing-command" for "tdc db"`)
 
-	placeholder := runTDC(t, bin, "db", "list-db-clusters")
+	placeholder := runTDC(t, bin, "cli", "check-update")
 	placeholder.wantExitCode(2)
-	placeholder.wantStderrContains("tdc [ERROR]: tdc db list-db-clusters is not implemented yet")
+	placeholder.wantStderrContains("tdc [ERROR]: tdc cli check-update is not implemented yet")
 
-	invalidQuery := runTDCWithInput(t, bin, "", tdcConfigEnv(), "db", "create-db-cluster", "--dry-run", "--query", "command[")
+	invalidQuery := runTDCWithInput(t, bin, "", tdcConfigEnv(), append(createClusterDryRunArgs(), "--query", "command[")...)
 	invalidQuery.wantExitCode(2)
 	invalidQuery.wantStderrContains("tdc [ERROR]: invalid --query expression")
 }
@@ -59,16 +59,16 @@ func TestOutputQueryAndDryRun(t *testing.T) {
 	bin := tdcBinary(t)
 	env := tdcConfigEnv()
 
-	dryRun := runTDCWithInput(t, bin, "", env, "db", "create-db-cluster", "--dry-run")
+	dryRun := runTDCWithInput(t, bin, "", env, createClusterDryRunArgs()...)
 	dryRun.wantExitCode(0)
 	dryRun.wantStdoutContains(`"dry_run": true`)
 	dryRun.wantStdoutContains(`"would_send_request": true`)
 
-	human := runTDCWithInput(t, bin, "", env, "db", "create-db-cluster", "--dry-run", "--output", "human")
+	human := runTDCWithInput(t, bin, "", env, append(createClusterDryRunArgs(), "--output", "human")...)
 	human.wantExitCode(0)
 	human.wantStdoutContains("Dry run: tdc db create-db-cluster")
 
-	query := runTDCWithInput(t, bin, "", env, "db", "create-db-cluster", "--dry-run", "--query", "command")
+	query := runTDCWithInput(t, bin, "", env, append(createClusterDryRunArgs(), "--query", "command")...)
 	query.wantExitCode(0)
 	query.wantStdoutContains(`"tdc db create-db-cluster"`)
 
@@ -83,6 +83,16 @@ func tdcConfigEnv() []string {
 		"TDC_REGION_CODE=us-east-1",
 		"TDC_PUBLIC_KEY=e2e-public",
 		"TDC_PRIVATE_KEY=e2e-private",
+	}
+}
+
+func createClusterDryRunArgs() []string {
+	return []string{
+		"db", "create-db-cluster",
+		"--db-cluster-name", "demo-cluster",
+		"--db-cluster-type", "starter",
+		"--project-id", "project-1",
+		"--dry-run",
 	}
 }
 

@@ -155,11 +155,11 @@ func TestServiceCommandsDeclarePermissions(t *testing.T) {
 }
 
 func TestPlaceholderCommandReturnsNotImplemented(t *testing.T) {
-	_, _, err := executeForTest("db", "list-db-clusters")
+	_, _, err := executeForTest("cli", "check-update")
 	if err == nil {
 		t.Fatal("expected placeholder command to fail")
 	}
-	if got := apperr.MessageFor(err); got != "tdc db list-db-clusters is not implemented yet" {
+	if got := apperr.MessageFor(err); got != "tdc cli check-update is not implemented yet" {
 		t.Fatalf("unexpected message: %q", got)
 	}
 }
@@ -245,7 +245,7 @@ func TestControlPlaneCommandSpecUsesCustomDryRun(t *testing.T) {
 func TestMutatingControlPlaneDryRunRendersJSON(t *testing.T) {
 	withConfigEnv(t)
 
-	stdout, _, err := executeForTest("db", "create-db-cluster", "--dry-run")
+	stdout, _, err := executeForTest("db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--db-cluster-type", "starter", "--project-id", "project-1", "--dry-run")
 	if err != nil {
 		t.Fatalf("expected dry-run to succeed, got %v", err)
 	}
@@ -276,7 +276,7 @@ func TestMutatingControlPlaneDryRunRendersJSON(t *testing.T) {
 func TestMutatingControlPlaneDryRunSupportsHumanOutput(t *testing.T) {
 	withConfigEnv(t)
 
-	stdout, _, err := executeForTest("db", "create-db-cluster", "--dry-run", "--output", "human")
+	stdout, _, err := executeForTest("db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--db-cluster-type", "starter", "--project-id", "project-1", "--dry-run", "--output", "human")
 	if err != nil {
 		t.Fatalf("expected dry-run to succeed, got %v", err)
 	}
@@ -288,7 +288,7 @@ func TestMutatingControlPlaneDryRunSupportsHumanOutput(t *testing.T) {
 func TestQueryAppliesToDryRunResult(t *testing.T) {
 	withConfigEnv(t)
 
-	stdout, _, err := executeForTest("db", "create-db-cluster", "--dry-run", "--query", "command")
+	stdout, _, err := executeForTest("db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--db-cluster-type", "starter", "--project-id", "project-1", "--dry-run", "--query", "command")
 	if err != nil {
 		t.Fatalf("expected query to succeed, got %v", err)
 	}
@@ -300,7 +300,7 @@ func TestQueryAppliesToDryRunResult(t *testing.T) {
 func TestInvalidQueryFails(t *testing.T) {
 	withConfigEnv(t)
 
-	_, _, err := executeForTest("db", "create-db-cluster", "--dry-run", "--query", "command[")
+	_, _, err := executeForTest("db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--db-cluster-type", "starter", "--project-id", "project-1", "--dry-run", "--query", "command[")
 	if err == nil {
 		t.Fatal("expected invalid query to fail")
 	}
@@ -320,7 +320,7 @@ func TestDryRunRequiresConfigAndCredentials(t *testing.T) {
 	t.Setenv("TDC_PRIVATE_KEY", "")
 	writeConfigOnlyProfile(t, "default")
 
-	_, _, err := executeForTest("db", "create-db-cluster", "--dry-run")
+	_, _, err := executeForTest("db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--db-cluster-type", "starter", "--project-id", "project-1", "--dry-run")
 	if err == nil {
 		t.Fatal("expected missing config to fail")
 	}

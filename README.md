@@ -6,9 +6,9 @@ The project is in early MVP implementation. The CLI foundation, local
 configuration/credentials flow, structured output, JMESPath query, shared
 dry-run behavior, and API client/auth foundation are implemented. Service
 commands are registered so users and agents can discover the product surface.
-`tdc organization list-projects` is the first implemented remote service
-command; most DB and fs service actions still return "not implemented" until
-their specs are completed.
+Organization project listing and Starter DB cluster lifecycle commands are
+implemented remote service commands. DB branch, DB SQL, and fs service actions
+still return "not implemented" until their specs are completed.
 
 ## Current Status
 
@@ -29,12 +29,17 @@ Implemented:
 - provider/region endpoint resolver for Starter and IAM APIs
 - permission declarations and auth/authz error categories
 - `tdc organization list-projects`
+- `tdc db create-db-cluster`
+- `tdc db list-db-clusters`
+- `tdc db describe-db-cluster`
+- `tdc db update-db-cluster`
+- `tdc db delete-db-cluster`
 
 Registered but not implemented yet:
 
 - `tdc cli check-update`
 - `tdc cli update`
-- `tdc db ...` remote service calls
+- `tdc db ...` branch and SQL commands
 - `tdc fs ...` remote service calls and data-plane actions
 
 ## Build
@@ -91,8 +96,11 @@ make live-e2e
 At the current implementation stage, `make live-e2e` validates the real binary,
 the `live-e2e` profile, real TiDB Cloud Digest-auth read-only API probes,
 `tdc organization list-projects`, the current command surface, mutating command
-dry-runs, and read-only dry-run rejection. As TiDB Cloud API commands are
-implemented, their live tests must be added to this same target.
+dry-runs for unfinished commands, read-only dry-run rejection, and the full
+Starter DB cluster lifecycle. The live DB lifecycle creates one uniquely named
+`tdc-e2e-*` Starter cluster without a spending limit, reads it, updates it,
+reads it again, deletes it, and verifies deletion. As TiDB Cloud API commands
+are implemented, their real live tests must be added to this same target.
 
 Clean build artifacts:
 
@@ -240,20 +248,29 @@ Digest-auth API key pair and returns the projects visible to that profile.
 ### DB Cluster
 
 ```bash
-tdc db create-db-cluster
-tdc db create-db-cluster --dry-run
-tdc db create-db-cluster --dry-run --output human
-tdc db create-db-cluster --dry-run --query command
+tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id>
+tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id> --monthly-spending-limit-usd-cents 1000
+tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id> --dry-run
 tdc db list-db-clusters
-tdc db describe-db-cluster
-tdc db update-db-cluster
-tdc db update-db-cluster --dry-run
-tdc db delete-db-cluster
-tdc db delete-db-cluster --dry-run
+tdc db list-db-clusters --page-size 10
+tdc db list-db-clusters --query 'clusters[].id'
+tdc db describe-db-cluster --db-cluster-id <cluster-id>
+tdc db describe-db-cluster --db-cluster-id <cluster-id> --view FULL
+tdc db update-db-cluster --db-cluster-id <cluster-id> --db-cluster-name new-name
+tdc db update-db-cluster --db-cluster-id <cluster-id> --monthly-spending-limit-usd-cents 1000 --dry-run
+tdc db delete-db-cluster --db-cluster-id <cluster-id> --confirm-db-cluster-name <current-name>
+tdc db delete-db-cluster --db-cluster-id <cluster-id> --confirm-db-cluster-name <current-name> --dry-run
 ```
 
-Remote service calls are not implemented yet. Mutating control-plane commands
-currently support the shared `--dry-run` envelope.
+These commands call the TiDB Cloud Starter API with the active profile's
+Digest-auth API key pair. Create requires `--db-cluster-type starter` and a
+`--project-id`; discover project ids with `tdc organization list-projects`.
+Cluster JSON output uses stable snake_case fields such as `id`, `display_name`,
+and `next_page_token`.
+
+Delete is non-interactive. Normal execution reads the remote cluster first and
+requires `--confirm-db-cluster-name` to exactly match the current remote display
+name before sending the delete request.
 
 ### DB Branch
 

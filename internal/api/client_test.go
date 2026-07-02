@@ -84,6 +84,20 @@ func TestClientMapsAPIGap(t *testing.T) {
 	}
 }
 
+func TestClientMapsPaymentRequired(t *testing.T) {
+	err := statusError(t, http.StatusPaymentRequired, `{"message":"payment cannot be processed"}`, authz.StarterClusterCreate)
+	var apiErr *Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected api.Error, got %T", err)
+	}
+	if apiErr.Code != "api.payment_required" {
+		t.Fatalf("unexpected code %q", apiErr.Code)
+	}
+	if !strings.Contains(apperr.MessageFor(err), "payment required") {
+		t.Fatalf("unexpected message %q", apperr.MessageFor(err))
+	}
+}
+
 func statusError(t *testing.T, status int, body string, permission authz.Permission) error {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
