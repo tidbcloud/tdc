@@ -274,7 +274,6 @@ Install script call chain:
 
 - `0001-cli-foundation.md`
 - `0002-local-config-and-credentials.md`
-- `0012-telemetry.md`
 
 ## Acceptance Criteria
 

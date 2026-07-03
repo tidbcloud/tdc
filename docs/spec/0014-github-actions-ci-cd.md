@@ -7,7 +7,7 @@ manually tested. CI must protect ordinary pull requests from regressions without
 requiring live TiDB Cloud credentials, and must provide a separate opt-in live
 e2e path for the full cloud-backed suite.
 
-This spec is intentionally after `0014-docs-and-smoke-tests.md`: before enabling
+This spec is intentionally after `0013-docs-and-smoke-tests.md`: before enabling
 cloud-backed CI, the MVP workflows should be manually validated first.
 
 ## User-facing Commands
@@ -122,7 +122,7 @@ profile convention used locally and in CI/CD docs.
   packaging flows.
 - Ordinary CI should run on `ubuntu-latest` first. Cross-platform build jobs for
   Linux, macOS, and Windows can be added after the CLI distribution workflow in
-  `0013-install-and-update-distribution.md` is implemented.
+  `0012-install-and-update-distribution.md` is implemented.
 - Live e2e should run on `ubuntu-latest` first unless a later command requires a
   platform-specific runner.
 - Live tests should use the existing `make live-e2e` target and should not
@@ -141,8 +141,7 @@ compiled `tdc` binary:
 - DB cluster and branch workflows from `0006` and `0007`
 - DB SQL user preparation and SQL query workflow from `0008`
 - tdc fs control plane, data plane, and mount runtime from `0009` through `0011`
-- telemetry privacy behavior from `0012`
-- install/update smoke coverage from `0013` and docs/smoke coverage from `0014`
+- install/update smoke coverage from `0012` and docs/smoke coverage from `0013`
 
 ## Dependencies And Platform
 
@@ -156,7 +155,7 @@ compiled `tdc` binary:
 
 ## Dependencies
 
-- `0001-cli-foundation.md` through `0014-docs-and-smoke-tests.md`.
+- `0001-cli-foundation.md` through `0013-docs-and-smoke-tests.md`.
 - Manual MVP validation should happen before enabling the live e2e workflow as a
   required gate.
 
@@ -184,6 +183,6 @@ compiled `tdc` binary:
 
 - Making live e2e a required pull request check before manual MVP validation.
 - Release publishing, Homebrew publishing, package signing, or installer upload.
-  Those belong to `0013-install-and-update-distribution.md`.
+  Those belong to `0012-install-and-update-distribution.md`.
 - Replacing local `make test`, `make e2e`, or `make live-e2e` with
   GitHub-only logic.

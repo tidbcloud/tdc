@@ -17,7 +17,7 @@ This spec covers documentation and smoke tests for the full MVP command set:
 ## Behavior
 
 - Provide install and update documentation for the distribution workflow defined
-  in `0013-install-and-update-distribution.md`.
+  in `0012-install-and-update-distribution.md`.
 - Provide command documentation generated from or synchronized with CLI help.
 - Provide smoke tests for the main user workflows.
 - Smoke tests that require live TiDB Cloud credentials must be opt-in.
@@ -48,7 +48,7 @@ read secrets from hardcoded files.
 ## Output And Errors
 
 - Install and update documentation must describe the actionable failures defined
-  in `0013-install-and-update-distribution.md`.
+  in `0012-install-and-update-distribution.md`.
 - Smoke tests must print the command that failed and the high-level reason, but
   not secret values.
 
@@ -76,7 +76,7 @@ region, and never provide service URLs.
 
 - `docs/commands/` or generated command docs are synchronized from Cobra help.
 - `scripts/` contains smoke-test entrypoints. Install scripts are covered by
-  `0013-install-and-update-distribution.md`.
+  `0012-install-and-update-distribution.md`.
 - `internal/buildinfo` or `internal/version` provides release metadata consumed
   by docs and `--version`.
 - Smoke tests are split into local tests, mock API tests, and opt-in live tests.
@@ -89,7 +89,7 @@ This spec adds no new product API. Smoke tests exercise the call chains defined
 in earlier specs:
 
 - `tdc cli check-update`: release manifest lookup from
-  `0013-install-and-update-distribution.md`.
+  `0012-install-and-update-distribution.md`.
 - `tdc organization list-projects`: `GET /v1beta1/projects`.
 - DB lifecycle dry-runs: construct but do not send the cluster mutation request.
 - `tdc db prepare-db-query-access`: SQL user list/create/update APIs.
@@ -107,13 +107,13 @@ in earlier specs:
 
 ## Dependencies
 
-- `0001-cli-foundation.md` through `0013-install-and-update-distribution.md`.
+- `0001-cli-foundation.md` through `0012-install-and-update-distribution.md`.
 
 ## Acceptance Criteria
 
 - `go test ./...` passes.
 - Install and update docs match the behavior defined in
-  `0013-install-and-update-distribution.md`.
+  `0012-install-and-update-distribution.md`.
 - Generated or maintained command docs match implemented help.
 - Opt-in smoke tests cover configure/profile loading, organization lookup, DB
   lifecycle dry-run, DB query preparation, HTTP SQL query, fs check,
@@ -122,4 +122,4 @@ in earlier specs:
 ## Out Of Scope
 
 - Release automation beyond the install/update workflow already defined in
-  `0013-install-and-update-distribution.md`.
+  `0012-install-and-update-distribution.md`.
