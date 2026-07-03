@@ -7,9 +7,8 @@ configuration/credentials flow, structured output, JMESPath query, shared
 dry-run behavior, and API client/auth foundation are implemented. Service
 commands are registered so users and agents can discover the product surface.
 Organization project listing, Starter DB cluster lifecycle commands, and
-Starter DB branch, SQL access, and tdc fs control-plane commands are
-implemented. tdc fs data-plane file commands are implemented. tdc fs mount
-actions still return "not implemented" until their specs are completed.
+Starter DB branch, SQL access, tdc fs control-plane commands, tdc fs data-plane
+file commands, and the tdc fs FUSE/WebDAV mount runtime are implemented.
 
 ## Current Status
 
@@ -54,13 +53,13 @@ Implemented:
 - `tdc fs create-directory`
 - `tdc fs search-file-content`
 - `tdc fs find-files`
+- `tdc fs mount-file-system`
+- `tdc fs unmount-file-system`
 
 Registered but not implemented yet:
 
 - `tdc cli check-update`
 - `tdc cli update`
-- `tdc fs mount-file-system`
-- `tdc fs unmount-file-system`
 
 ## Build
 
@@ -120,13 +119,18 @@ dry-runs, read-only dry-run rejection, a full tdc fs data-plane lifecycle, and
 the full Starter DB cluster, SQL access, and branch lifecycles. The live tdc fs
 lifecycle writes only under a unique `/tdc-e2e-*` path, uploads a local file,
 lists/describes/reads/searches/finds it, performs remote copy/move, downloads it
-back, and deletes the test path recursively. The live DB lifecycle creates one
-uniquely named `tdc-e2e-*` Starter cluster without a spending limit, prepares
-tdc-managed read-only/read-write/admin SQL users, creates connection strings,
-executes HTTP SQL with all three access modes, creates one `tdc-e2e-branch-*`
-branch on that cluster, lists/describes/deletes the branch, updates the cluster,
-reads it again, deletes it, and verifies deletion. As TiDB Cloud API commands
-are implemented, their real live tests must be added to this same target.
+back, and deletes the test path recursively. On macOS or Linux with FUSE
+available, live e2e also mounts a unique remote path through the default FUSE
+driver, reads and writes through the local mount, unmounts it, and cleans up the
+remote path. On macOS with `mount_webdav` available, live e2e also verifies the
+explicit `--driver webdav` fallback path. The live DB
+lifecycle creates one uniquely named `tdc-e2e-*` Starter cluster without a
+spending limit, prepares tdc-managed read-only/read-write/admin SQL users,
+creates connection strings, executes HTTP SQL with all three access modes,
+creates one `tdc-e2e-branch-*` branch on that cluster, lists/describes/deletes
+the branch, updates the cluster, reads it again, deletes it, and verifies
+deletion. As TiDB Cloud API commands are implemented, their real live tests must
+be added to this same target.
 
 Clean build artifacts:
 
@@ -451,11 +455,29 @@ from tdc fs to a local path.
 ### tdc fs Mount Runtime
 
 ```bash
-tdc fs mount-file-system
-tdc fs unmount-file-system
+tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace
+tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --remote-path /projects/demo
+tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --driver fuse
+tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --driver webdav
+tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --foreground
+tdc fs unmount-file-system --mount-path ./workspace
+tdc fs unmount-file-system --mount-path ./workspace --ignore-absent
 ```
 
-These commands are registered but not implemented yet.
+`mount-file-system` defaults to `--driver auto`, which prefers FUSE and falls
+back to WebDAV only when FUSE prerequisites are unavailable and WebDAV is
+supported. Use `--driver fuse` to require FUSE, or `--driver webdav` to force
+the compatibility bridge. The default background mode starts a foreground child
+process and records mount metadata under `~/.tdc/mounts/`; `unmount-file-system`
+reads that state and stops the mount process. `--foreground` keeps the mount
+runtime attached to the current terminal until interrupted.
+
+The FUSE driver uses `github.com/hanwen/go-fuse/v2` and the existing tdc fs
+data-plane API directly. On macOS it requires macFUSE, and on Linux it requires
+`/dev/fuse` plus `fusermount3` or `fusermount`. The WebDAV driver starts a local
+loopback WebDAV bridge and uses macOS `mount_webdav`/`umount`; Linux and Windows
+WebDAV mounts still return explicit unsupported-prerequisite errors. The CLI
+build remains cgo-free.
 
 ## Configuration
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Icemap/tdc/internal/apperr"
 	"github.com/Icemap/tdc/internal/auth"
@@ -191,6 +192,10 @@ func (c commandContext) Int32Flag(name string) (int32, error) {
 
 func (c commandContext) Int64Flag(name string) (int64, error) {
 	return c.cmd.Flags().GetInt64(name)
+}
+
+func (c commandContext) DurationFlag(name string) (time.Duration, error) {
+	return c.cmd.Flags().GetDuration(name)
 }
 
 func newControlPlanePlaceholderCommand(use, short string, mutation mutationMode, permission authz.Permission, info version.Info) *cobra.Command {

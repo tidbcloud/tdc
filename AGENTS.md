@@ -33,6 +33,12 @@ Implemented:
   `docs/spec/done/0007-starter-db-branch-lifecycle.md`
 - Starter DB SQL access and query from
   `docs/spec/done/0008-starter-db-sql-access-and-query.md`
+- tdc fs control plane from
+  `docs/spec/done/0009-tdc-fs-control-plane.md`
+- tdc fs data plane from
+  `docs/spec/done/0010-tdc-fs-data-plane.md`
+- tdc fs mount runtime from
+  `docs/spec/done/0011-tdc-fs-mount-runtime.md`
 - `tdc configure`
 - `tdc organization list-projects`
 - `tdc db create-db-cluster`
@@ -50,6 +56,17 @@ Implemented:
 - `tdc fs create-file-system`
 - `tdc fs delete-file-system`
 - `tdc fs check-file-system`
+- `tdc fs copy-file`
+- `tdc fs read-file`
+- `tdc fs list-files`
+- `tdc fs describe-file`
+- `tdc fs move-file`
+- `tdc fs delete-file`
+- `tdc fs create-directory`
+- `tdc fs search-file-content`
+- `tdc fs find-files`
+- `tdc fs mount-file-system`
+- `tdc fs unmount-file-system`
 - help and version behavior at every command level
 - structured JSON/human rendering and JMESPath `--query`
 - `--dry-run` on mutating control-plane commands and placeholders
@@ -61,12 +78,10 @@ Registered but not implemented yet:
 
 - `tdc cli check-update`
 - `tdc cli update`
-- `tdc fs ...` data-plane and mount actions
 
 Those commands are placeholders until their corresponding specs are implemented.
-Implemented mutating control-plane commands support `--dry-run`; remaining
-mutating placeholders may still return the shared dry-run envelope when invoked
-with `--dry-run`.
+Implemented mutating commands support `--dry-run` where their command contract
+declares dry-run support.
 
 ## Reference Code
 
@@ -121,6 +136,11 @@ and deletes only a `tdc-e2e-branch-*` branch on the cluster created by the same
 test run. For Starter DB SQL access, the live suite prepares tdc-managed
 read-only, read-write, and admin SQL users on the temporary cluster, verifies
 connection string output, and executes HTTP SQL with all three access modes.
+For tdc fs data-plane and mount runtime, the live suite creates uniquely named
+remote paths, exercises real file create/read/list/copy/move/delete flows,
+mounts with the default FUSE driver when platform prerequisites exist, and
+also verifies explicit WebDAV fallback on macOS when `mount_webdav` is
+available.
 When a service command is implemented, add its real live verification to
 `make live-e2e`; do not leave the target at profile, smoke-test-only, or
 mock-only coverage.
@@ -166,6 +186,7 @@ internal/db/sqlresult/      SQL result model and decoding
 internal/db/sqlsingle/      one-statement validation
 internal/db/validate/       DB flag and request validation helpers
 internal/dryrun/            shared dry-run result envelope
+internal/fs/                tdc fs control-plane, data-plane, and mount use cases
 internal/output/            structured JSON/human/raw rendering
 internal/organization/      organization project command use cases
 internal/query/             JMESPath query application
@@ -257,6 +278,29 @@ Implemented command behavior:
 - `tdc db execute-sql-statement --db-cluster-id <cluster-id> --read-only --sql "select 1"`
 - `tdc db execute-sql-statement --db-cluster-id <cluster-id> --admin --sql "select 1"`
 - `tdc db execute-sql-statement --db-cluster-id <cluster-id> --transport mysql --sql "select 1"`
+- `tdc fs create-file-system --file-system-name workspace`
+- `tdc fs create-file-system --file-system-name workspace --dry-run`
+- `tdc fs delete-file-system --file-system-name workspace --confirm-file-system-name workspace`
+- `tdc fs delete-file-system --file-system-name workspace --confirm-file-system-name workspace --dry-run`
+- `tdc fs check-file-system`
+- `tdc fs copy-file --from-local ./README.md --to-remote /workspace/README.md`
+- `tdc fs copy-file --from-remote /workspace/README.md --to-local ./README.copy.md --create-parents`
+- `tdc fs copy-file --from-remote /workspace/README.md --to-remote /workspace/README.copy.md`
+- `tdc fs read-file --path /workspace/README.md`
+- `tdc fs list-files --path /workspace`
+- `tdc fs list-files --path /workspace --output human`
+- `tdc fs describe-file --path /workspace/README.md`
+- `tdc fs move-file --from-remote /workspace/README.copy.md --to-remote /workspace/archive/README.md`
+- `tdc fs delete-file --path /workspace/archive/README.md`
+- `tdc fs delete-file --path /workspace --recursive`
+- `tdc fs create-directory --path /workspace/archive --mode 0755`
+- `tdc fs search-file-content --path /workspace --pattern "hello"`
+- `tdc fs find-files --path /workspace --file-name-pattern "*.md"`
+- `tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace`
+- `tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --driver fuse`
+- `tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --driver webdav`
+- `tdc fs unmount-file-system --mount-path ./workspace`
+- `tdc fs unmount-file-system --mount-path ./workspace --ignore-absent`
 
 Registered command surface:
 
@@ -433,6 +477,15 @@ requests authenticate with `Authorization: Bearer <tdc-fs-api-key>` after the
 resource is created. Native tdc fs provision/delete requests send the profile's
 TiDB Cloud API key pair in the HTTPS JSON body expected by the backend; dry-run
 and debug output must redact those credential values.
+
+`tdc fs mount-file-system` defaults to `--driver auto`, which prefers the FUSE
+runtime and falls back to WebDAV only when FUSE prerequisites are unavailable
+and WebDAV is supported. `--driver fuse` and `--driver webdav` are explicit
+concrete selections. The FUSE runtime uses `github.com/hanwen/go-fuse/v2` and
+the existing tdc fs data-plane client directly; it must not import or depend on
+`ref/drive9`. macOS FUSE requires macFUSE, Linux FUSE requires `/dev/fuse` plus
+`fusermount3` or `fusermount`, and WebDAV fallback currently uses macOS
+`mount_webdav`/`umount`. The CLI build must remain cgo-free.
 
 `tdc db create-db-connection-string` and `tdc db execute-sql-statement` use
 read-write credentials by default. `--read-write`, `--read-only`, and `--admin`

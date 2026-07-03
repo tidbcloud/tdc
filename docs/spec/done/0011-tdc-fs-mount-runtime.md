@@ -60,16 +60,28 @@ recovery.
 
 ## Implementation Design
 
-- `internal/cli/fs` registers `mount-file-system` and `unmount-file-system`.
-- `internal/fs/mount` owns mount orchestration and platform abstraction.
-- `internal/fs/mountstate` records active mount metadata under `~/.tdc/` using
-  profile, fs resource name, mount path, process id, and started time.
-- `internal/fs/mountdriver` hides FUSE/WebDAV/native driver differences behind a
-  small interface.
-- Platform-specific files use build tags such as `_darwin.go`, `_linux.go`, and
-  `_windows.go`.
-- Unsupported platforms compile successfully and return a clear unsupported
-  error at runtime.
+- `internal/cli/commands.go` registers `mount-file-system` and
+  `unmount-file-system` with explicit long flags.
+- `internal/fs/mount.go` owns mount orchestration, foreground/background
+  process behavior, status checks, and structured results.
+- `internal/fs/fuse_mount.go` implements the default FUSE runtime with
+  `github.com/hanwen/go-fuse/v2`, mapping FUSE callbacks to the existing tdc fs
+  data-plane client.
+- `internal/fs/webdavfs.go` maps WebDAV filesystem callbacks to the existing
+  tdc fs data-plane client for explicit `--driver webdav` fallback.
+- `internal/fs/mountstate` records active mount metadata under `~/.tdc/mounts/`
+  using profile, fs resource name, mount path, remote path, driver, process id,
+  endpoint, read-only mode, and started time.
+- `internal/fs/mountdriver` hides platform mount helpers behind a small
+  interface.
+- `internal/fs/mountprocess` hides process signaling behind small platform
+  files.
+- `--driver auto` prefers FUSE. If FUSE prerequisites are unavailable, it falls
+  back to WebDAV only when WebDAV prerequisites are available. `--driver fuse`
+  and `--driver webdav` force a concrete runtime.
+- FUSE is supported on macOS with macFUSE and on Linux with `/dev/fuse` plus
+  `fusermount3` or `fusermount`. WebDAV fallback currently uses macOS
+  `mount_webdav`/`umount`.
 
 ## API Call Chain
 
@@ -80,26 +92,26 @@ data-plane client from `0010-tdc-fs-data-plane.md`:
 2. Load the stored fs resource API key.
 3. Call `GET /v1/status` with `Authorization: Bearer <api-key>` before mounting
    to verify reachability and feature capabilities.
-4. Map local filesystem callbacks to data-plane calls:
+4. Start the selected mount runtime and map filesystem callbacks to data-plane
+   calls:
    - read: `GET /v1/fs/<path>`
-   - write: `PUT /v1/fs/<path>` or upload endpoints
+   - write: `PUT /v1/fs/<path>`
    - list: `GET /v1/fs/<path>?list=1`
    - stat: `GET /v1/fs/<path>?stat=1`
    - remove: `DELETE /v1/fs/<path>`
-5. Store local mount state under `~/.tdc/`.
+5. Store local mount state under `~/.tdc/mounts/`.
 
 No reference implementation package may be imported. Mount behavior can copy
 protocol concepts only.
 
 ## Dependencies And Platform
 
-- Prefer `github.com/hanwen/go-fuse/v2` if implementing a FUSE-backed mount
-  because the reference implementation already validates its behavior.
+- Use `github.com/hanwen/go-fuse/v2` for the default FUSE runtime.
+- Use `golang.org/x/net/webdav` for the explicit WebDAV compatibility bridge.
 - The mount driver must not import code from `ref/`; copy concepts only.
-- FUSE support is platform-specific. Keep non-mount packages pure Go and
-  cross-platform.
-- Do not require cgo for the core CLI. If a future mount backend requires cgo,
-  isolate it behind build tags and keep the default build cgo-free.
+- FUSE and WebDAV support are platform-specific. Keep non-mount packages pure
+  Go and cross-platform.
+- Do not require cgo for the core CLI.
 
 ## Dependencies
 
@@ -115,6 +127,7 @@ protocol concepts only.
 
 ## Out Of Scope
 
-- Kernel-level filesystem implementation changes beyond what is needed to wrap
-  the reference behavior.
+- Advanced FUSE cache, write-back, layer, snapshot, rollback, and checkpoint
+  semantics.
 - Mount support on unsupported operating systems.
+- Importing or depending on the reference implementation.

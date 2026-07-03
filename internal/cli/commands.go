@@ -755,8 +755,8 @@ func newFSCommand(info version.Info) *cobra.Command {
 		newFSCreateDirectoryCommand(info),
 		newFSSearchFileContentCommand(info),
 		newFSFindFilesCommand(info),
-		newPlaceholderCommand("mount-file-system", "Mount a tdc fs resource locally.", info),
-		newPlaceholderCommand("unmount-file-system", "Unmount a tdc fs resource.", info),
+		newFSMountFileSystemCommand(info),
+		newFSUnmountFileSystemCommand(info),
 	)
 	return cmd
 }
@@ -1132,6 +1132,88 @@ func newFSFindFilesCommand(info version.Info) *cobra.Command {
 	return cmd
 }
 
+func newFSMountFileSystemCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "mount-file-system",
+		Short:      "Mount a tdc fs resource locally.",
+		Mutation:   mutatingCommand,
+		Permission: authz.FSMount,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			opts, err := fsMountOptions(ctx, profile)
+			if err != nil {
+				return nil, err
+			}
+			return service.MountFileSystem(ctx.cmd.Context(), opts)
+		},
+		DryRun: func(ctx commandContext) (dryrun.Result, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			opts, err := fsMountOptions(ctx, profile)
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			return service.DryRunMountFileSystem(ctx.cmd.Context(), ctx.CommandPath(), opts)
+		},
+	}, info)
+	cmd.Flags().String("file-system-name", "", "tdc fs resource name; defaults to fs_resource_name in the active profile")
+	cmd.Flags().String("mount-path", "", "local mount path")
+	cmd.Flags().String("remote-path", "/", "tdc fs remote root path to expose")
+	cmd.Flags().String("driver", "auto", "mount driver: auto, fuse, or webdav")
+	cmd.Flags().Bool("foreground", false, "run mount runtime in the foreground until interrupted")
+	cmd.Flags().Bool("read-only", false, "mount as read-only")
+	cmd.Flags().Duration("ready-timeout", 30*time.Second, "time to wait for a background mount to become ready")
+	return cmd
+}
+
+func newFSUnmountFileSystemCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "unmount-file-system",
+		Short:      "Unmount a tdc fs resource.",
+		Mutation:   mutatingCommand,
+		Permission: authz.FSMount,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			mountPath, err := ctx.StringFlag("mount-path")
+			if err != nil {
+				return nil, err
+			}
+			timeout, err := ctx.DurationFlag("timeout")
+			if err != nil {
+				return nil, err
+			}
+			force, err := ctx.BoolFlag("force")
+			if err != nil {
+				return nil, err
+			}
+			ignoreAbsent, err := ctx.BoolFlag("ignore-absent")
+			if err != nil {
+				return nil, err
+			}
+			return service.UnmountFileSystem(ctx.cmd.Context(), tdcfs.UnmountFileSystemOptions{
+				Profile:      profile,
+				MountPath:    mountPath,
+				Timeout:      timeout,
+				Force:        force,
+				IgnoreAbsent: ignoreAbsent,
+			})
+		},
+	}, info)
+	cmd.Flags().String("mount-path", "", "local mount path")
+	cmd.Flags().Duration("timeout", 30*time.Second, "time to wait for the mount process to exit")
+	cmd.Flags().Bool("force", false, "force-kill the mount process if graceful unmount times out")
+	cmd.Flags().Bool("ignore-absent", false, "return success when no tdc fs mount state exists for the path")
+	return cmd
+}
+
 func fsCopyFileOptions(ctx commandContext, profile *config.Profile) (tdcfs.CopyFileOptions, error) {
 	fromLocal, err := ctx.StringFlag("from-local")
 	if err != nil {
@@ -1216,6 +1298,47 @@ func fsFindFilesOptions(ctx commandContext, profile *config.Profile) (tdcfs.Find
 		MinSizeBytes:    minSizeBytes,
 		MaxSizeBytes:    maxSizeBytes,
 		Limit:           limit,
+	}, nil
+}
+
+func fsMountOptions(ctx commandContext, profile *config.Profile) (tdcfs.MountFileSystemOptions, error) {
+	fileSystemName, err := ctx.StringFlag("file-system-name")
+	if err != nil {
+		return tdcfs.MountFileSystemOptions{}, err
+	}
+	mountPath, err := ctx.StringFlag("mount-path")
+	if err != nil {
+		return tdcfs.MountFileSystemOptions{}, err
+	}
+	remotePath, err := ctx.StringFlag("remote-path")
+	if err != nil {
+		return tdcfs.MountFileSystemOptions{}, err
+	}
+	driver, err := ctx.StringFlag("driver")
+	if err != nil {
+		return tdcfs.MountFileSystemOptions{}, err
+	}
+	foreground, err := ctx.BoolFlag("foreground")
+	if err != nil {
+		return tdcfs.MountFileSystemOptions{}, err
+	}
+	readOnly, err := ctx.BoolFlag("read-only")
+	if err != nil {
+		return tdcfs.MountFileSystemOptions{}, err
+	}
+	readyTimeout, err := ctx.DurationFlag("ready-timeout")
+	if err != nil {
+		return tdcfs.MountFileSystemOptions{}, err
+	}
+	return tdcfs.MountFileSystemOptions{
+		Profile:        profile,
+		FileSystemName: fileSystemName,
+		MountPath:      mountPath,
+		RemotePath:     remotePath,
+		Driver:         driver,
+		Foreground:     foreground,
+		ReadOnly:       readOnly,
+		ReadyTimeout:   readyTimeout,
 	}, nil
 }
 

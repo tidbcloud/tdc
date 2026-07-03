@@ -3,8 +3,11 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -84,6 +87,8 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"db", "prepare-db-query-access", "--db-cluster-id", "cluster-1"},
 		{"fs", "create-file-system", "--file-system-name", "workspace"},
 		{"fs", "delete-file-system", "--file-system-name", "workspace", "--confirm-file-system-name", "workspace"},
+		{"fs", "mount-file-system", "--mount-path", "/tmp/tdc-e2e-mount", "--driver", "webdav"},
+		{"fs", "unmount-file-system", "--mount-path", "/tmp/tdc-e2e-mount"},
 	}
 	for _, args := range mutatingDryRunCommands {
 		fullArgs := append([]string{"--profile", profileName}, args...)
@@ -192,8 +197,6 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 	placeholderCommands := [][]string{
 		{"cli", "check-update"},
 		{"cli", "update"},
-		{"fs", "mount-file-system"},
-		{"fs", "unmount-file-system"},
 	}
 	for _, args := range placeholderCommands {
 		result := runTDC(t, bin, args...)
@@ -293,6 +296,141 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	deleteRoot.wantExitCode(0)
 	deleteRoot.wantStdoutContains(`"status": "deleted"`)
 	deleted = true
+}
+
+func TestLiveFSMountRuntime(t *testing.T) {
+	requireLive(t)
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("tdc fs FUSE mount live e2e currently runs on macOS or Linux")
+	}
+	profile := liveProfile(t)
+	if profile.FSAPIKey == "" {
+		t.Fatalf("live profile %q has no fs_api_key; run tdc fs create-file-system --profile %s before make live-e2e", profile.Name, profile.Name)
+	}
+
+	bin := tdcBinary(t)
+	profileName := liveProfileName(t)
+	suffix := time.Now().UTC().Format("20060102150405")
+	remoteRoot := "/tdc-e2e-mount-" + suffix
+	mountPath := filepath.Join(t.TempDir(), "mount")
+	if err := os.MkdirAll(mountPath, 0o755); err != nil {
+		t.Fatalf("create mount path: %v", err)
+	}
+	unmounted := false
+	remoteDeleted := false
+	defer func() {
+		if !unmounted {
+			cleanupUnmount := runTDC(t, bin, "--profile", profileName, "fs", "unmount-file-system", "--mount-path", mountPath, "--ignore-absent", "--force")
+			if cleanupUnmount.exitCode != 0 {
+				t.Logf("cleanup unmount failed for %s: exit=%d stdout=%s stderr=%s", mountPath, cleanupUnmount.exitCode, cleanupUnmount.stdout, cleanupUnmount.stderr)
+			}
+		}
+		if !remoteDeleted {
+			cleanupRemote := runTDC(t, bin, "--profile", profileName, "fs", "delete-file", "--path", remoteRoot, "--recursive")
+			if cleanupRemote.exitCode != 0 && cleanupRemote.exitCode != 5 {
+				t.Logf("cleanup remote failed for %s: exit=%d stdout=%s stderr=%s", remoteRoot, cleanupRemote.exitCode, cleanupRemote.stdout, cleanupRemote.stderr)
+			}
+		}
+	}()
+
+	createDir := runTDC(t, bin, "--profile", profileName, "fs", "create-directory", "--path", remoteRoot, "--mode", "0755")
+	createDir.wantExitCode(0)
+	localSeed := filepath.Join(t.TempDir(), "README.md")
+	seedContent := "hello mounted tdc fs " + suffix + "\n"
+	if err := os.WriteFile(localSeed, []byte(seedContent), 0o644); err != nil {
+		t.Fatalf("write local seed: %v", err)
+	}
+	upload := runTDC(t, bin, "--profile", profileName, "fs", "copy-file", "--from-local", localSeed, "--to-remote", remoteRoot+"/README.md")
+	upload.wantExitCode(0)
+
+	mount := runTDC(t, bin, "--profile", profileName, "fs", "mount-file-system", "--mount-path", mountPath, "--remote-path", remoteRoot, "--ready-timeout", "30s")
+	mount.wantExitCode(0)
+	mount.wantStdoutContains(`"status": "mounted"`)
+	mount.wantStdoutContains(`"driver": "fuse"`)
+
+	waitLiveLocalFile(t, filepath.Join(mountPath, "README.md"), seedContent, 30*time.Second)
+	localWrite := "written through mounted tdc fs " + suffix + "\n"
+	if err := os.WriteFile(filepath.Join(mountPath, "local-write.txt"), []byte(localWrite), 0o644); err != nil {
+		t.Fatalf("write through mount failed: %v", err)
+	}
+	waitLiveRemoteRead(t, bin, profileName, remoteRoot+"/local-write.txt", localWrite, 30*time.Second)
+
+	unmount := runTDC(t, bin, "--profile", profileName, "fs", "unmount-file-system", "--mount-path", mountPath)
+	unmount.wantExitCode(0)
+	unmount.wantStdoutContains(`"status": "unmounted"`)
+	unmounted = true
+
+	deleteRoot := runTDC(t, bin, "--profile", profileName, "fs", "delete-file", "--path", remoteRoot, "--recursive")
+	deleteRoot.wantExitCode(0)
+	remoteDeleted = true
+}
+
+func TestLiveFSWebDAVMountRuntime(t *testing.T) {
+	requireLive(t)
+	if runtime.GOOS != "darwin" {
+		t.Skip("tdc fs WebDAV mount live e2e currently runs on macOS")
+	}
+	if _, err := exec.LookPath("mount_webdav"); err != nil {
+		t.Skip("mount_webdav is not available")
+	}
+	if _, err := exec.LookPath("umount"); err != nil {
+		t.Skip("umount is not available")
+	}
+	profile := liveProfile(t)
+	if profile.FSAPIKey == "" {
+		t.Fatalf("live profile %q has no fs_api_key; run tdc fs create-file-system --profile %s before make live-e2e", profile.Name, profile.Name)
+	}
+
+	bin := tdcBinary(t)
+	profileName := liveProfileName(t)
+	suffix := time.Now().UTC().Format("20060102150405")
+	remoteRoot := "/tdc-e2e-webdav-mount-" + suffix
+	mountPath := filepath.Join(t.TempDir(), "mount")
+	if err := os.MkdirAll(mountPath, 0o755); err != nil {
+		t.Fatalf("create mount path: %v", err)
+	}
+	unmounted := false
+	remoteDeleted := false
+	defer func() {
+		if !unmounted {
+			cleanupUnmount := runTDC(t, bin, "--profile", profileName, "fs", "unmount-file-system", "--mount-path", mountPath, "--ignore-absent", "--force")
+			if cleanupUnmount.exitCode != 0 {
+				t.Logf("cleanup unmount failed for %s: exit=%d stdout=%s stderr=%s", mountPath, cleanupUnmount.exitCode, cleanupUnmount.stdout, cleanupUnmount.stderr)
+			}
+		}
+		if !remoteDeleted {
+			cleanupRemote := runTDC(t, bin, "--profile", profileName, "fs", "delete-file", "--path", remoteRoot, "--recursive")
+			if cleanupRemote.exitCode != 0 && cleanupRemote.exitCode != 5 {
+				t.Logf("cleanup remote failed for %s: exit=%d stdout=%s stderr=%s", remoteRoot, cleanupRemote.exitCode, cleanupRemote.stdout, cleanupRemote.stderr)
+			}
+		}
+	}()
+
+	createDir := runTDC(t, bin, "--profile", profileName, "fs", "create-directory", "--path", remoteRoot, "--mode", "0755")
+	createDir.wantExitCode(0)
+	localSeed := filepath.Join(t.TempDir(), "README.md")
+	seedContent := "hello webdav mounted tdc fs " + suffix + "\n"
+	if err := os.WriteFile(localSeed, []byte(seedContent), 0o644); err != nil {
+		t.Fatalf("write local seed: %v", err)
+	}
+	upload := runTDC(t, bin, "--profile", profileName, "fs", "copy-file", "--from-local", localSeed, "--to-remote", remoteRoot+"/README.md")
+	upload.wantExitCode(0)
+
+	mount := runTDC(t, bin, "--profile", profileName, "fs", "mount-file-system", "--mount-path", mountPath, "--remote-path", remoteRoot, "--driver", "webdav", "--ready-timeout", "30s")
+	mount.wantExitCode(0)
+	mount.wantStdoutContains(`"status": "mounted"`)
+	mount.wantStdoutContains(`"driver": "webdav"`)
+
+	waitLiveLocalFile(t, filepath.Join(mountPath, "README.md"), seedContent, 30*time.Second)
+
+	unmount := runTDC(t, bin, "--profile", profileName, "fs", "unmount-file-system", "--mount-path", mountPath)
+	unmount.wantExitCode(0)
+	unmount.wantStdoutContains(`"status": "unmounted"`)
+	unmounted = true
+
+	deleteRoot := runTDC(t, bin, "--profile", profileName, "fs", "delete-file", "--path", remoteRoot, "--recursive")
+	deleteRoot.wantExitCode(0)
+	remoteDeleted = true
 }
 
 func TestLiveDBClusterLifecycle(t *testing.T) {
@@ -641,6 +779,43 @@ func waitLiveFSResult(t *testing.T, bin string, args []string, want string, time
 			last.fail("timed out waiting for tdc fs to %s", description)
 		}
 		time.Sleep(5 * time.Second)
+	}
+}
+
+func waitLiveLocalFile(t *testing.T, path, want string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		data, err := os.ReadFile(path)
+		if err == nil && string(data) == want {
+			return
+		}
+		if err != nil {
+			lastErr = err
+		} else {
+			lastErr = fmt.Errorf("content mismatch: got %q", data)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for mounted file %s: %v", path, lastErr)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+func waitLiveRemoteRead(t *testing.T, bin, profileName, remotePath, want string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var last commandResult
+	for {
+		last = runTDC(t, bin, "--profile", profileName, "fs", "read-file", "--path", remotePath)
+		if last.exitCode == 0 && last.stdout == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			last.fail("timed out waiting for remote file %s to match mounted write", remotePath)
+		}
+		time.Sleep(1 * time.Second)
 	}
 }
 
