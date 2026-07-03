@@ -80,8 +80,8 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"db", "create-db-cluster-branch", "--db-cluster-id", "cluster-1", "--db-cluster-branch-name", "dev"},
 		{"db", "delete-db-cluster-branch", "--db-cluster-id", "cluster-1", "--db-cluster-branch-id", "branch-1", "--confirm-db-cluster-branch-name", "dev"},
 		{"db", "prepare-db-query-access", "--db-cluster-id", "cluster-1"},
-		{"fs", "create-file-system"},
-		{"fs", "delete-file-system"},
+		{"fs", "create-file-system", "--file-system-name", "workspace"},
+		{"fs", "delete-file-system", "--file-system-name", "workspace", "--confirm-file-system-name", "workspace"},
 	}
 	for _, args := range mutatingDryRunCommands {
 		fullArgs := append([]string{"--profile", profileName}, args...)
@@ -168,9 +168,6 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 	placeholderCommands := [][]string{
 		{"cli", "check-update"},
 		{"cli", "update"},
-		{"fs", "create-file-system"},
-		{"fs", "delete-file-system"},
-		{"fs", "check-file-system"},
 		{"fs", "copy-file"},
 		{"fs", "read-file"},
 		{"fs", "list-files"},

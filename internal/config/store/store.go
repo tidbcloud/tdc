@@ -156,6 +156,42 @@ func WriteProfile(homeDir, profileName string, cfg ConfigProfile, creds Credenti
 	return nil
 }
 
+func ClearFSResource(homeDir, profileName string) error {
+	if profileName == "" {
+		profileName = "default"
+	}
+	if err := ensureDir(homeDir); err != nil {
+		return err
+	}
+
+	configDoc, err := ReadConfig(homeDir)
+	if err != nil {
+		return err
+	}
+	existingConfig := configDoc[profileName]
+	existingConfig.FSResourceName = ""
+	existingConfig.FSTenantID = ""
+	existingConfig.FSCloudProvider = ""
+	existingConfig.FSRegionCode = ""
+	configDoc[profileName] = existingConfig
+
+	credentialsDoc, err := ReadCredentials(homeDir)
+	if err != nil {
+		return err
+	}
+	existingCreds := credentialsDoc[profileName]
+	existingCreds.FSAPIKey = ""
+	credentialsDoc[profileName] = existingCreds
+
+	if err := writeTOML(ConfigPath(homeDir), configDoc, configFileMode); err != nil {
+		return err
+	}
+	if err := writeTOML(CredentialsPath(homeDir), credentialsDoc, credsFileMode); err != nil {
+		return err
+	}
+	return nil
+}
+
 func EnsureCredentialsPermissions(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {

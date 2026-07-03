@@ -79,6 +79,44 @@ server_url = "https://example.invalid"
 	}
 }
 
+func TestClearFSResourcePreservesTiDBCloudCredentials(t *testing.T) {
+	home := t.TempDir()
+	if err := WriteProfile(home, "stage", ConfigProfile{
+		CloudProvider:   "aws",
+		RegionCode:      "us-east-1",
+		FSResourceName:  "workspace",
+		FSTenantID:      "tenant-1",
+		FSCloudProvider: "aws",
+		FSRegionCode:    "us-east-1",
+	}, CredentialsProfile{
+		TDCPublicKey:  "public",
+		TDCPrivateKey: "private",
+		FSAPIKey:      "fs-secret",
+	}); err != nil {
+		t.Fatalf("WriteProfile failed: %v", err)
+	}
+
+	if err := ClearFSResource(home, "stage"); err != nil {
+		t.Fatalf("ClearFSResource failed: %v", err)
+	}
+
+	configDoc, err := ReadConfig(home)
+	if err != nil {
+		t.Fatalf("ReadConfig failed: %v", err)
+	}
+	if got := configDoc["stage"]; got.FSResourceName != "" || got.FSTenantID != "" || got.CloudProvider != "aws" || got.RegionCode != "us-east-1" {
+		t.Fatalf("unexpected config after clear: %#v", got)
+	}
+
+	credentialsDoc, err := ReadCredentials(home)
+	if err != nil {
+		t.Fatalf("ReadCredentials failed: %v", err)
+	}
+	if got := credentialsDoc["stage"]; got.FSAPIKey != "" || got.TDCPublicKey != "public" || got.TDCPrivateKey != "private" {
+		t.Fatalf("unexpected credentials after clear: %#v", got)
+	}
+}
+
 func TestReadCredentialsRepairsPermissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX mode bits are not meaningful on Windows")

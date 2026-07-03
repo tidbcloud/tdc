@@ -47,21 +47,26 @@ Implemented:
 - `tdc db prepare-db-query-access`
 - `tdc db create-db-connection-string`
 - `tdc db execute-sql-statement`
+- `tdc fs create-file-system`
+- `tdc fs delete-file-system`
+- `tdc fs check-file-system`
 - help and version behavior at every command level
 - structured JSON/human rendering and JMESPath `--query`
 - `--dry-run` on mutating control-plane commands and placeholders
 - TiDB Cloud Digest-auth API client foundation and auth/authz error mapping
+- flat `fs_*` config/credential storage for tdc fs control-plane resources
 - Makefile build/test/e2e workflow
 
 Registered but not implemented yet:
 
 - `tdc cli check-update`
 - `tdc cli update`
-- `tdc fs ...` remote service calls and data-plane actions
+- `tdc fs ...` data-plane and mount actions
 
 Those commands are placeholders until their corresponding specs are implemented.
-Mutating control-plane placeholders may still return the shared dry-run envelope
-when invoked with `--dry-run`.
+Implemented mutating control-plane commands support `--dry-run`; remaining
+mutating placeholders may still return the shared dry-run envelope when invoked
+with `--dry-run`.
 
 ## Reference Code
 
@@ -323,12 +328,23 @@ tdc_public_key = "..."
 tdc_private_key = "..."
 ```
 
-Future generated `tdc fs` resource credentials also live in
-`~/.tdc/credentials`:
+Generated `tdc fs` resource credentials live in `~/.tdc/credentials` as flat
+keys under the active profile:
 
 ```toml
 [default]
 fs_api_key = "..."
+```
+
+Generated non-secret `tdc fs` resource metadata lives in `~/.tdc/config` as
+flat keys under the active profile:
+
+```toml
+[default]
+fs_resource_name = "workspace"
+fs_tenant_id = "tenant-..."
+fs_cloud_provider = "aws"
+fs_region_code = "us-east-1"
 ```
 
 DB SQL user credentials live outside the main credentials file:
@@ -369,8 +385,12 @@ be used for SQL HTTP Basic Auth.
 Use `internal/api/endpoints` for Starter, IAM/account, and fs endpoint
 selection. Do not add service URLs to user config. The default Starter host is
 `https://serverless.tidbapi.com`; the default IAM host is
-`https://iam.tidbapi.com`. The default tdc fs host is intentionally unavailable
-until product endpoint routing is confirmed.
+`https://iam.tidbapi.com`. The tdc fs host is resolved from the hosted tdc fs
+region manifest at
+`https://drive9.ai/manifest/regions/drive9-regions.json`, matching the active
+profile's cloud provider and region against `tidb_cloud_native` entries. If the
+manifest does not contain the profile placement, return a clear unsupported
+endpoint error; do not add a user-facing raw server URL flag or config key.
 
 Credential lookup order for authenticated commands:
 
@@ -410,7 +430,9 @@ Generated `tdc fs` resource API keys also live in `~/.tdc/credentials`.
 User-facing docs and commands must call these `tdc fs` API keys or resource
 credentials, never reference implementation API keys. Filesystem data-plane
 requests authenticate with `Authorization: Bearer <tdc-fs-api-key>` after the
-resource is created.
+resource is created. Native tdc fs provision/delete requests send the profile's
+TiDB Cloud API key pair in the HTTPS JSON body expected by the backend; dry-run
+and debug output must redact those credential values.
 
 `tdc db create-db-connection-string` and `tdc db execute-sql-statement` use
 read-write credentials by default. `--read-write`, `--read-only`, and `--admin`

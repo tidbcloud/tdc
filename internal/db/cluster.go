@@ -407,7 +407,7 @@ func (s Service) resolveStarter(profile *config.Profile) (endpoints.Endpoint, er
 }
 
 func (s Service) resolver() endpoints.Resolver {
-	if s.Resolver.StarterBaseURL == "" && s.Resolver.IAMBaseURL == "" && s.Resolver.FSBaseURLs == nil {
+	if s.Resolver.IsZero() {
 		return endpoints.NewResolver()
 	}
 	return s.Resolver

@@ -7,9 +7,9 @@ configuration/credentials flow, structured output, JMESPath query, shared
 dry-run behavior, and API client/auth foundation are implemented. Service
 commands are registered so users and agents can discover the product surface.
 Organization project listing, Starter DB cluster lifecycle commands, and
-Starter DB branch and SQL access commands are implemented remote service
-commands. fs service actions still return "not implemented" until their specs
-are completed.
+Starter DB branch, SQL access, and tdc fs control-plane commands are
+implemented. tdc fs data-plane and mount actions still return "not implemented"
+until their specs are completed.
 
 ## Current Status
 
@@ -42,12 +42,15 @@ Implemented:
 - `tdc db prepare-db-query-access`
 - `tdc db create-db-connection-string`
 - `tdc db execute-sql-statement`
+- `tdc fs create-file-system`
+- `tdc fs delete-file-system`
+- `tdc fs check-file-system`
 
 Registered but not implemented yet:
 
 - `tdc cli check-update`
 - `tdc cli update`
-- `tdc fs ...` remote service calls and data-plane actions
+- `tdc fs ...` data-plane and mount actions
 
 ## Build
 
@@ -367,15 +370,37 @@ the default output for agents and automation.
 ### tdc fs Control Plane
 
 ```bash
-tdc fs create-file-system
-tdc fs create-file-system --dry-run
-tdc fs delete-file-system
-tdc fs delete-file-system --dry-run
 tdc fs check-file-system
+tdc fs create-file-system --file-system-name workspace --dry-run
+tdc fs create-file-system --file-system-name workspace
+tdc fs delete-file-system --file-system-name workspace --confirm-file-system-name workspace --dry-run
+tdc fs delete-file-system --file-system-name workspace --confirm-file-system-name workspace
 ```
 
-Remote service calls are not implemented yet. Mutating control-plane commands
-currently support the shared `--dry-run` envelope.
+`create-file-system` and `delete-file-system` are wired through the tdc fs
+control-plane client. Endpoint routing uses the hosted tdc fs region manifest
+and matches the active profile's `cloud_provider + region_code` against
+`tidb_cloud_native` entries. Users never provide a raw server URL. If the
+manifest does not include the profile placement, the command returns a clear
+unsupported-region error.
+
+`create-file-system` provisions with the profile's TiDB Cloud API key pair in
+the HTTPS request body expected by the tdc fs backend. `delete-file-system`
+uses the stored `fs_api_key` as Bearer auth and also sends the TiDB Cloud key
+pair required for native tenant deletion. `--dry-run` validates config and
+shows a redacted request shape without printing credential values.
+
+`create-file-system` stores returned resource metadata as flat `fs_*` keys in
+`~/.tdc/config` and stores the returned API key as `fs_api_key` under the active
+profile in `~/.tdc/credentials`. The API key is not printed in command output.
+`delete-file-system` clears the flat `fs_*` config and credential keys only
+after remote deletion succeeds.
+
+`check-file-system` returns structured check status for local config,
+credentials, endpoint resolution, and remote service reachability. If
+`fs_api_key` has not been created yet, remote status is reported as a warning
+instead of making an unauthenticated `/v1/status` call. If the manifest does not
+support the configured placement, endpoint selection is reported as failed.
 
 ### tdc fs Data Plane
 
@@ -452,12 +477,23 @@ an error: the CLI uses `TDC_PROFILE` when it is set, otherwise it uses
 `default`. For shell scripts and CI jobs, prefer either a literal
 `--profile live-e2e` or an exported `TDC_PROFILE=live-e2e`.
 
-Future generated `tdc fs` resource credentials also live in
-`~/.tdc/credentials`:
+Generated `tdc fs` resource credentials also live in `~/.tdc/credentials` as a
+flat key under the active profile:
 
 ```toml
 [default]
 fs_api_key = "..."
+```
+
+Generated non-secret `tdc fs` resource metadata lives in `~/.tdc/config` as
+flat keys under the active profile:
+
+```toml
+[default]
+fs_resource_name = "workspace"
+fs_tenant_id = "tenant-..."
+fs_cloud_provider = "aws"
+fs_region_code = "us-east-1"
 ```
 
 DB SQL user credentials live in a cluster-scoped credentials file:
@@ -506,8 +542,8 @@ Endpoint routing is internal:
 
 - Starter API: `https://serverless.tidbapi.com`
 - IAM/account API: `https://iam.tidbapi.com`
-- tdc fs API: resolved by provider/region once the product endpoint contract or
-  discovery API is confirmed
+- tdc fs API: resolved from the hosted tdc fs region manifest, currently using
+  `tidb_cloud_native` endpoint entries
 
 Each control-plane command declares a permission requirement internally. Remote
 APIs remain the source of truth for the actual permission decision.

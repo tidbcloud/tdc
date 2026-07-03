@@ -9,6 +9,7 @@ import (
 	"github.com/Icemap/tdc/internal/db"
 	"github.com/Icemap/tdc/internal/db/connectionstring"
 	"github.com/Icemap/tdc/internal/dryrun"
+	tdcfs "github.com/Icemap/tdc/internal/fs"
 	"github.com/Icemap/tdc/internal/organization"
 	outputpkg "github.com/Icemap/tdc/internal/output"
 	"github.com/Icemap/tdc/internal/version"
@@ -742,9 +743,9 @@ func sqlCommonOptions(ctx commandContext) (sqlCommon, error) {
 func newFSCommand(info version.Info) *cobra.Command {
 	cmd := newParentCommand("fs", "Manage and access tdc fs resources.", info)
 	cmd.AddCommand(
-		newControlPlanePlaceholderCommand("create-file-system", "Create a tdc fs resource.", mutatingCommand, authz.FSVolumeCreate, info),
-		newControlPlanePlaceholderCommand("delete-file-system", "Delete a tdc fs resource.", mutatingCommand, authz.FSVolumeDelete, info),
-		newControlPlanePlaceholderCommand("check-file-system", "Check tdc fs resource health.", readOnlyCommand, authz.FSVolumeRead, info),
+		newFSCreateFileSystemCommand(info),
+		newFSDeleteFileSystemCommand(info),
+		newFSCheckFileSystemCommand(info),
 		newPlaceholderCommand("copy-file", "Copy a file between local storage and tdc fs.", info),
 		newPlaceholderCommand("read-file", "Read a file from tdc fs.", info),
 		newPlaceholderCommand("list-files", "List files in tdc fs.", info),
@@ -758,6 +759,133 @@ func newFSCommand(info version.Info) *cobra.Command {
 		newPlaceholderCommand("unmount-file-system", "Unmount a tdc fs resource.", info),
 	)
 	return cmd
+}
+
+func newFSCreateFileSystemCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "create-file-system",
+		Short:      "Create a tdc fs resource.",
+		Mutation:   mutatingCommand,
+		Permission: authz.FSVolumeCreate,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			name, err := ctx.StringFlag("file-system-name")
+			if err != nil {
+				return nil, err
+			}
+			return service.CreateFileSystem(ctx.cmd.Context(), tdcfs.CreateFileSystemOptions{
+				Profile:        profile,
+				FileSystemName: name,
+			})
+		},
+		DryRun: func(ctx commandContext) (dryrun.Result, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			name, err := ctx.StringFlag("file-system-name")
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			return service.DryRunCreateFileSystem(ctx.cmd.Context(), ctx.CommandPath(), tdcfs.CreateFileSystemOptions{
+				Profile:        profile,
+				FileSystemName: name,
+			})
+		},
+	}, info)
+	cmd.Flags().String("file-system-name", "", "tdc fs resource name")
+	return cmd
+}
+
+func newFSDeleteFileSystemCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "delete-file-system",
+		Short:      "Delete a tdc fs resource.",
+		Mutation:   mutatingCommand,
+		Permission: authz.FSVolumeDelete,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			name, confirmName, err := fsDeleteFlags(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return service.DeleteFileSystem(ctx.cmd.Context(), tdcfs.DeleteFileSystemOptions{
+				Profile:               profile,
+				FileSystemName:        name,
+				ConfirmFileSystemName: confirmName,
+			})
+		},
+		DryRun: func(ctx commandContext) (dryrun.Result, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			name, confirmName, err := fsDeleteFlags(ctx)
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			return service.DryRunDeleteFileSystem(ctx.cmd.Context(), ctx.CommandPath(), tdcfs.DeleteFileSystemOptions{
+				Profile:               profile,
+				FileSystemName:        name,
+				ConfirmFileSystemName: confirmName,
+			})
+		},
+	}, info)
+	cmd.Flags().String("file-system-name", "", "tdc fs resource name")
+	cmd.Flags().String("confirm-file-system-name", "", "required exact tdc fs resource name confirmation")
+	return cmd
+}
+
+func newFSCheckFileSystemCommand(info version.Info) *cobra.Command {
+	return newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "check-file-system",
+		Short:      "Check tdc fs resource health.",
+		Mutation:   readOnlyCommand,
+		Permission: authz.FSVolumeRead,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return service.CheckFileSystem(ctx.cmd.Context(), tdcfs.CheckFileSystemOptions{
+				Profile: profile,
+			})
+		},
+	}, info)
+}
+
+func fsServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {
+	profile, err := ctx.LoadProfile()
+	if err != nil {
+		return tdcfs.Service{}, nil, err
+	}
+	debug, err := ctx.BoolFlag("debug")
+	if err != nil {
+		return tdcfs.Service{}, nil, err
+	}
+	return tdcfs.Service{
+		Timeout:     30 * time.Second,
+		Debug:       debug,
+		DebugWriter: ctx.cmd.ErrOrStderr(),
+	}, profile, nil
+}
+
+func fsDeleteFlags(ctx commandContext) (string, string, error) {
+	name, err := ctx.StringFlag("file-system-name")
+	if err != nil {
+		return "", "", err
+	}
+	confirmName, err := ctx.StringFlag("confirm-file-system-name")
+	if err != nil {
+		return "", "", err
+	}
+	return name, confirmName, nil
 }
 
 func newOrganizationCommand(info version.Info) *cobra.Command {

@@ -80,7 +80,8 @@ all fs endpoints internally.
 - `internal/fs/fscred` stores and loads the profile-level `fs_api_key` in
   `~/.tdc/credentials`.
 - `internal/api/endpoints` provides fs endpoint resolution from
-  `cloud_provider + region_code`.
+  `cloud_provider + region_code` by fetching the hosted tdc fs region manifest
+  and selecting `tidb_cloud_native` entries.
 - `internal/fs/status` defines the structured check response with local config,
   credential, permission, endpoint, and service health entries.
 - Delete safety is implemented through an explicit long flag, initially
@@ -88,9 +89,10 @@ all fs endpoints internally.
 
 ## API Call Chain
 
-Confirmed from the reference filesystem protocol, but still requiring a hosted
-tdc fs endpoint resolver before product implementation:
+Confirmed from the reference filesystem protocol and region discovery flow:
 
+- `GET https://drive9.ai/manifest/regions/drive9-regions.json` currently
+  returns the hosted tdc fs compatible region manifest.
 - `GET /v1/status` checks service reachability and reports tenant/server
   capabilities.
 - `POST /v1/provision` provisions or initializes a tenant/resource.
@@ -98,36 +100,69 @@ tdc fs endpoint resolver before product implementation:
 - Successful provision responses are expected to include `tenant_id`,
   `api_key`, and `status`.
 
+Endpoint selection:
+
+1. Validate the profile `cloud_provider + region_code` against tdc's supported
+   TiDB Cloud Starter placements.
+2. Fetch the region manifest.
+3. Select the single entry where `mode == "tidb_cloud_native"`,
+   `cloud_provider` matches the TiDB Cloud API provider name, and `tidb_region`
+   matches the profile region.
+4. Use that entry's `server_url` for tdc fs control-plane calls.
+5. If no entry exists, return an unsupported tdc fs endpoint error. Do not ask
+   the user for a raw server URL.
+
 Command mapping:
 
 - `tdc fs check-file-system`
   1. Validate local profile, credentials, provider, and region.
-  2. Resolve the tdc fs base URL from `cloud_provider + region_code`.
-  3. Call `GET /v1/status`.
+  2. Resolve the tdc fs base URL through the region manifest.
+  3. If `fs_api_key` is configured, call `GET /v1/status` with
+     `Authorization: Bearer <api-key>`.
   4. Report local config, endpoint resolution, auth, and remote status.
+  5. If `fs_api_key` is missing, report remote status as a warning and do not
+     make an unauthenticated status request.
 - `tdc fs create-file-system`
   1. Validate `--file-system-name` and dry-run behavior.
-  2. Resolve the tdc fs base URL.
-  3. Call `POST /v1/provision` with the confirmed tdc fs request body once the
-     hosted API contract is finalized.
+  2. Resolve the tdc fs base URL through the region manifest.
+  3. Call `POST /v1/provision` without Bearer auth. The native JSON request body
+     is:
+
+     ```json
+     {
+       "public_key": "<tdc_public_key>",
+       "private_key": "<tdc_private_key>",
+       "tidbcloud_spending_limit": 0
+     }
+     ```
+
   4. Store `fs_resource_name`, `fs_tenant_id`, `fs_cloud_provider`, and
      `fs_region_code` in `[profile]` of `~/.tdc/config`.
   5. Store `fs_api_key` in `[profile]` of `~/.tdc/credentials`.
 - `tdc fs delete-file-system`
   1. Validate `--confirm-file-system-name`.
-  2. Resolve the tdc fs base URL.
-  3. Load the stored resource API key and call `DELETE /v1/tenant` or the
-     confirmed tdc fs delete-file-system endpoint with
+  2. Resolve the tdc fs base URL through the region manifest.
+  3. Load the stored resource API key and call `DELETE /v1/tenant` with
      `Authorization: Bearer <api-key>`.
-  4. Remove local `fs_*` metadata and secret only after remote deletion
+  4. Send the native deletion body:
+
+     ```json
+     {
+       "public_key": "<tdc_public_key>",
+       "private_key": "<tdc_private_key>"
+     }
+     ```
+
+  5. Remove local `fs_*` metadata and secret only after remote deletion
      succeeds, unless an explicit local-forget command is added later.
 
-API gap:
+Current endpoint boundary:
 
-- The reference protocol confirms endpoint shapes, but tdc still needs a
-  product-owned provider/region-to-host mapping and final provision/delete
-  request schema. Until that contract is confirmed, implementation can build the
-  client shape behind mocks but must not claim live create/delete support.
+- Endpoint discovery depends on the hosted manifest. At the time this spec was
+  implemented, the manifest exposed TiDBCloud native endpoints for AWS
+  `ap-southeast-1` and AWS `us-east-1`. Other configured Starter placements may
+  be valid for TiDB Cloud but unsupported for tdc fs until the manifest adds
+  entries.
 - The provision response's `api_key` is sensitive and must never be logged,
   emitted to telemetry, or shown in default command output.
 
@@ -146,8 +181,8 @@ API gap:
 ## Acceptance Criteria
 
 - Mock API tests cover create/delete/check.
-- Tests cover endpoint resolution from AWS and Alibaba Cloud provider/region
-  values.
+- Tests cover endpoint resolution from static overrides and the region
+  manifest, including unsupported provider/region handling.
 - Tests reject user-supplied server URL flags or config keys.
 - Tests cover dry-run for create and delete.
 - Tests cover storing fs `api_key` in credentials and redacting it from output,

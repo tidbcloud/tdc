@@ -1,9 +1,15 @@
 package endpoints
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/Icemap/tdc/internal/apperr"
 	"github.com/Icemap/tdc/internal/config/region"
@@ -20,7 +26,11 @@ const (
 const (
 	DefaultStarterBaseURL = "https://serverless.tidbapi.com"
 	DefaultIAMBaseURL     = "https://iam.tidbapi.com"
+	DefaultFSManifestURL  = "https://drive9.ai/manifest/regions/drive9-regions.json"
+	DefaultFSMode         = "tidb_cloud_native"
 )
+
+var errFSManifestUnavailable = errors.New("tdc fs region manifest unavailable")
 
 type ProviderRegion struct {
 	Provider string
@@ -37,16 +47,32 @@ type Endpoint struct {
 }
 
 type Resolver struct {
-	StarterBaseURL string
-	IAMBaseURL     string
-	FSBaseURLs     map[ProviderRegion]string
+	StarterBaseURL       string
+	IAMBaseURL           string
+	FSBaseURLs           map[ProviderRegion]string
+	FSManifestURL        string
+	FSMode               string
+	FSManifest           *FSRegionManifest
+	FSManifestHTTPClient *http.Client
 }
 
 func NewResolver() Resolver {
 	return Resolver{
 		StarterBaseURL: DefaultStarterBaseURL,
 		IAMBaseURL:     DefaultIAMBaseURL,
+		FSManifestURL:  DefaultFSManifestURL,
+		FSMode:         DefaultFSMode,
 	}
+}
+
+func (r Resolver) IsZero() bool {
+	return r.StarterBaseURL == "" &&
+		r.IAMBaseURL == "" &&
+		r.FSBaseURLs == nil &&
+		r.FSManifestURL == "" &&
+		r.FSMode == "" &&
+		r.FSManifest == nil &&
+		r.FSManifestHTTPClient == nil
 }
 
 func (r Resolver) Resolve(service Service, provider, regionCode string) (Endpoint, error) {
@@ -102,23 +128,223 @@ func (r Resolver) ResolveFS(provider, regionCode string) (Endpoint, error) {
 	if err := region.Validate(provider, regionCode); err != nil {
 		return Endpoint{}, apperr.Wrap("config.invalid_region", "config", 2, err.Error(), err)
 	}
-	if r.FSBaseURLs == nil {
-		return Endpoint{}, apperr.New(
-			"api.fs_endpoint_unavailable",
+
+	if r.FSBaseURLs != nil {
+		baseURL := r.FSBaseURLs[ProviderRegion{Provider: provider, Region: regionCode}]
+		if baseURL != "" {
+			return fsEndpoint(provider, regionCode, "", baseURL)
+		}
+	}
+
+	mode := strings.TrimSpace(r.FSMode)
+	if mode == "" {
+		mode = DefaultFSMode
+	}
+	manifest, err := r.fsManifest()
+	if err != nil {
+		return Endpoint{}, err
+	}
+	entry, err := selectFSManifestEntry(manifest.Regions, provider, regionCode, mode)
+	if err != nil {
+		return Endpoint{}, err
+	}
+	endpoint, err := fsEndpoint(provider, regionCode, entry.RegionCode, entry.ServerURL)
+	if err != nil {
+		return Endpoint{}, err
+	}
+	return endpoint, nil
+}
+
+type FSRegionManifest struct {
+	Service string                   `json:"service"`
+	Default *FSRegionManifestDefault `json:"default,omitempty"`
+	Regions []FSRegionManifestEntry  `json:"regions"`
+}
+
+type FSRegionManifestDefault struct {
+	RegionCode string `json:"region_code"`
+	Mode       string `json:"mode"`
+}
+
+type FSRegionManifestEntry struct {
+	RegionCode    string            `json:"region_code"`
+	Mode          string            `json:"mode"`
+	ServerURL     string            `json:"server_url"`
+	CloudProvider string            `json:"cloud_provider,omitempty"`
+	TiDBRegion    string            `json:"tidb_region,omitempty"`
+	Tags          []string          `json:"tags,omitempty"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+}
+
+func (r Resolver) fsManifest() (*FSRegionManifest, error) {
+	if r.FSManifest != nil {
+		manifest := *r.FSManifest
+		manifest.Regions = append([]FSRegionManifestEntry(nil), r.FSManifest.Regions...)
+		if r.FSManifest.Default != nil {
+			defaultEntry := *r.FSManifest.Default
+			manifest.Default = &defaultEntry
+		}
+		if err := validateFSManifest(&manifest); err != nil {
+			return nil, err
+		}
+		return &manifest, nil
+	}
+	manifestURL := strings.TrimSpace(r.FSManifestURL)
+	if manifestURL == "" {
+		manifestURL = DefaultFSManifestURL
+	}
+	return fetchFSManifest(context.Background(), manifestURL, r.FSManifestHTTPClient)
+}
+
+func fetchFSManifest(ctx context.Context, manifestURL string, client *http.Client) (*FSRegionManifest, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL, nil)
+	if err != nil {
+		return nil, apperr.Wrap("api.fs_manifest_request", "api", 1, "build tdc fs region manifest request", err)
+	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, apperr.Wrap("api.fs_manifest_unavailable", "api", 1, fmt.Sprintf("%s: fetch %s", errFSManifestUnavailable, manifestURL), err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, apperr.New("api.fs_manifest_unavailable", "api", 1, fmt.Sprintf("%s: fetch %s returned HTTP %d", errFSManifestUnavailable, manifestURL, res.StatusCode))
+	}
+	var manifest FSRegionManifest
+	if err := json.NewDecoder(res.Body).Decode(&manifest); err != nil {
+		return nil, apperr.Wrap("api.fs_manifest_decode", "api", 1, "decode tdc fs region manifest", err)
+	}
+	if err := validateFSManifest(&manifest); err != nil {
+		return nil, err
+	}
+	return &manifest, nil
+}
+
+func validateFSManifest(manifest *FSRegionManifest) error {
+	if manifest == nil {
+		return apperr.New("api.fs_manifest_invalid", "api", 1, "tdc fs region manifest is required")
+	}
+	if len(manifest.Regions) == 0 {
+		return apperr.New("api.fs_manifest_invalid", "api", 1, "tdc fs region manifest has no regions")
+	}
+	seen := map[string]int{}
+	for i := range manifest.Regions {
+		entry := &manifest.Regions[i]
+		entry.RegionCode = strings.TrimSpace(entry.RegionCode)
+		entry.Mode = strings.TrimSpace(entry.Mode)
+		entry.ServerURL = strings.TrimSpace(entry.ServerURL)
+		entry.CloudProvider = strings.TrimSpace(entry.CloudProvider)
+		entry.TiDBRegion = strings.TrimSpace(entry.TiDBRegion)
+		if entry.RegionCode == "" {
+			return apperr.New("api.fs_manifest_invalid", "api", 1, fmt.Sprintf("tdc fs region manifest entry %d missing region_code", i))
+		}
+		if entry.Mode == "" {
+			return apperr.New("api.fs_manifest_invalid", "api", 1, fmt.Sprintf("tdc fs region manifest entry %d missing mode", i))
+		}
+		if entry.ServerURL == "" {
+			return apperr.New("api.fs_manifest_invalid", "api", 1, fmt.Sprintf("tdc fs region manifest entry %d missing server_url", i))
+		}
+		key := entry.RegionCode + "\x00" + entry.Mode
+		if first, ok := seen[key]; ok {
+			return apperr.New("api.fs_manifest_invalid", "api", 1, fmt.Sprintf("tdc fs region manifest entries %d and %d duplicate region_code %q mode %q", first, i, entry.RegionCode, entry.Mode))
+		}
+		seen[key] = i
+	}
+	if manifest.Default != nil {
+		manifest.Default.RegionCode = strings.TrimSpace(manifest.Default.RegionCode)
+		manifest.Default.Mode = strings.TrimSpace(manifest.Default.Mode)
+		if manifest.Default.RegionCode == "" || manifest.Default.Mode == "" {
+			return apperr.New("api.fs_manifest_invalid", "api", 1, "tdc fs region manifest default must include region_code and mode")
+		}
+		if _, ok := seen[manifest.Default.RegionCode+"\x00"+manifest.Default.Mode]; !ok {
+			return apperr.New("api.fs_manifest_invalid", "api", 1, fmt.Sprintf("tdc fs region manifest default %q/%q not found in regions", manifest.Default.RegionCode, manifest.Default.Mode))
+		}
+	}
+	return nil
+}
+
+func selectFSManifestEntry(entries []FSRegionManifestEntry, provider, regionCode, mode string) (FSRegionManifestEntry, error) {
+	apiProvider := APIProvider(provider)
+	mode = strings.TrimSpace(mode)
+	matches := make([]FSRegionManifestEntry, 0, 1)
+	for _, entry := range entries {
+		if strings.TrimSpace(entry.Mode) != mode {
+			continue
+		}
+		if fsManifestEntryMatches(entry, provider, apiProvider, regionCode) {
+			matches = append(matches, entry)
+		}
+	}
+	switch len(matches) {
+	case 1:
+		return matches[0], nil
+	case 0:
+		return FSRegionManifestEntry{}, apperr.New(
+			"api.fs_endpoint_unsupported",
+			"config",
+			2,
+			fmt.Sprintf("tdc fs is not available for %s/%s in mode %s; supported tdc fs regions: %s", provider, regionCode, mode, supportedFSRegions(entries, mode)),
+		)
+	default:
+		return FSRegionManifestEntry{}, apperr.New(
+			"api.fs_endpoint_ambiguous",
 			"api",
 			1,
-			fmt.Sprintf("tdc fs endpoint is not configured for %s/%s; a product endpoint contract or service discovery API is required before fs requests can run", provider, regionCode),
+			fmt.Sprintf("tdc fs region manifest has multiple endpoints for %s/%s in mode %s", provider, regionCode, mode),
 		)
 	}
-	baseURL := r.FSBaseURLs[ProviderRegion{Provider: provider, Region: regionCode}]
-	if baseURL == "" {
-		return Endpoint{}, apperr.New(
-			"api.fs_endpoint_unavailable",
-			"api",
-			1,
-			fmt.Sprintf("tdc fs endpoint is not configured for %s/%s; a product endpoint contract or service discovery API is required before fs requests can run", provider, regionCode),
-		)
+}
+
+func fsManifestEntryMatches(entry FSRegionManifestEntry, provider, apiProvider, regionCode string) bool {
+	if entry.CloudProvider != "" || entry.TiDBRegion != "" {
+		return entry.CloudProvider == apiProvider && entry.TiDBRegion == regionCode
 	}
+	return entry.RegionCode == fsRegionCode(provider, regionCode)
+}
+
+func fsRegionCode(provider, regionCode string) string {
+	prefix := APIProvider(provider)
+	if provider == region.ProviderAlibabaCloud {
+		prefix = "ali"
+	}
+	return prefix + "-" + regionCode
+}
+
+func supportedFSRegions(entries []FSRegionManifestEntry, mode string) string {
+	values := make([]string, 0, len(entries))
+	seen := map[string]struct{}{}
+	for _, entry := range entries {
+		if strings.TrimSpace(entry.Mode) != mode {
+			continue
+		}
+		provider := entry.CloudProvider
+		if provider == "" {
+			provider = strings.SplitN(entry.RegionCode, "-", 2)[0]
+		}
+		regionCode := entry.TiDBRegion
+		if regionCode == "" {
+			regionCode = strings.TrimPrefix(entry.RegionCode, provider+"-")
+		}
+		value := provider + "/" + regionCode
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+	}
+	sort.Strings(values)
+	if len(values) == 0 {
+		return "none"
+	}
+	return strings.Join(values, ", ")
+}
+
+func fsEndpoint(provider, regionCode, regionName, baseURL string) (Endpoint, error) {
 	if err := validateBaseURL(baseURL); err != nil {
 		return Endpoint{}, err
 	}
@@ -128,6 +354,7 @@ func (r Resolver) ResolveFS(provider, regionCode string) (Endpoint, error) {
 		Provider:    provider,
 		APIProvider: APIProvider(provider),
 		RegionCode:  regionCode,
+		RegionName:  regionName,
 	}, nil
 }
 
