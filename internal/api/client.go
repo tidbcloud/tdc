@@ -181,6 +181,24 @@ func (c *Client) DoJSON(req *http.Request, out any) error {
 	return nil
 }
 
+func (c *Client) DoRaw(req *http.Request) (*http.Response, error) {
+	res, err := c.do(req)
+	if err != nil {
+		return nil, &Error{
+			Code:     "api.network_error",
+			Category: "api",
+			ExitCode: 1,
+			Message:  "API request failed: check network connectivity and try again",
+			Cause:    err,
+		}
+	}
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		defer res.Body.Close()
+		return nil, c.statusError(req, res)
+	}
+	return res, nil
+}
+
 func (c *Client) do(req *http.Request) (*http.Response, error) {
 	attempts := c.MaxRetries + 1
 	if attempts < 1 {
@@ -244,12 +262,16 @@ func (c *Client) statusError(req *http.Request, res *http.Response) error {
 			Body:       string(body),
 		}
 	case http.StatusUnauthorized:
+		message := fmt.Sprintf("authentication failed: TiDB Cloud rejected the API key pair for profile %q. Check ~/.tdc/credentials or create a new API key.", profileName(c.ProfileName))
+		if c.Service == endpoints.ServiceFS {
+			message = fmt.Sprintf("authentication failed: tdc fs rejected fs_api_key for profile %q. Run `tdc fs create-file-system` or recreate the tdc fs resource.", profileName(c.ProfileName))
+		}
 		return &Error{
 			Code:       "auth.invalid_credentials",
 			Category:   "authentication",
 			ExitCode:   3,
 			StatusCode: res.StatusCode,
-			Message:    fmt.Sprintf("authentication failed: TiDB Cloud rejected the API key pair for profile %q. Check ~/.tdc/credentials or create a new API key.", profileName(c.ProfileName)),
+			Message:    message,
 			Body:       string(body),
 		}
 	case http.StatusForbidden:

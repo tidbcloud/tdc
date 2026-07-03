@@ -71,19 +71,11 @@ This adds file operations only. Mounting remains a later runtime layer.
 
 ## Implementation Design
 
-- `internal/cli/fs` registers data-plane subcommands beside control-plane
-  subcommands.
-- `internal/fs/client` defines a narrow filesystem client interface used by CLI
-  commands and tests.
-- `internal/fs/path` validates and normalizes remote paths.
-- `internal/fs/transfer` owns upload/download/copy behavior and overwrite or
-  recursive options.
-- `internal/fs/search` owns grep/find request construction and response models.
-- `internal/fs/fscred` loads the profile's flat `fs_api_key`.
-- `internal/api/fs` implements the HTTP client behind the `internal/fs/client`
-  interface.
-- Raw stream commands return an `io.Reader` or stream callback to the CLI
-  boundary instead of printing inside service packages.
+- `internal/cli/commands.go` registers data-plane subcommands beside control-plane subcommands and maps long flags to service options.
+- `internal/fs/data.go` owns remote path normalization, overwrite guards, local file transfer behavior, and data-plane result models.
+- `internal/fs/fscred` continues to define how the profile's flat `fs_api_key` is represented in config/credentials.
+- `internal/api/fs` implements the HTTP client for read/write/list/stat/delete/mkdir/rename/copy/grep/find calls.
+- Raw stream commands return `output.Raw` to the CLI boundary instead of printing inside service packages.
 
 ## API Call Chain
 
@@ -107,18 +99,15 @@ against the hosted tdc fs API after endpoint resolution is available:
 - `POST /v1/fs:batch-read-small` for batch small-file reads.
 - `GET /v1/fs/<path>?grep=<query>` for grep.
 - `GET /v1/fs/<path>?find=...` plus query filters for find.
-- `POST /v1/uploads`, `/v1/uploads/*`, and `/v2/uploads/*` for multipart or
-  large-file uploads when direct `PUT` is not appropriate.
+- `POST /v1/uploads`, `/v1/uploads/*`, and `/v2/uploads/*` for multipart or large-file uploads are known from the reference protocol but out of scope for this MVP slice.
 
 Command mapping:
 
 - `tdc fs read-file` uses `GET /v1/fs/<path>`.
-- `tdc fs copy-file --from-local --to-remote` uses `PUT /v1/fs/<path>` for
-  small files and upload endpoints for large files.
+- `tdc fs copy-file --from-local --to-remote` uses `PUT /v1/fs/<path>` for this MVP slice.
 - `tdc fs copy-file --from-remote --to-local` uses `GET /v1/fs/<path>`.
 - `tdc fs list-files` uses `GET /v1/fs/<path>?list=1`.
-- `tdc fs describe-file` uses `GET /v1/fs/<path>?stat=1` with `HEAD` fallback
-  only if the hosted API documents compatibility.
+- `tdc fs describe-file` uses `GET /v1/fs/<path>?stat=1` with `HEAD` fallback for compatibility.
 - `tdc fs delete-file` uses `DELETE /v1/fs/<path>`.
 - `tdc fs create-directory` uses `POST /v1/fs/<path>?mkdir`.
 - `tdc fs move-file` uses the confirmed rename endpoint/action.
@@ -127,13 +116,8 @@ Command mapping:
 
 API gap:
 
-- The exact mkdir, rename, copy, and large-upload request bodies must be copied
-  into tdc's own protocol tests before implementation. Do not import reference
-  packages.
-- If the stored fs API key is missing, commands must fail with an actionable
-  error suggesting `tdc fs create-file-system` or a future
-  `tdc fs repair-file-system-credentials` workflow; they must not ask for a raw
-  API key interactively.
+- Large multipart uploads remain a later optimization; direct `PUT` is the MVP behavior.
+- If the stored fs API key is missing, commands must fail with an actionable error suggesting `tdc fs create-file-system`; they must not ask for a raw API key interactively.
 
 ## Dependencies And Platform
 
@@ -163,5 +147,6 @@ API gap:
 ## Out Of Scope
 
 - Local FUSE or WebDAV mount.
+- Multipart or resumable large-file upload orchestration.
 - Secret vault operations.
 - Git-specific workflows unless added by a later spec.

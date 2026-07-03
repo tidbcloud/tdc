@@ -746,15 +746,15 @@ func newFSCommand(info version.Info) *cobra.Command {
 		newFSCreateFileSystemCommand(info),
 		newFSDeleteFileSystemCommand(info),
 		newFSCheckFileSystemCommand(info),
-		newPlaceholderCommand("copy-file", "Copy a file between local storage and tdc fs.", info),
-		newPlaceholderCommand("read-file", "Read a file from tdc fs.", info),
-		newPlaceholderCommand("list-files", "List files in tdc fs.", info),
-		newPlaceholderCommand("describe-file", "Describe a tdc fs file.", info),
-		newPlaceholderCommand("move-file", "Move a tdc fs file.", info),
-		newPlaceholderCommand("delete-file", "Delete a tdc fs file.", info),
-		newPlaceholderCommand("create-directory", "Create a tdc fs directory.", info),
-		newPlaceholderCommand("search-file-content", "Search file content in tdc fs.", info),
-		newPlaceholderCommand("find-files", "Find files in tdc fs.", info),
+		newFSCopyFileCommand(info),
+		newFSReadFileCommand(info),
+		newFSListFilesCommand(info),
+		newFSDescribeFileCommand(info),
+		newFSMoveFileCommand(info),
+		newFSDeleteFileCommand(info),
+		newFSCreateDirectoryCommand(info),
+		newFSSearchFileContentCommand(info),
+		newFSFindFilesCommand(info),
 		newPlaceholderCommand("mount-file-system", "Mount a tdc fs resource locally.", info),
 		newPlaceholderCommand("unmount-file-system", "Unmount a tdc fs resource.", info),
 	)
@@ -858,6 +858,365 @@ func newFSCheckFileSystemCommand(info version.Info) *cobra.Command {
 			})
 		},
 	}, info)
+}
+
+func newFSCopyFileCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "copy-file",
+		Short:      "Copy a file between local storage and tdc fs.",
+		Mutation:   mutatingCommand,
+		Permission: authz.FSFileWrite,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			opts, err := fsCopyFileOptions(ctx, profile)
+			if err != nil {
+				return nil, err
+			}
+			return service.CopyFile(ctx.cmd.Context(), opts)
+		},
+	}, info)
+	cmd.Flags().String("from-local", "", "local source path")
+	cmd.Flags().String("from-remote", "", "tdc fs source path")
+	cmd.Flags().String("to-local", "", "local target path")
+	cmd.Flags().String("to-remote", "", "tdc fs target path")
+	cmd.Flags().Bool("overwrite", false, "replace an existing target")
+	cmd.Flags().Bool("create-parents", false, "create missing local parent directories when copying from tdc fs")
+	return cmd
+}
+
+func newFSReadFileCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "read-file",
+		Short:      "Read a file from tdc fs.",
+		Mutation:   readOnlyCommand,
+		Permission: authz.FSFileRead,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			path, err := ctx.StringFlag("path")
+			if err != nil {
+				return nil, err
+			}
+			data, err := service.ReadFile(ctx.cmd.Context(), tdcfs.ReadFileOptions{
+				Profile: profile,
+				Path:    path,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return outputpkg.Raw{Bytes: data}, nil
+		},
+	}, info)
+	cmd.Flags().String("path", "", "tdc fs file path")
+	return cmd
+}
+
+func newFSListFilesCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "list-files",
+		Short:      "List files in tdc fs.",
+		Mutation:   readOnlyCommand,
+		Permission: authz.FSFileRead,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			path, err := ctx.StringFlag("path")
+			if err != nil {
+				return nil, err
+			}
+			return service.ListFiles(ctx.cmd.Context(), tdcfs.ListFilesOptions{
+				Profile: profile,
+				Path:    path,
+			})
+		},
+	}, info)
+	cmd.Flags().String("path", "/", "tdc fs directory path")
+	return cmd
+}
+
+func newFSDescribeFileCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "describe-file",
+		Short:      "Describe a tdc fs file.",
+		Mutation:   readOnlyCommand,
+		Permission: authz.FSFileRead,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			path, err := ctx.StringFlag("path")
+			if err != nil {
+				return nil, err
+			}
+			return service.DescribeFile(ctx.cmd.Context(), tdcfs.DescribeFileOptions{
+				Profile: profile,
+				Path:    path,
+			})
+		},
+	}, info)
+	cmd.Flags().String("path", "", "tdc fs file or directory path")
+	return cmd
+}
+
+func newFSMoveFileCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "move-file",
+		Short:      "Move a tdc fs file.",
+		Mutation:   mutatingCommand,
+		Permission: authz.FSFileWrite,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			fromRemote, err := ctx.StringFlag("from-remote")
+			if err != nil {
+				return nil, err
+			}
+			toRemote, err := ctx.StringFlag("to-remote")
+			if err != nil {
+				return nil, err
+			}
+			overwrite, err := ctx.BoolFlag("overwrite")
+			if err != nil {
+				return nil, err
+			}
+			return service.MoveFile(ctx.cmd.Context(), tdcfs.MoveFileOptions{
+				Profile:    profile,
+				FromRemote: fromRemote,
+				ToRemote:   toRemote,
+				Overwrite:  overwrite,
+			})
+		},
+	}, info)
+	cmd.Flags().String("from-remote", "", "tdc fs source path")
+	cmd.Flags().String("to-remote", "", "tdc fs target path")
+	cmd.Flags().Bool("overwrite", false, "replace an existing remote target")
+	return cmd
+}
+
+func newFSDeleteFileCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "delete-file",
+		Short:      "Delete a tdc fs file.",
+		Mutation:   mutatingCommand,
+		Permission: authz.FSFileWrite,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			path, err := ctx.StringFlag("path")
+			if err != nil {
+				return nil, err
+			}
+			recursive, err := ctx.BoolFlag("recursive")
+			if err != nil {
+				return nil, err
+			}
+			return service.DeleteFile(ctx.cmd.Context(), tdcfs.DeleteFileOptions{
+				Profile:   profile,
+				Path:      path,
+				Recursive: recursive,
+			})
+		},
+	}, info)
+	cmd.Flags().String("path", "", "tdc fs file or directory path")
+	cmd.Flags().Bool("recursive", false, "delete a directory recursively")
+	return cmd
+}
+
+func newFSCreateDirectoryCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "create-directory",
+		Short:      "Create a tdc fs directory.",
+		Mutation:   mutatingCommand,
+		Permission: authz.FSFileWrite,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			path, err := ctx.StringFlag("path")
+			if err != nil {
+				return nil, err
+			}
+			mode, err := ctx.StringFlag("mode")
+			if err != nil {
+				return nil, err
+			}
+			return service.CreateDirectory(ctx.cmd.Context(), tdcfs.CreateDirectoryOptions{
+				Profile: profile,
+				Path:    path,
+				Mode:    mode,
+			})
+		},
+	}, info)
+	cmd.Flags().String("path", "", "tdc fs directory path")
+	cmd.Flags().String("mode", "", "directory mode as an octal value such as 0755")
+	return cmd
+}
+
+func newFSSearchFileContentCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "search-file-content",
+		Short:      "Search file content in tdc fs.",
+		Mutation:   readOnlyCommand,
+		Permission: authz.FSFileRead,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			path, err := ctx.StringFlag("path")
+			if err != nil {
+				return nil, err
+			}
+			pattern, err := ctx.StringFlag("pattern")
+			if err != nil {
+				return nil, err
+			}
+			limit, err := ctx.Int32Flag("limit")
+			if err != nil {
+				return nil, err
+			}
+			return service.SearchFileContent(ctx.cmd.Context(), tdcfs.SearchFileContentOptions{
+				Profile: profile,
+				Path:    path,
+				Pattern: pattern,
+				Limit:   limit,
+			})
+		},
+	}, info)
+	cmd.Flags().String("path", "/", "tdc fs path prefix")
+	cmd.Flags().String("pattern", "", "content search pattern")
+	cmd.Flags().Int32("limit", 0, "maximum number of search results; 0 uses the service default")
+	return cmd
+}
+
+func newFSFindFilesCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "find-files",
+		Short:      "Find files in tdc fs.",
+		Mutation:   readOnlyCommand,
+		Permission: authz.FSFileRead,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			opts, err := fsFindFilesOptions(ctx, profile)
+			if err != nil {
+				return nil, err
+			}
+			return service.FindFiles(ctx.cmd.Context(), opts)
+		},
+	}, info)
+	cmd.Flags().String("path", "/", "tdc fs path prefix")
+	cmd.Flags().String("file-name-pattern", "", "file name pattern such as *.md")
+	cmd.Flags().String("resource-type", "", "resource type filter: file or directory")
+	cmd.Flags().String("tag", "", "tag filter")
+	cmd.Flags().String("newer", "", "only return files newer than this service-supported time expression")
+	cmd.Flags().String("older", "", "only return files older than this service-supported time expression")
+	cmd.Flags().Int64("min-size-bytes", 0, "minimum file size in bytes")
+	cmd.Flags().Int64("max-size-bytes", 0, "maximum file size in bytes")
+	cmd.Flags().Int32("limit", 0, "maximum number of results; 0 uses the service default")
+	return cmd
+}
+
+func fsCopyFileOptions(ctx commandContext, profile *config.Profile) (tdcfs.CopyFileOptions, error) {
+	fromLocal, err := ctx.StringFlag("from-local")
+	if err != nil {
+		return tdcfs.CopyFileOptions{}, err
+	}
+	fromRemote, err := ctx.StringFlag("from-remote")
+	if err != nil {
+		return tdcfs.CopyFileOptions{}, err
+	}
+	toLocal, err := ctx.StringFlag("to-local")
+	if err != nil {
+		return tdcfs.CopyFileOptions{}, err
+	}
+	toRemote, err := ctx.StringFlag("to-remote")
+	if err != nil {
+		return tdcfs.CopyFileOptions{}, err
+	}
+	overwrite, err := ctx.BoolFlag("overwrite")
+	if err != nil {
+		return tdcfs.CopyFileOptions{}, err
+	}
+	createParents, err := ctx.BoolFlag("create-parents")
+	if err != nil {
+		return tdcfs.CopyFileOptions{}, err
+	}
+	return tdcfs.CopyFileOptions{
+		Profile:       profile,
+		FromLocal:     fromLocal,
+		FromRemote:    fromRemote,
+		ToLocal:       toLocal,
+		ToRemote:      toRemote,
+		Overwrite:     overwrite,
+		CreateParents: createParents,
+	}, nil
+}
+
+func fsFindFilesOptions(ctx commandContext, profile *config.Profile) (tdcfs.FindFilesOptions, error) {
+	path, err := ctx.StringFlag("path")
+	if err != nil {
+		return tdcfs.FindFilesOptions{}, err
+	}
+	fileNamePattern, err := ctx.StringFlag("file-name-pattern")
+	if err != nil {
+		return tdcfs.FindFilesOptions{}, err
+	}
+	resourceType, err := ctx.StringFlag("resource-type")
+	if err != nil {
+		return tdcfs.FindFilesOptions{}, err
+	}
+	tag, err := ctx.StringFlag("tag")
+	if err != nil {
+		return tdcfs.FindFilesOptions{}, err
+	}
+	newer, err := ctx.StringFlag("newer")
+	if err != nil {
+		return tdcfs.FindFilesOptions{}, err
+	}
+	older, err := ctx.StringFlag("older")
+	if err != nil {
+		return tdcfs.FindFilesOptions{}, err
+	}
+	minSizeBytes, err := ctx.Int64Flag("min-size-bytes")
+	if err != nil {
+		return tdcfs.FindFilesOptions{}, err
+	}
+	maxSizeBytes, err := ctx.Int64Flag("max-size-bytes")
+	if err != nil {
+		return tdcfs.FindFilesOptions{}, err
+	}
+	limit, err := ctx.Int32Flag("limit")
+	if err != nil {
+		return tdcfs.FindFilesOptions{}, err
+	}
+	return tdcfs.FindFilesOptions{
+		Profile:         profile,
+		Path:            path,
+		FileNamePattern: fileNamePattern,
+		ResourceType:    resourceType,
+		Tag:             tag,
+		Newer:           newer,
+		Older:           older,
+		MinSizeBytes:    minSizeBytes,
+		MaxSizeBytes:    maxSizeBytes,
+		Limit:           limit,
+	}, nil
 }
 
 func fsServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {

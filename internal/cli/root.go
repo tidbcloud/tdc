@@ -189,6 +189,10 @@ func (c commandContext) Int32Flag(name string) (int32, error) {
 	return c.cmd.Flags().GetInt32(name)
 }
 
+func (c commandContext) Int64Flag(name string) (int64, error) {
+	return c.cmd.Flags().GetInt64(name)
+}
+
 func newControlPlanePlaceholderCommand(use, short string, mutation mutationMode, permission authz.Permission, info version.Info) *cobra.Command {
 	return newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        use,

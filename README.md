@@ -8,8 +8,8 @@ dry-run behavior, and API client/auth foundation are implemented. Service
 commands are registered so users and agents can discover the product surface.
 Organization project listing, Starter DB cluster lifecycle commands, and
 Starter DB branch, SQL access, and tdc fs control-plane commands are
-implemented. tdc fs data-plane and mount actions still return "not implemented"
-until their specs are completed.
+implemented. tdc fs data-plane file commands are implemented. tdc fs mount
+actions still return "not implemented" until their specs are completed.
 
 ## Current Status
 
@@ -45,12 +45,22 @@ Implemented:
 - `tdc fs create-file-system`
 - `tdc fs delete-file-system`
 - `tdc fs check-file-system`
+- `tdc fs copy-file`
+- `tdc fs read-file`
+- `tdc fs list-files`
+- `tdc fs describe-file`
+- `tdc fs move-file`
+- `tdc fs delete-file`
+- `tdc fs create-directory`
+- `tdc fs search-file-content`
+- `tdc fs find-files`
 
 Registered but not implemented yet:
 
 - `tdc cli check-update`
 - `tdc cli update`
-- `tdc fs ...` data-plane and mount actions
+- `tdc fs mount-file-system`
+- `tdc fs unmount-file-system`
 
 ## Build
 
@@ -106,15 +116,17 @@ make live-e2e
 At the current implementation stage, `make live-e2e` validates the real binary,
 the `live-e2e` profile, real TiDB Cloud Digest-auth read-only API probes,
 `tdc organization list-projects`, the current command surface, mutating command
-dry-runs for unfinished commands, read-only dry-run rejection, and the full
-Starter DB cluster, SQL access, and branch lifecycles. The live DB lifecycle
-creates one uniquely named `tdc-e2e-*` Starter cluster without a spending
-limit, prepares tdc-managed read-only/read-write/admin SQL users, creates
-connection strings, executes HTTP SQL with all three access modes, creates one
-`tdc-e2e-branch-*` branch on that cluster, lists/describes/deletes the branch,
-updates the cluster, reads it again, deletes it, and verifies deletion. As TiDB
-Cloud API commands are implemented, their real live tests must be added to this
-same target.
+dry-runs, read-only dry-run rejection, a full tdc fs data-plane lifecycle, and
+the full Starter DB cluster, SQL access, and branch lifecycles. The live tdc fs
+lifecycle writes only under a unique `/tdc-e2e-*` path, uploads a local file,
+lists/describes/reads/searches/finds it, performs remote copy/move, downloads it
+back, and deletes the test path recursively. The live DB lifecycle creates one
+uniquely named `tdc-e2e-*` Starter cluster without a spending limit, prepares
+tdc-managed read-only/read-write/admin SQL users, creates connection strings,
+executes HTTP SQL with all three access modes, creates one `tdc-e2e-branch-*`
+branch on that cluster, lists/describes/deletes the branch, updates the cluster,
+reads it again, deletes it, and verifies deletion. As TiDB Cloud API commands
+are implemented, their real live tests must be added to this same target.
 
 Clean build artifacts:
 
@@ -405,18 +417,36 @@ support the configured placement, endpoint selection is reported as failed.
 ### tdc fs Data Plane
 
 ```bash
-tdc fs copy-file
-tdc fs read-file
-tdc fs list-files
-tdc fs describe-file
-tdc fs move-file
-tdc fs delete-file
-tdc fs create-directory
-tdc fs search-file-content
-tdc fs find-files
+tdc fs copy-file --from-local ./README.md --to-remote /workspace/README.md
+tdc fs copy-file --from-remote /workspace/README.md --to-local ./README.copy.md --create-parents
+tdc fs copy-file --from-remote /workspace/README.md --to-remote /workspace/README.copy.md
+tdc fs read-file --path /workspace/README.md
+tdc fs list-files --path /workspace
+tdc fs list-files --path /workspace --output human
+tdc fs describe-file --path /workspace/README.md
+tdc fs move-file --from-remote /workspace/README.copy.md --to-remote /workspace/archive/README.md
+tdc fs delete-file --path /workspace/archive/README.md
+tdc fs delete-file --path /workspace/archive --recursive
+tdc fs create-directory --path /workspace/archive --mode 0755
+tdc fs search-file-content --path /workspace --pattern "hello"
+tdc fs find-files --path /workspace --file-name-pattern "*.md"
 ```
 
-These commands are registered but not implemented yet.
+These commands use the active profile's stored `fs_api_key` as Bearer auth and
+call the tdc fs data-plane endpoint selected from the hosted region manifest.
+Run `tdc fs create-file-system` before using them, or configure the flat
+`fs_api_key` credential manually if the resource already exists.
+
+`read-file` writes raw file bytes to stdout and does not wrap the response in
+JSON. Do not combine `read-file` with `--query`; queries require structured
+output. Metadata and search commands return structured JSON by default and
+support `--output human` for terminal tables.
+
+`copy-file` supports exactly one explicit source/target pair:
+`--from-local` with `--to-remote`, `--from-remote` with `--to-local`, or
+`--from-remote` with `--to-remote`. Remote and local targets are not overwritten
+unless `--overwrite` is provided. `--create-parents` only applies when copying
+from tdc fs to a local path.
 
 ### tdc fs Mount Runtime
 

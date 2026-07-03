@@ -30,6 +30,11 @@ func TestHelpAndVersion(t *testing.T) {
 	subcommand.wantExitCode(0)
 	subcommand.wantStdoutContains("Mount a tdc fs resource locally.")
 
+	copyFile := runTDC(t, bin, "fs", "copy-file", "help")
+	copyFile.wantExitCode(0)
+	copyFile.wantStdoutContains("--from-local")
+	copyFile.wantStdoutContains("--to-remote")
+
 	version := runTDC(t, bin, "fs", "mount-file-system", "--version")
 	version.wantExitCode(0)
 	version.wantStdoutContains("tdc ")

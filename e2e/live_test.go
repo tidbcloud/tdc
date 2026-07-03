@@ -69,6 +69,8 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"db", "create-db-cluster", "help"},
 		{"db", "list-db-clusters", "help"},
 		{"fs", "create-file-system", "help"},
+		{"fs", "copy-file", "help"},
+		{"fs", "read-file", "help"},
 	}
 	for _, args := range helpCommands {
 		result := runTDC(t, bin, args...)
@@ -94,6 +96,23 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		result.wantStdoutContains("remote_mutation")
 	}
 
+	dataPlaneDryRunCommands := [][]string{
+		{"fs", "copy-file", "--from-remote", "/workspace/source.txt", "--to-remote", "/workspace/target.txt"},
+		{"fs", "move-file", "--from-remote", "/workspace/source.txt", "--to-remote", "/workspace/target.txt"},
+		{"fs", "delete-file", "--path", "/workspace/source.txt"},
+		{"fs", "create-directory", "--path", "/workspace/newdir"},
+	}
+	for _, args := range dataPlaneDryRunCommands {
+		fullArgs := append([]string{"--profile", profileName}, args...)
+		fullArgs = append(fullArgs, "--dry-run", "--query", "checks[].name")
+		result := runTDC(t, bin, fullArgs...)
+		result.wantExitCode(0)
+		result.wantStdoutContains("config_and_credentials")
+		result.wantStdoutContains("endpoint_selection")
+		result.wantStdoutContains("permission_requirement")
+		result.wantStdoutContains("request_construction")
+	}
+
 	readOnlyCommands := [][]string{
 		{"organization", "list-projects"},
 		{"db", "list-db-clusters"},
@@ -103,6 +122,11 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"db", "create-db-connection-string"},
 		{"db", "execute-sql-statement"},
 		{"fs", "check-file-system"},
+		{"fs", "read-file"},
+		{"fs", "list-files"},
+		{"fs", "describe-file"},
+		{"fs", "search-file-content"},
+		{"fs", "find-files"},
 	}
 	for _, args := range readOnlyCommands {
 		fullArgs := append([]string{"--profile", profileName}, args...)
@@ -168,15 +192,6 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 	placeholderCommands := [][]string{
 		{"cli", "check-update"},
 		{"cli", "update"},
-		{"fs", "copy-file"},
-		{"fs", "read-file"},
-		{"fs", "list-files"},
-		{"fs", "describe-file"},
-		{"fs", "move-file"},
-		{"fs", "delete-file"},
-		{"fs", "create-directory"},
-		{"fs", "search-file-content"},
-		{"fs", "find-files"},
 		{"fs", "mount-file-system"},
 		{"fs", "unmount-file-system"},
 	}
@@ -185,6 +200,99 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		result.wantExitCode(2)
 		result.wantStderrContains("is not implemented yet")
 	}
+}
+
+func TestLiveFSDataPlaneLifecycle(t *testing.T) {
+	requireLive(t)
+
+	profile := liveProfile(t)
+	if profile.FSAPIKey == "" {
+		t.Fatalf("live profile %q has no fs_api_key; run tdc fs create-file-system --profile %s before make live-e2e", profile.Name, profile.Name)
+	}
+
+	bin := tdcBinary(t)
+	profileName := liveProfileName(t)
+	suffix := time.Now().UTC().Format("20060102150405")
+	rootPath := "/tdc-e2e-" + suffix
+	sourcePath := rootPath + "/README.md"
+	copyPath := rootPath + "/README.copy.md"
+	movedPath := rootPath + "/README.moved.md"
+	deleted := false
+	defer func() {
+		if deleted {
+			return
+		}
+		cleanup := runTDC(t, bin, "--profile", profileName, "fs", "delete-file", "--path", rootPath, "--recursive")
+		if cleanup.exitCode != 0 && cleanup.exitCode != 5 {
+			t.Logf("cleanup delete failed for %s: exit=%d stdout=%s stderr=%s", rootPath, cleanup.exitCode, cleanup.stdout, cleanup.stderr)
+		}
+	}()
+
+	createDir := runTDC(t, bin, "--profile", profileName, "fs", "create-directory", "--path", rootPath, "--mode", "0755")
+	createDir.wantExitCode(0)
+	createDir.wantStdoutContains(`"status": "created"`)
+
+	content := "hello tdc fs live e2e " + suffix + "\n"
+	localFile := filepath.Join(t.TempDir(), "README.md")
+	if err := os.WriteFile(localFile, []byte(content), 0o644); err != nil {
+		t.Fatalf("write local test file: %v", err)
+	}
+
+	upload := runTDC(t, bin, "--profile", profileName, "fs", "copy-file", "--from-local", localFile, "--to-remote", sourcePath)
+	upload.wantExitCode(0)
+	upload.wantStdoutContains(`"status": "copied"`)
+	upload.wantStdoutContains(`"bytes_transferred"`)
+
+	list := runTDC(t, bin, "--profile", profileName, "fs", "list-files", "--path", rootPath)
+	list.wantExitCode(0)
+	list.wantStdoutContains("README.md")
+
+	listHuman := runTDC(t, bin, "--profile", profileName, "fs", "list-files", "--path", rootPath, "--output", "human")
+	listHuman.wantExitCode(0)
+	listHuman.wantStdoutContains("NAME")
+	listHuman.wantStdoutContains("README.md")
+
+	describe := runTDC(t, bin, "--profile", profileName, "fs", "describe-file", "--path", sourcePath)
+	describe.wantExitCode(0)
+	describe.wantStdoutContains(`"size_bytes"`)
+
+	read := runTDC(t, bin, "--profile", profileName, "fs", "read-file", "--path", sourcePath)
+	read.wantExitCode(0)
+	if read.stdout != content {
+		read.fail("read-file should return raw file bytes exactly")
+	}
+
+	waitLiveFSResult(t, bin, []string{"--profile", profileName, "fs", "search-file-content", "--path", rootPath, "--pattern", "tdc fs live e2e", "--limit", "5"}, "README.md", 2*time.Minute, "find uploaded file content")
+	waitLiveFSResult(t, bin, []string{"--profile", profileName, "fs", "find-files", "--path", rootPath, "--file-name-pattern", "*.md", "--limit", "5"}, "README.md", 2*time.Minute, "find uploaded file by name")
+
+	remoteCopy := runTDC(t, bin, "--profile", profileName, "fs", "copy-file", "--from-remote", sourcePath, "--to-remote", copyPath)
+	remoteCopy.wantExitCode(0)
+	remoteCopy.wantStdoutContains(`"status": "copied"`)
+
+	move := runTDC(t, bin, "--profile", profileName, "fs", "move-file", "--from-remote", copyPath, "--to-remote", movedPath)
+	move.wantExitCode(0)
+	move.wantStdoutContains(`"status": "moved"`)
+
+	downloadPath := filepath.Join(t.TempDir(), "nested", "downloaded.md")
+	download := runTDC(t, bin, "--profile", profileName, "fs", "copy-file", "--from-remote", movedPath, "--to-local", downloadPath, "--create-parents")
+	download.wantExitCode(0)
+	download.wantStdoutContains(`"status": "copied"`)
+	downloaded, err := os.ReadFile(downloadPath)
+	if err != nil {
+		t.Fatalf("read downloaded file: %v", err)
+	}
+	if string(downloaded) != content {
+		t.Fatalf("downloaded file mismatch: got %q want %q", downloaded, content)
+	}
+
+	deleteMoved := runTDC(t, bin, "--profile", profileName, "fs", "delete-file", "--path", movedPath)
+	deleteMoved.wantExitCode(0)
+	deleteMoved.wantStdoutContains(`"status": "deleted"`)
+
+	deleteRoot := runTDC(t, bin, "--profile", profileName, "fs", "delete-file", "--path", rootPath, "--recursive")
+	deleteRoot.wantExitCode(0)
+	deleteRoot.wantStdoutContains(`"status": "deleted"`)
+	deleted = true
 }
 
 func TestLiveDBClusterLifecycle(t *testing.T) {
@@ -517,6 +625,22 @@ func waitLiveSQL(t *testing.T, bin, profileName, clusterID string, modeArgs []st
 			last.fail("timed out waiting for %s; got exit code %d", description, last.exitCode)
 		}
 		time.Sleep(10 * time.Second)
+	}
+}
+
+func waitLiveFSResult(t *testing.T, bin string, args []string, want string, timeout time.Duration, description string) commandResult {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var last commandResult
+	for {
+		last = runTDC(t, bin, args...)
+		if last.exitCode == 0 && strings.Contains(last.stdout, want) {
+			return last
+		}
+		if time.Now().After(deadline) {
+			last.fail("timed out waiting for tdc fs to %s", description)
+		}
+		time.Sleep(5 * time.Second)
 	}
 }
 
