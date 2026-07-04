@@ -1,0 +1,71 @@
+version: 2
+
+project_name: tdc
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: tdc
+    main: ./cmd/tdc
+    binary: tdc
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/Icemap/tdc/internal/version.version={{ .Version }}
+      - -X github.com/Icemap/tdc/internal/version.commit={{ .Commit }}
+      - -X github.com/Icemap/tdc/internal/version.date={{ .Date }}
+      - -X github.com/Icemap/tdc/internal/version.installSource=archive
+      - -X github.com/Icemap/tdc/internal/version.releaseChannel=stable
+
+archives:
+  - id: tdc
+    ids:
+      - tdc
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - README.md
+
+checksum:
+  name_template: "{{ .ProjectName }}_checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+release:
+  github:
+    owner: Icemap
+    name: tdc
+  prerelease: auto
+  make_latest: true
+  mode: replace
+  extra_files:
+    - glob: ./scripts/install.sh
+      name_template: install.sh
+    - glob: ./scripts/install.ps1
+      name_template: install.ps1
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
