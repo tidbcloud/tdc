@@ -3,6 +3,7 @@ package fs
 import (
 	"bytes"
 	"context"
+	"encoding/xml"
 	"errors"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Icemap/tdc/internal/api"
@@ -21,6 +23,7 @@ type remoteWebDAVFS struct {
 	client     *apifs.Client
 	remoteRoot string
 	readOnly   bool
+	props      *deadPropStore
 }
 
 func newRemoteWebDAVFS(client *apifs.Client, remoteRoot string, readOnly bool) *remoteWebDAVFS {
@@ -28,7 +31,7 @@ func newRemoteWebDAVFS(client *apifs.Client, remoteRoot string, readOnly bool) *
 	if err != nil {
 		root = "/"
 	}
-	return &remoteWebDAVFS{client: client, remoteRoot: root, readOnly: readOnly}
+	return &remoteWebDAVFS{client: client, remoteRoot: root, readOnly: readOnly, props: newDeadPropStore()}
 }
 
 func (fsys *remoteWebDAVFS) Mkdir(ctx context.Context, name string, perm os.FileMode) error {
@@ -61,7 +64,7 @@ func (fsys *remoteWebDAVFS) OpenFile(ctx context.Context, name string, flag int,
 		if err != nil {
 			return nil, pathErr("readdir", name, err)
 		}
-		return &remoteWebDAVFile{info: info, entries: entries}, nil
+		return &remoteWebDAVFile{info: info, entries: entries, propPath: remotePath, props: fsys.props, readOnly: fsys.readOnly}, nil
 	}
 	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
 		return nil, pathErr("open", name, statErr)
@@ -92,10 +95,13 @@ func (fsys *remoteWebDAVFS) OpenFile(ctx context.Context, name string, flag int,
 	return &remoteWebDAVFile{
 		client:     fsys.client,
 		remotePath: remotePath,
+		propPath:   remotePath,
+		props:      fsys.props,
 		info:       info,
 		data:       data,
 		offset:     offset,
 		writable:   write,
+		readOnly:   fsys.readOnly,
 	}, nil
 }
 
@@ -113,6 +119,7 @@ func (fsys *remoteWebDAVFS) RemoveAll(ctx context.Context, name string) error {
 	if err := fsys.client.DeleteFile(ctx, remotePath, true); err != nil {
 		return pathErr("remove", name, mapWebDAVError(err))
 	}
+	fsys.props.deleteTree(remotePath)
 	return nil
 }
 
@@ -131,6 +138,7 @@ func (fsys *remoteWebDAVFS) Rename(ctx context.Context, oldName, newName string)
 	if err := fsys.client.Rename(ctx, oldRemote, newRemote); err != nil {
 		return pathErr("rename", oldName, mapWebDAVError(err))
 	}
+	fsys.props.renameTree(oldRemote, newRemote)
 	return nil
 }
 
@@ -208,13 +216,18 @@ func (fsys *remoteWebDAVFS) readDir(ctx context.Context, remotePath string) ([]o
 type remoteWebDAVFile struct {
 	client     *apifs.Client
 	remotePath string
+	propPath   string
+	props      *deadPropStore
 	info       os.FileInfo
 	entries    []os.FileInfo
 	data       []byte
 	offset     int64
 	writable   bool
+	readOnly   bool
 	closed     bool
 }
+
+var _ webdav.DeadPropsHolder = (*remoteWebDAVFile)(nil)
 
 func (f *remoteWebDAVFile) Close() error {
 	if f.closed {
@@ -301,6 +314,131 @@ func (f *remoteWebDAVFile) Write(p []byte) (int, error) {
 	f.offset = end
 	f.info = remoteFileInfo{name: path.Base(f.remotePath), size: int64(len(f.data)), mode: 0o644, modTime: time.Now()}
 	return len(p), nil
+}
+
+func (f *remoteWebDAVFile) DeadProps() (map[xml.Name]webdav.Property, error) {
+	return f.props.deadProps(f.propPath)
+}
+
+func (f *remoteWebDAVFile) Patch(patches []webdav.Proppatch) ([]webdav.Propstat, error) {
+	if f.readOnly {
+		return forbiddenPropPatch(patches), nil
+	}
+	return f.props.patch(f.propPath, patches)
+}
+
+type deadPropStore struct {
+	mu    sync.Mutex
+	props map[string]map[xml.Name]webdav.Property
+}
+
+func newDeadPropStore() *deadPropStore {
+	return &deadPropStore{props: map[string]map[xml.Name]webdav.Property{}}
+}
+
+func (s *deadPropStore) deadProps(name string) (map[xml.Name]webdav.Property, error) {
+	if s == nil {
+		return nil, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	current := s.props[name]
+	if len(current) == 0 {
+		return nil, nil
+	}
+	out := make(map[xml.Name]webdav.Property, len(current))
+	for key, value := range current {
+		out[key] = value
+	}
+	return out, nil
+}
+
+func (s *deadPropStore) patch(name string, patches []webdav.Proppatch) ([]webdav.Propstat, error) {
+	if s == nil {
+		return []webdav.Propstat{propPatchStatus(http.StatusOK, patches)}, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	current := s.props[name]
+	for _, patch := range patches {
+		for _, prop := range patch.Props {
+			if patch.Remove {
+				delete(current, prop.XMLName)
+				continue
+			}
+			if current == nil {
+				current = map[xml.Name]webdav.Property{}
+				s.props[name] = current
+			}
+			current[prop.XMLName] = prop
+		}
+	}
+	if len(current) == 0 {
+		delete(s.props, name)
+	}
+	return []webdav.Propstat{propPatchStatus(http.StatusOK, patches)}, nil
+}
+
+func (s *deadPropStore) deleteTree(name string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	prefix := treePrefix(name)
+	for current := range s.props {
+		if current == name || strings.HasPrefix(current, prefix) {
+			delete(s.props, current)
+		}
+	}
+}
+
+func (s *deadPropStore) renameTree(oldName, newName string) {
+	if s == nil || oldName == newName {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	oldPrefix := treePrefix(oldName)
+	updates := map[string]map[xml.Name]webdav.Property{}
+	for current, props := range s.props {
+		switch {
+		case current == oldName:
+			updates[newName] = props
+			delete(s.props, current)
+		case strings.HasPrefix(current, oldPrefix):
+			updates[newName+strings.TrimPrefix(current, oldName)] = props
+			delete(s.props, current)
+		}
+	}
+	for name, props := range updates {
+		s.props[name] = props
+	}
+}
+
+func forbiddenPropPatch(patches []webdav.Proppatch) []webdav.Propstat {
+	return []webdav.Propstat{propPatchStatus(http.StatusForbidden, patches)}
+}
+
+func propPatchStatus(status int, patches []webdav.Proppatch) webdav.Propstat {
+	pstat := webdav.Propstat{Status: status}
+	for _, patch := range patches {
+		for _, prop := range patch.Props {
+			pstat.Props = append(pstat.Props, webdav.Property{XMLName: prop.XMLName})
+		}
+	}
+	return pstat
+}
+
+func treePrefix(name string) string {
+	if strings.HasSuffix(name, "/") {
+		return name
+	}
+	return name + "/"
 }
 
 type remoteFileInfo struct {

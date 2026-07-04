@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -154,12 +156,41 @@ func TestServiceCommandsDeclarePermissions(t *testing.T) {
 	})
 }
 
-func TestPlaceholderCommandReturnsNotImplemented(t *testing.T) {
-	_, _, err := executeForTest("cli", "check-update")
-	if err == nil {
-		t.Fatal("expected placeholder command to fail")
+func TestCLICheckUpdateUsesReleaseMetadata(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/releases/latest" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{
+			"tag_name": "v0.1.0",
+			"html_url": "https://github.com/Icemap/tdc/releases/tag/v0.1.0",
+			"assets": [
+				{
+					"name": "tdc_linux_amd64.tar.gz",
+					"browser_download_url": "https://github.com/Icemap/tdc/releases/download/v0.1.0/tdc_linux_amd64.tar.gz"
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+	t.Setenv("TDC_RELEASE_API_BASE_URL", server.URL)
+
+	stdout, _, err := executeForTest("cli", "check-update", "--query", "latest_version")
+	if err != nil {
+		t.Fatalf("expected check-update to succeed, got %v", err)
 	}
-	if got := apperr.MessageFor(err); got != "tdc cli check-update is not implemented yet" {
+	if got := stdout; got != "\"0.1.0\"\n" {
+		t.Fatalf("unexpected output %q", got)
+	}
+}
+
+func TestCLIUpdateRefusesUnownedLocalBuild(t *testing.T) {
+	_, _, err := executeForTest("cli", "update", "--dry-run")
+	if err == nil {
+		t.Fatal("expected local build update to fail")
+	}
+	if got := apperr.MessageFor(err); !strings.Contains(got, "not owned by tdc") {
 		t.Fatalf("unexpected message: %q", got)
 	}
 }
@@ -424,10 +455,12 @@ func executeForTest(args ...string) (string, string, error) {
 
 func testVersion() version.Info {
 	return version.Info{
-		Version: "0.0.0-test",
-		Commit:  "testcommit",
-		Date:    "2026-07-02",
-		OS:      "testos",
-		Arch:    "testarch",
+		Version:        "0.0.0-test",
+		Commit:         "testcommit",
+		Date:           "2026-07-02",
+		OS:             "linux",
+		Arch:           "amd64",
+		InstallSource:  "local",
+		ReleaseChannel: "stable",
 	}
 }

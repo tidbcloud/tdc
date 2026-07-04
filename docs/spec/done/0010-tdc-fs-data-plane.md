@@ -99,12 +99,18 @@ against the hosted tdc fs API after endpoint resolution is available:
 - `POST /v1/fs:batch-read-small` for batch small-file reads.
 - `GET /v1/fs/<path>?grep=<query>` for grep.
 - `GET /v1/fs/<path>?find=...` plus query filters for find.
-- `POST /v1/uploads`, `/v1/uploads/*`, and `/v2/uploads/*` for multipart or large-file uploads are known from the reference protocol but out of scope for this MVP slice.
+- `POST /v1/uploads/initiate`, `GET /v1/uploads`, `POST /v1/uploads/<upload_id>/resume`, `POST /v1/uploads/<upload_id>/complete`, and `DELETE /v1/uploads/<upload_id>` for V1 multipart upload and upload resume.
+- `POST /v2/uploads/initiate`, `POST /v2/uploads/<upload_id>/presign-batch`, `POST /v2/uploads/<upload_id>/presign`, `POST /v2/uploads/<upload_id>/complete`, and `POST /v2/uploads/<upload_id>/abort` for V2 multipart upload.
+- `PATCH /v1/fs/<path>` for dirty-range patch uploads.
+- `POST /v1/fs/<path>?append` for append/patch upload plans.
 
 Command mapping:
 
 - `tdc fs read-file` uses `GET /v1/fs/<path>`.
-- `tdc fs copy-file --from-local --to-remote` uses `PUT /v1/fs/<path>` for this MVP slice.
+- `tdc fs copy-file --from-local --to-remote` uses `PUT /v1/fs/<path>` for small files and V2-first multipart upload with V1 fallback for large files.
+- `tdc fs copy-file --from-local --to-remote --resume` resumes an active V1 multipart upload for the target path.
+- `tdc fs copy-file --from-local --to-remote --append` uses `POST /v1/fs/<path>?append` when supported and falls back to conditional rewrite for compatible non-S3-backed files.
+- FUSE/writeback same-size dirty writes use `PATCH /v1/fs/<path>` when the open handle has a known base revision, then fall back to whole upload only for unsupported backends or unsafe cases.
 - `tdc fs copy-file --from-remote --to-local` uses `GET /v1/fs/<path>`.
 - `tdc fs list-files` uses `GET /v1/fs/<path>?list=1`.
 - `tdc fs describe-file` uses `GET /v1/fs/<path>?stat=1` with `HEAD` fallback for compatibility.
@@ -114,9 +120,7 @@ Command mapping:
 - `tdc fs search-file-content` uses `GET /v1/fs/<path>?grep=<query>`.
 - `tdc fs find-files` uses `GET /v1/fs/<path>?find=...`.
 
-API gap:
-
-- Large multipart uploads remain a later optimization; direct `PUT` is the MVP behavior.
+- Multipart uploads use bounded concurrent workers, reuse part buffers under a 256 MiB in-flight memory cap, retry one expired V2 presigned part URL through `presign`, and keep upload timing summaries internally. The current CLI surfaces `upload_mode`; it does not yet expose upload summaries as a user-facing output object.
 - If the stored fs API key is missing, commands must fail with an actionable error suggesting `tdc fs create-file-system`; they must not ask for a raw API key interactively.
 
 ## Dependencies And Platform

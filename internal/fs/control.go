@@ -464,6 +464,14 @@ func (s Service) homeDir() (string, error) {
 	return homeDir, nil
 }
 
+func (s Service) metadataStore(profile *config.Profile) (*fsMetadataStore, error) {
+	homeDir, err := s.homeDir()
+	if err != nil {
+		return nil, err
+	}
+	return newFSMetadataStore(homeDir, profile)
+}
+
 func validateProfile(profile *config.Profile) error {
 	if _, err := auth.ValidateProfile(profile); err != nil {
 		return err

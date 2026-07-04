@@ -88,7 +88,7 @@ region, and never provide service URLs.
 This spec adds no new product API. Smoke tests exercise the call chains defined
 in earlier specs:
 
-- `tdc cli check-update`: release manifest lookup from
+- `tdc cli check-update`: GitHub Releases metadata lookup from
   `0012-install-and-update-distribution.md`.
 - `tdc organization list-projects`: `GET /v1beta1/projects`.
 - DB lifecycle dry-runs: construct but do not send the cluster mutation request.

@@ -57,7 +57,10 @@ func NewRootCommand(info version.Info) *cobra.Command {
 	root.AddCommand(newCLICommand(info))
 	root.AddCommand(newDBCommand(info))
 	root.AddCommand(newFSCommand(info))
+	root.AddCommand(newGitCommand(info))
+	root.AddCommand(newJournalCommand(info))
 	root.AddCommand(newOrganizationCommand(info))
+	root.AddCommand(newVaultCommand(info))
 
 	installHelpCommands(root, info)
 	applyCommandDefaults(root, info)
@@ -176,6 +179,14 @@ func (c commandContext) Permission() authz.Permission {
 
 func (c commandContext) StringFlag(name string) (string, error) {
 	return c.cmd.Flags().GetString(name)
+}
+
+func (c commandContext) StringArrayFlag(name string) ([]string, error) {
+	return c.cmd.Flags().GetStringArray(name)
+}
+
+func (c commandContext) FlagChanged(name string) bool {
+	return c.cmd.Flags().Changed(name)
 }
 
 func (c commandContext) BoolFlag(name string) (bool, error) {

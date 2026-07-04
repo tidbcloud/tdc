@@ -3,6 +3,7 @@ package fs
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 
 	apifs "github.com/Icemap/tdc/internal/api/fs"
 	"github.com/Icemap/tdc/internal/authz"
+	"golang.org/x/net/webdav"
 )
 
 func TestRemoteWebDAVFSReadWriteListStat(t *testing.T) {
@@ -73,6 +75,22 @@ func TestRemoteWebDAVFSReadWriteListStat(t *testing.T) {
 	}
 	if string(data) != "hello" {
 		t.Fatalf("unexpected data %q", data)
+	}
+	props, ok := file.(webdav.DeadPropsHolder)
+	if !ok {
+		t.Fatal("expected WebDAV file to hold dead properties")
+	}
+	propName := xml.Name{Space: "urn:tdc-test", Local: "color"}
+	_, err = props.Patch([]webdav.Proppatch{{Props: []webdav.Property{{XMLName: propName, InnerXML: []byte("blue")}}}})
+	if err != nil {
+		t.Fatalf("Patch dead prop failed: %v", err)
+	}
+	deadProps, err := props.DeadProps()
+	if err != nil {
+		t.Fatalf("DeadProps failed: %v", err)
+	}
+	if string(deadProps[propName].InnerXML) != "blue" {
+		t.Fatalf("unexpected dead prop value %#v", deadProps[propName])
 	}
 	writable, err := fsys.OpenFile(context.Background(), "/new.txt", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {

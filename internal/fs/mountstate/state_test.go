@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -46,6 +47,44 @@ func TestWriteReadAndRemoveState(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("expected state removed, got %v", err)
+	}
+}
+
+func TestControlSocketPathUsesUserRuntimeNamespace(t *testing.T) {
+	runtimeDir := filepath.Join(t.TempDir(), "runtime")
+	t.Setenv("XDG_RUNTIME_DIR", runtimeDir)
+	mountPath := filepath.Join(t.TempDir(), "mount")
+	if err := os.MkdirAll(mountPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	path, err := ControlSocketPath(mountPath)
+	if err != nil {
+		t.Fatalf("ControlSocketPath failed: %v", err)
+	}
+	if filepath.Dir(path) != runtimeDir {
+		t.Fatalf("ControlSocketPath = %q, want under runtime dir %q", path, runtimeDir)
+	}
+	if filepath.Ext(path) != ".sock" {
+		t.Fatalf("ControlSocketPath = %q, want .sock suffix", path)
+	}
+	again, err := ControlSocketPath(mountPath)
+	if err != nil {
+		t.Fatalf("ControlSocketPath second call failed: %v", err)
+	}
+	if again != path {
+		t.Fatalf("ControlSocketPath unstable: first %q second %q", path, again)
+	}
+}
+
+func TestControlSocketPathFallbackIsUIDScoped(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", "")
+	path, err := ControlSocketPath(filepath.Join(t.TempDir(), "mount"))
+	if err != nil {
+		t.Fatalf("ControlSocketPath failed: %v", err)
+	}
+	if got := filepath.Base(filepath.Dir(path)); got != "tdc-"+strconv.Itoa(os.Getuid()) {
+		t.Fatalf("ControlSocketPath dir = %q, want uid scoped tdc dir", filepath.Dir(path))
 	}
 }
 

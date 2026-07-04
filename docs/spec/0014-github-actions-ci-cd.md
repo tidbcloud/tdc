@@ -182,7 +182,8 @@ compiled `tdc` binary:
 ## Out Of Scope
 
 - Making live e2e a required pull request check before manual MVP validation.
-- Release publishing, Homebrew publishing, package signing, or installer upload.
-  Those belong to `0012-install-and-update-distribution.md`.
+- Additional release publishing, Homebrew publishing, Scoop publishing, package
+  signing, or installer upload beyond the GoReleaser/GitHub Releases workflow
+  from `0012`. Homebrew and Scoop belong to `0016`.
 - Replacing local `make test`, `make e2e`, or `make live-e2e` with
   GitHub-only logic.

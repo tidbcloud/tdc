@@ -7,21 +7,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/Icemap/tdc/internal/api"
 	apifs "github.com/Icemap/tdc/internal/api/fs"
 	"github.com/Icemap/tdc/internal/apperr"
 	"github.com/Icemap/tdc/internal/fs/mountstate"
 	gofs "github.com/hanwen/go-fuse/v2/fs"
 	gofuse "github.com/hanwen/go-fuse/v2/fuse"
 )
+
+var errFuseWriteConflict = errors.New("remote file changed since it was opened")
 
 func (s Service) mountFUSEForeground(ctx context.Context, inputs mountInputs, remote apifs.StatusResponse, checks []MountRuntimeCheck) (MountResult, error) {
 	info, err := statFuseRemote(ctx, inputs.client, inputs.remotePath)
@@ -36,7 +41,15 @@ func (s Service) mountFUSEForeground(ctx context.Context, inputs mountInputs, re
 	}
 
 	timeout := time.Second
-	root := newRemoteFuseNode(inputs.client, inputs.remotePath, inputs.readOnly)
+	runtime := newRemoteFuseRuntime(inputs)
+	recovered, err := runtime.recoverPending(ctx)
+	if err != nil {
+		return MountResult{}, apperr.Wrap("fs.fuse_recover_pending_writes", "runtime", 1, fmt.Sprintf("recover pending FUSE writes from %q", inputs.cacheDir), err)
+	}
+	if recovered > 0 {
+		checks = append(checks, MountRuntimeCheck{Name: "fuse_write_back_recovery", Status: "passed", Message: fmt.Sprintf("uploaded %d pending writes", recovered)})
+	}
+	root := newRemoteFuseNode(runtime, inputs.remotePath)
 	options := &gofs.Options{
 		AttrTimeout:     &timeout,
 		EntryTimeout:    &timeout,
@@ -55,12 +68,22 @@ func (s Service) mountFUSEForeground(ctx context.Context, inputs mountInputs, re
 	if err != nil {
 		return MountResult{}, apperr.Wrap("fs.mount_fuse", "runtime", 1, fmt.Sprintf("mount tdc fs with FUSE at %q", inputs.mountPath), err)
 	}
+	controlServer, err := startMountControlServer(inputs.mountPath, runtime)
+	if err != nil {
+		_ = server.Unmount()
+		return MountResult{}, apperr.Wrap("fs.mount_control", "runtime", 1, fmt.Sprintf("start tdc fs mount control socket for %q", inputs.mountPath), err)
+	}
+	defer controlServer.Close()
 
 	state, err := mountstate.New(inputs.profile.Name, inputs.fileSystemName, inputs.mountPath, inputs.remotePath, inputs.driver.Name(), inputs.endpoint.BaseURL, os.Getpid(), inputs.readOnly, time.Now().UTC())
 	if err != nil {
 		_ = server.Unmount()
 		return MountResult{}, apperr.Wrap("fs.mount_state", "runtime", 1, fmt.Sprintf("create mount state for %q", inputs.mountPath), err)
 	}
+	state.ControlSocket = controlServer.SocketPath()
+	state.MountProfile = inputs.mountProfile
+	state.LocalRoot = inputs.localRoot
+	state.PackPaths = append([]string(nil), inputs.packPaths...)
 	stateFile, err := mountstate.Write(inputs.homeDir, state)
 	if err != nil {
 		_ = server.Unmount()
@@ -89,17 +112,434 @@ func (s Service) mountFUSEForeground(ctx context.Context, inputs mountInputs, re
 type remoteFuseNode struct {
 	gofs.Inode
 
-	client     *apifs.Client
+	runtime    *remoteFuseRuntime
 	remotePath string
-	readOnly   bool
 }
 
-func newRemoteFuseNode(client *apifs.Client, remotePath string, readOnly bool) *remoteFuseNode {
+func newRemoteFuseNode(runtime *remoteFuseRuntime, remotePath string) *remoteFuseNode {
 	root, err := normalizeRemotePath(defaultRemotePath(remotePath))
 	if err != nil {
 		root = "/"
 	}
-	return &remoteFuseNode{client: client, remotePath: root, readOnly: readOnly}
+	return &remoteFuseNode{runtime: runtime, remotePath: root}
+}
+
+type remoteFuseRuntime struct {
+	client      *apifs.Client
+	mountPath   string
+	remoteRoot  string
+	readOnly    bool
+	localRoot   string
+	profile     string
+	git         *fuseGitRuntime
+	metadata    *fsMetadataStore
+	readCache   *fuseReadCache
+	writeBack   *fuseWriteBackStore
+	openHandles map[*remoteFuseFile]struct{}
+	openMu      sync.Mutex
+}
+
+func newRemoteFuseRuntime(inputs mountInputs) *remoteFuseRuntime {
+	var writeBack *fuseWriteBackStore
+	if inputs.writeBackCache {
+		writeBack = newFuseWriteBackStore(inputs.cacheDir, defaultFuseWriteBackMaxBytes, inputs.cacheIdentity)
+	}
+	return &remoteFuseRuntime{
+		client:      inputs.client,
+		mountPath:   inputs.mountPath,
+		remoteRoot:  inputs.remotePath,
+		readOnly:    inputs.readOnly,
+		localRoot:   inputs.localRoot,
+		profile:     inputs.mountProfile,
+		git:         newFuseGitRuntime(),
+		metadata:    inputs.metadataStore,
+		readCache:   newFuseReadCache(inputs.readCacheBytes, inputs.readCacheFileBytes, inputs.readCacheTTL),
+		writeBack:   writeBack,
+		openHandles: map[*remoteFuseFile]struct{}{},
+	}
+}
+
+func (r *remoteFuseRuntime) overlayEnabled() bool {
+	return r != nil && strings.TrimSpace(r.localRoot) != "" && strings.TrimSpace(r.profile) != "" && r.profile != noneMountProfile
+}
+
+func (r *remoteFuseRuntime) localPath(remotePath string) (string, bool) {
+	if !r.overlayEnabled() {
+		return "", false
+	}
+	localPath, ok := remoteToLocalPath(r.remoteRoot, remotePath)
+	if !ok {
+		return "", false
+	}
+	return localPath, true
+}
+
+func (r *remoteFuseRuntime) localAbs(remotePath string) (string, bool) {
+	localPath, ok := r.localPath(remotePath)
+	if !ok {
+		return "", false
+	}
+	abs, err := overlayPathForArchivePath(r.localRoot, localPath)
+	if err != nil {
+		return "", false
+	}
+	return abs, true
+}
+
+func (r *remoteFuseRuntime) localInfo(remotePath string) (os.FileInfo, string, bool) {
+	abs, ok := r.localAbs(remotePath)
+	if !ok {
+		return nil, "", false
+	}
+	info, err := os.Lstat(abs)
+	if err != nil {
+		return nil, abs, false
+	}
+	return info, abs, true
+}
+
+func (r *remoteFuseRuntime) shouldUseLocal(remotePath string) bool {
+	if _, _, ok := r.localInfo(remotePath); ok {
+		return true
+	}
+	return r.isLocalOnly(remotePath)
+}
+
+func (r *remoteFuseRuntime) isLocalOnly(remotePath string) bool {
+	localPath, ok := r.localPath(remotePath)
+	if !ok {
+		return false
+	}
+	clean := strings.Trim(strings.TrimPrefix(path.Clean(localPath), "/"), "/")
+	if clean == "" {
+		return false
+	}
+	parts := strings.Split(clean, "/")
+	for i, part := range parts {
+		switch part {
+		case ".git", ".hg", ".svn", "node_modules", ".pnpm-store", "target", "dist", "build", "coverage", "tmp", ".tmp", ".tmp-api-extractor", ".cache", ".turbo", ".gradle", ".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache":
+			return true
+		case ".next", ".vitepress":
+			if i+1 < len(parts) && parts[i+1] == "cache" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (r *remoteFuseRuntime) localParentExists(remotePath string) bool {
+	localPath, ok := r.localPath(remotePath)
+	if !ok {
+		return false
+	}
+	if localPath == "/" {
+		return false
+	}
+	parent := path.Dir(localPath)
+	if parent == "/" {
+		parentRemote := toRemotePath(r.remoteRoot, parent)
+		return r.isLocalOnly(parentRemote) || r.profile == portableMountProfile
+	}
+	parentRemote := toRemotePath(r.remoteRoot, parent)
+	if r.isLocalOnly(parentRemote) {
+		return true
+	}
+	if r.profile != portableMountProfile {
+		return false
+	}
+	info, _, ok := r.localInfo(parentRemote)
+	return ok && info.IsDir()
+}
+
+func (r *remoteFuseRuntime) mkdirLocalParent(remotePath string) error {
+	abs, ok := r.localAbs(remotePath)
+	if !ok {
+		return os.ErrInvalid
+	}
+	return os.MkdirAll(filepath.Dir(abs), 0o755)
+}
+
+func localFuseDirEntry(name string, info os.FileInfo, inoPath string) gofuse.DirEntry {
+	mode := uint32(gofuse.S_IFREG)
+	switch {
+	case info.IsDir():
+		mode = gofuse.S_IFDIR
+	case info.Mode()&os.ModeSymlink != 0:
+		mode = gofuse.S_IFLNK
+	}
+	return gofuse.DirEntry{Name: name, Mode: mode, Ino: fuseInode("local:" + inoPath)}
+}
+
+func (r *remoteFuseRuntime) recoverPending(ctx context.Context) (int, error) {
+	if r == nil || r.writeBack == nil {
+		return 0, nil
+	}
+	return r.writeBack.recover(ctx, r.upload)
+}
+
+func (r *remoteFuseRuntime) readFile(ctx context.Context, remotePath string, version fuseObjectVersion) ([]byte, error) {
+	if data, ok := r.readCache.get(remotePath, version); ok {
+		return data, nil
+	}
+	data, err := r.client.ReadFile(ctx, remotePath)
+	if err != nil {
+		return nil, err
+	}
+	r.readCache.put(remotePath, data, version)
+	return data, nil
+}
+
+func (r *remoteFuseRuntime) statRemote(ctx context.Context, remotePath string) (fuseRemoteStat, error) {
+	stat, err := statFuseRemoteVersion(ctx, r.client, remotePath)
+	if err != nil {
+		return fuseRemoteStat{}, err
+	}
+	if info, ok := stat.info.(remoteFileInfo); ok && r.metadata != nil {
+		stat.info = r.metadata.applyFileInfo(remotePath, info)
+	}
+	return stat, nil
+}
+
+func (r *remoteFuseRuntime) statRemoteInfo(ctx context.Context, remotePath string) (os.FileInfo, error) {
+	stat, err := r.statRemote(ctx, remotePath)
+	if err != nil {
+		return nil, err
+	}
+	return stat.info, nil
+}
+
+func (r *remoteFuseRuntime) writeFile(ctx context.Context, remotePath string, data []byte, baseVersion fuseObjectVersion) (fuseObjectVersion, error) {
+	return r.writeFileWithDirty(ctx, remotePath, data, baseVersion, int64(len(data)), []fuseDirtyRange{{Start: 0, End: int64(len(data))}})
+}
+
+func (r *remoteFuseRuntime) writeFileWithDirty(ctx context.Context, remotePath string, data []byte, baseVersion fuseObjectVersion, baseSize int64, dirtyRanges []fuseDirtyRange) (fuseObjectVersion, error) {
+	var version fuseObjectVersion
+	var err error
+	if r.writeBack != nil {
+		version, err = r.writeBack.putAndUpload(ctx, remotePath, data, baseVersion, baseSize, dirtyRanges, r.upload)
+	} else {
+		version, err = r.upload(ctx, remotePath, data, baseVersion, baseSize, dirtyRanges)
+	}
+	if err != nil {
+		r.readCache.invalidate(remotePath)
+		return fuseObjectVersion{}, err
+	}
+	r.readCache.put(remotePath, data, version)
+	return version, nil
+}
+
+func (r *remoteFuseRuntime) upload(ctx context.Context, remotePath string, data []byte, baseVersion fuseObjectVersion, baseSize int64, dirtyRanges []fuseDirtyRange) (fuseObjectVersion, error) {
+	if r == nil || r.client == nil {
+		return fuseObjectVersion{}, errors.New("tdc fs FUSE runtime has no data-plane client")
+	}
+	if err := r.checkWriteBase(ctx, remotePath, baseVersion); err != nil {
+		return fuseObjectVersion{}, err
+	}
+	if shouldPatchFuseWrite(baseVersion, baseSize, int64(len(data)), dirtyRanges) {
+		if version, err := r.patchUpload(ctx, remotePath, data, baseVersion, baseSize, dirtyRanges); err == nil {
+			return version, nil
+		} else if !shouldFallbackFusePatch(err) {
+			return fuseObjectVersion{}, err
+		}
+	}
+	response, err := r.client.WriteFile(ctx, remotePath, data)
+	if err != nil {
+		return fuseObjectVersion{}, err
+	}
+	return baseVersion.withRevision(response.Revision), nil
+}
+
+func (r *remoteFuseRuntime) patchUpload(ctx context.Context, remotePath string, data []byte, baseVersion fuseObjectVersion, baseSize int64, dirtyRanges []fuseDirtyRange) (fuseObjectVersion, error) {
+	partSizeBytes := apifs.CalcAdaptivePartSize(max(baseSize, int64(len(data))))
+	dirtyParts := fuseDirtyParts(dirtyRanges, partSizeBytes, int64(len(data)))
+	if len(dirtyParts) == 0 {
+		return baseVersion, nil
+	}
+	expectedRevision := baseVersion.Revision
+	if err := r.client.PatchFile(ctx, remotePath, int64(len(data)), dirtyParts, func(partNumber int, partSize int64, original []byte) ([]byte, error) {
+		offset := int64(partNumber-1) * partSizeBytes
+		if offset >= int64(len(data)) {
+			return make([]byte, partSize), nil
+		}
+		end := offset + partSize
+		if end > int64(len(data)) {
+			end = int64(len(data))
+		}
+		out := make([]byte, partSize)
+		copy(out, data[offset:end])
+		return out, nil
+	}, apifs.PatchFileOptions{PartSize: partSizeBytes, ExpectedRevision: &expectedRevision}); err != nil {
+		return fuseObjectVersion{}, err
+	}
+	stat, err := statFuseRemoteVersion(ctx, r.client, remotePath)
+	if err != nil {
+		return fuseObjectVersion{}, err
+	}
+	return stat.version, nil
+}
+
+func (r *remoteFuseRuntime) checkWriteBase(ctx context.Context, remotePath string, baseVersion fuseObjectVersion) error {
+	if !baseVersion.known() {
+		return nil
+	}
+	stat, err := statFuseRemoteVersion(ctx, r.client, remotePath)
+	if err != nil {
+		if errors.Is(mapWebDAVError(err), os.ErrNotExist) {
+			return fmt.Errorf("%w: remote file %q no longer exists", errFuseWriteConflict, remotePath)
+		}
+		return err
+	}
+	if stat.version.conflictsWith(baseVersion) {
+		return fmt.Errorf("%w: remote file %q changed since it was opened", errFuseWriteConflict, remotePath)
+	}
+	return nil
+}
+
+func shouldPatchFuseWrite(baseVersion fuseObjectVersion, baseSize, newSize int64, dirtyRanges []fuseDirtyRange) bool {
+	if !baseVersion.known() || baseVersion.Revision <= 0 || baseSize <= 0 || newSize <= 0 || len(dirtyRanges) == 0 {
+		return false
+	}
+	if newSize != baseSize {
+		return false
+	}
+	totalDirty := int64(0)
+	for _, r := range mergeFuseDirtyRanges(dirtyRanges) {
+		if r.End > r.Start {
+			totalDirty += r.End - r.Start
+		}
+	}
+	return totalDirty > 0 && totalDirty < newSize
+}
+
+func shouldFallbackFusePatch(err error) bool {
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	if apiErr.StatusCode == http.StatusNotFound || apiErr.StatusCode == http.StatusMethodNotAllowed || apiErr.Code == "api.contract_gap" {
+		return true
+	}
+	if apiErr.StatusCode == http.StatusBadRequest {
+		message := strings.ToLower(apiErr.Message + " " + apiErr.Body)
+		return strings.Contains(message, "unknown") || strings.Contains(message, "not s3") || strings.Contains(message, "s3 not configured")
+	}
+	return false
+}
+
+func mergeFuseDirtyRanges(ranges []fuseDirtyRange) []fuseDirtyRange {
+	if len(ranges) == 0 {
+		return nil
+	}
+	cleaned := make([]fuseDirtyRange, 0, len(ranges))
+	for _, r := range ranges {
+		if r.Start < 0 {
+			r.Start = 0
+		}
+		if r.End < r.Start {
+			continue
+		}
+		cleaned = append(cleaned, r)
+	}
+	sort.Slice(cleaned, func(i, j int) bool {
+		if cleaned[i].Start == cleaned[j].Start {
+			return cleaned[i].End < cleaned[j].End
+		}
+		return cleaned[i].Start < cleaned[j].Start
+	})
+	out := cleaned[:0]
+	for _, r := range cleaned {
+		if len(out) == 0 || r.Start > out[len(out)-1].End {
+			out = append(out, r)
+			continue
+		}
+		if r.End > out[len(out)-1].End {
+			out[len(out)-1].End = r.End
+		}
+	}
+	return append([]fuseDirtyRange(nil), out...)
+}
+
+func fuseDirtyParts(ranges []fuseDirtyRange, partSizeBytes, newSize int64) []int {
+	partSizeBytes = max(partSizeBytes, int64(1))
+	seen := map[int]struct{}{}
+	for _, r := range mergeFuseDirtyRanges(ranges) {
+		if r.Start >= newSize {
+			continue
+		}
+		end := r.End
+		if end > newSize {
+			end = newSize
+		}
+		if end <= r.Start {
+			end = r.Start + 1
+		}
+		first := int(r.Start/partSizeBytes) + 1
+		last := int((end-1)/partSizeBytes) + 1
+		for part := first; part <= last; part++ {
+			seen[part] = struct{}{}
+		}
+	}
+	out := make([]int, 0, len(seen))
+	for part := range seen {
+		out = append(out, part)
+	}
+	sort.Ints(out)
+	return out
+}
+
+func (r *remoteFuseRuntime) invalidate(remotePath string) {
+	r.readCache.invalidate(remotePath)
+}
+
+func (r *remoteFuseRuntime) invalidatePrefix(remotePath string) {
+	r.readCache.invalidatePrefix(remotePath)
+}
+
+func (r *remoteFuseRuntime) registerOpenHandle(handle *remoteFuseFile) {
+	if r == nil || handle == nil {
+		return
+	}
+	r.openMu.Lock()
+	defer r.openMu.Unlock()
+	if r.openHandles == nil {
+		r.openHandles = map[*remoteFuseFile]struct{}{}
+	}
+	r.openHandles[handle] = struct{}{}
+}
+
+func (r *remoteFuseRuntime) unregisterOpenHandle(handle *remoteFuseFile) {
+	if r == nil || handle == nil {
+		return
+	}
+	r.openMu.Lock()
+	defer r.openMu.Unlock()
+	delete(r.openHandles, handle)
+}
+
+func (r *remoteFuseRuntime) retargetOpenHandles(source, target string) {
+	for _, handle := range r.openHandleSnapshot() {
+		handle.retarget(source, target)
+	}
+}
+
+func (r *remoteFuseRuntime) markDeletedOpenHandles(remotePath string) {
+	for _, handle := range r.openHandleSnapshot() {
+		handle.markDeleted(remotePath)
+	}
+}
+
+func (r *remoteFuseRuntime) openHandleSnapshot() []*remoteFuseFile {
+	if r == nil {
+		return nil
+	}
+	r.openMu.Lock()
+	defer r.openMu.Unlock()
+	out := make([]*remoteFuseFile, 0, len(r.openHandles))
+	for handle := range r.openHandles {
+		out = append(out, handle)
+	}
+	return out
 }
 
 var _ gofs.NodeGetattrer = (*remoteFuseNode)(nil)
@@ -112,6 +552,9 @@ var _ gofs.NodeUnlinker = (*remoteFuseNode)(nil)
 var _ gofs.NodeRmdirer = (*remoteFuseNode)(nil)
 var _ gofs.NodeRenamer = (*remoteFuseNode)(nil)
 var _ gofs.NodeSetattrer = (*remoteFuseNode)(nil)
+var _ gofs.NodeReadlinker = (*remoteFuseNode)(nil)
+var _ gofs.NodeSymlinker = (*remoteFuseNode)(nil)
+var _ gofs.NodeLinker = (*remoteFuseNode)(nil)
 
 func (n *remoteFuseNode) Getattr(ctx context.Context, f gofs.FileHandle, out *gofuse.AttrOut) syscall.Errno {
 	if f != nil {
@@ -119,7 +562,20 @@ func (n *remoteFuseNode) Getattr(ctx context.Context, f gofs.FileHandle, out *go
 			return getter.Getattr(ctx, out)
 		}
 	}
-	info, err := statFuseRemote(ctx, n.client, n.remotePath)
+	if info, _, ok := n.runtime.localInfo(n.remotePath); ok || n.runtime.isLocalOnly(n.remotePath) {
+		if !ok {
+			return syscall.ENOENT
+		}
+		fillFuseAttr(&out.Attr, info)
+		return gofs.OK
+	}
+	if entry, ok, err := n.runtime.gitEntry(ctx, n.remotePath); err != nil {
+		return fuseErrno(err)
+	} else if ok {
+		fillFuseAttr(&out.Attr, entry.info())
+		return gofs.OK
+	}
+	info, err := n.runtime.statRemoteInfo(ctx, n.remotePath)
 	if err != nil {
 		return fuseErrno(err)
 	}
@@ -132,34 +588,87 @@ func (n *remoteFuseNode) Lookup(ctx context.Context, name string, out *gofuse.En
 	if errno != gofs.OK {
 		return nil, errno
 	}
-	info, err := statFuseRemote(ctx, n.client, remotePath)
+	if info, _, ok := n.runtime.localInfo(remotePath); ok || n.runtime.isLocalOnly(remotePath) {
+		if !ok {
+			return nil, syscall.ENOENT
+		}
+		fillFuseAttr(&out.Attr, info)
+		child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
+		return n.NewInode(ctx, child, fuseStableAttr("local:"+remotePath, info)), gofs.OK
+	}
+	if entry, ok, err := n.runtime.gitEntry(ctx, remotePath); err != nil {
+		return nil, fuseErrno(err)
+	} else if ok {
+		info := entry.info()
+		fillFuseAttr(&out.Attr, info)
+		child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
+		return n.NewInode(ctx, child, fuseStableAttr("git:"+remotePath, info)), gofs.OK
+	}
+	info, err := n.runtime.statRemoteInfo(ctx, remotePath)
 	if err != nil {
 		return nil, fuseErrno(err)
 	}
 	fillFuseAttr(&out.Attr, info)
-	child := &remoteFuseNode{client: n.client, remotePath: remotePath, readOnly: n.readOnly}
+	child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
 	return n.NewInode(ctx, child, fuseStableAttr(remotePath, info)), gofs.OK
 }
 
 func (n *remoteFuseNode) Readdir(ctx context.Context) (gofs.DirStream, syscall.Errno) {
-	response, err := n.client.List(ctx, n.remotePath)
-	if err != nil {
-		return nil, fuseErrno(err)
+	entryByName := map[string]gofuse.DirEntry{}
+	if !n.runtime.isLocalOnly(n.remotePath) {
+		response, err := n.runtime.client.List(ctx, n.remotePath)
+		if err != nil {
+			if _, _, ok := n.runtime.localInfo(n.remotePath); !ok {
+				return nil, fuseErrno(err)
+			}
+		} else {
+			for _, entry := range response.Entries {
+				if entry.Name == "" || entry.Name == "." || entry.Name == ".." || strings.Contains(entry.Name, "/") {
+					continue
+				}
+				mode := uint32(gofuse.S_IFREG)
+				if entry.IsDir {
+					mode = gofuse.S_IFDIR
+				}
+				remotePath, errno := n.childPath(entry.Name)
+				if errno != gofs.OK {
+					continue
+				}
+				entryByName[entry.Name] = gofuse.DirEntry{Name: entry.Name, Mode: mode, Ino: fuseInode(remotePath)}
+			}
+		}
 	}
-	entries := make([]gofuse.DirEntry, 0, len(response.Entries))
-	for _, entry := range response.Entries {
-		if entry.Name == "" || entry.Name == "." || entry.Name == ".." || strings.Contains(entry.Name, "/") {
-			continue
+	if gitEntries, err := n.runtime.gitReaddir(ctx, n.remotePath); err != nil {
+		if len(entryByName) == 0 {
+			return nil, fuseErrno(err)
 		}
-		mode := uint32(gofuse.S_IFREG)
-		if entry.IsDir {
-			mode = gofuse.S_IFDIR
+	} else {
+		for _, entry := range gitEntries {
+			entryByName[entry.Name] = entry
 		}
-		remotePath, errno := n.childPath(entry.Name)
-		if errno != gofs.OK {
-			continue
+	}
+	if _, abs, ok := n.runtime.localInfo(n.remotePath); ok {
+		localEntries, err := os.ReadDir(abs)
+		if err == nil {
+			for _, entry := range localEntries {
+				if entry.Name() == "" || entry.Name() == "." || entry.Name() == ".." || strings.Contains(entry.Name(), "/") {
+					continue
+				}
+				info, err := entry.Info()
+				if err != nil {
+					continue
+				}
+				remotePath, errno := n.childPath(entry.Name())
+				if errno != gofs.OK {
+					continue
+				}
+				entryByName[entry.Name()] = localFuseDirEntry(entry.Name(), info, remotePath)
+			}
 		}
-		entries = append(entries, gofuse.DirEntry{Name: entry.Name, Mode: mode, Ino: fuseInode(remotePath)})
+	}
+	entries := make([]gofuse.DirEntry, 0, len(entryByName))
+	for _, entry := range entryByName {
+		entries = append(entries, entry)
 	}
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Name < entries[j].Name
@@ -168,7 +677,7 @@ func (n *remoteFuseNode) Readdir(ctx context.Context) (gofs.DirStream, syscall.E
 }
 
 func (n *remoteFuseNode) Mkdir(ctx context.Context, name string, mode uint32, out *gofuse.EntryOut) (*gofs.Inode, syscall.Errno) {
-	if n.readOnly {
+	if n.runtime.readOnly {
 		return nil, syscall.EROFS
 	}
 	remotePath, errno := n.childPath(name)
@@ -179,34 +688,147 @@ func (n *remoteFuseNode) Mkdir(ctx context.Context, name string, mode uint32, ou
 	if perm == 0 {
 		perm = 0o755
 	}
-	if err := n.client.Mkdir(ctx, remotePath, perm); err != nil {
+	if n.runtime.isLocalOnly(remotePath) {
+		abs, ok := n.runtime.localAbs(remotePath)
+		if !ok {
+			return nil, syscall.EINVAL
+		}
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			return nil, fuseErrno(err)
+		}
+		if err := os.Mkdir(abs, os.FileMode(perm)); err != nil {
+			return nil, fuseErrno(err)
+		}
+		info, err := os.Lstat(abs)
+		if err != nil {
+			return nil, fuseErrno(err)
+		}
+		fillFuseAttr(&out.Attr, info)
+		child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
+		return n.NewInode(ctx, child, fuseStableAttr("local:"+remotePath, info)), gofs.OK
+	}
+	if entry, ok, err := n.runtime.gitParentEntry(ctx, remotePath); err != nil {
+		return nil, fuseErrno(err)
+	} else if ok {
+		info, err := n.runtime.gitPutDirectory(ctx, entry, remotePath, os.FileMode(perm))
+		if err != nil {
+			return nil, fuseErrno(err)
+		}
+		fillFuseAttr(&out.Attr, info)
+		child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
+		return n.NewInode(ctx, child, fuseStableAttr("git:"+remotePath, info)), gofs.OK
+	}
+	if n.runtime.localParentExists(remotePath) {
+		abs, ok := n.runtime.localAbs(remotePath)
+		if !ok {
+			return nil, syscall.EINVAL
+		}
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			return nil, fuseErrno(err)
+		}
+		if err := os.Mkdir(abs, os.FileMode(perm)); err != nil {
+			return nil, fuseErrno(err)
+		}
+		info, err := os.Lstat(abs)
+		if err != nil {
+			return nil, fuseErrno(err)
+		}
+		fillFuseAttr(&out.Attr, info)
+		child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
+		return n.NewInode(ctx, child, fuseStableAttr("local:"+remotePath, info)), gofs.OK
+	}
+	if err := n.runtime.client.Mkdir(ctx, remotePath, perm); err != nil {
 		return nil, fuseErrno(err)
 	}
-	info, err := statFuseRemote(ctx, n.client, remotePath)
+	info, err := n.runtime.statRemoteInfo(ctx, remotePath)
 	if err != nil {
 		info = remoteFileInfo{name: path.Base(remotePath), mode: os.ModeDir | os.FileMode(perm), modTime: time.Now()}
 	}
 	fillFuseAttr(&out.Attr, info)
-	child := &remoteFuseNode{client: n.client, remotePath: remotePath, readOnly: n.readOnly}
+	child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
 	return n.NewInode(ctx, child, fuseStableAttr(remotePath, info)), gofs.OK
 }
 
 func (n *remoteFuseNode) Create(ctx context.Context, name string, flags uint32, mode uint32, out *gofuse.EntryOut) (*gofs.Inode, gofs.FileHandle, uint32, syscall.Errno) {
-	if n.readOnly {
+	if n.runtime.readOnly {
 		return nil, nil, 0, syscall.EROFS
 	}
 	remotePath, errno := n.childPath(name)
 	if errno != gofs.OK {
 		return nil, nil, 0, errno
 	}
+	if n.runtime.isLocalOnly(remotePath) {
+		abs, ok := n.runtime.localAbs(remotePath)
+		if !ok {
+			return nil, nil, 0, syscall.EINVAL
+		}
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			return nil, nil, 0, fuseErrno(err)
+		}
+		perm := mode & 0o777
+		if perm == 0 {
+			perm = 0o644
+		}
+		fd, err := syscall.Open(abs, int(flags)|syscall.O_CREAT, uint32(perm))
+		if err != nil {
+			return nil, nil, 0, fuseErrno(err)
+		}
+		info, err := os.Lstat(abs)
+		if err != nil {
+			_ = syscall.Close(fd)
+			return nil, nil, 0, fuseErrno(err)
+		}
+		fillFuseAttr(&out.Attr, info)
+		child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
+		return n.NewInode(ctx, child, fuseStableAttr("local:"+remotePath, info)), gofs.NewLoopbackFile(fd), 0, gofs.OK
+	}
+	if entry, ok, err := n.runtime.gitParentEntry(ctx, remotePath); err != nil {
+		return nil, nil, 0, fuseErrno(err)
+	} else if ok {
+		perm := os.FileMode(mode & 0o777)
+		if perm == 0 {
+			perm = 0o644
+		}
+		info := remoteFileInfo{name: path.Base(remotePath), mode: perm, modTime: time.Now()}
+		fillFuseAttr(&out.Attr, info)
+		child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
+		handle := newGitFuseFile(n.runtime, entry.workspace, remotePath, nil, true, true, perm)
+		return n.NewInode(ctx, child, fuseStableAttr("git:"+remotePath, info)), handle, gofuse.FOPEN_DIRECT_IO, gofs.OK
+	}
+	if n.runtime.localParentExists(remotePath) {
+		abs, ok := n.runtime.localAbs(remotePath)
+		if !ok {
+			return nil, nil, 0, syscall.EINVAL
+		}
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			return nil, nil, 0, fuseErrno(err)
+		}
+		perm := mode & 0o777
+		if perm == 0 {
+			perm = 0o644
+		}
+		fd, err := syscall.Open(abs, int(flags)|syscall.O_CREAT, uint32(perm))
+		if err != nil {
+			return nil, nil, 0, fuseErrno(err)
+		}
+		info, err := os.Lstat(abs)
+		if err != nil {
+			_ = syscall.Close(fd)
+			return nil, nil, 0, fuseErrno(err)
+		}
+		fillFuseAttr(&out.Attr, info)
+		child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
+		return n.NewInode(ctx, child, fuseStableAttr("local:"+remotePath, info)), gofs.NewLoopbackFile(fd), 0, gofs.OK
+	}
 	if flags&uint32(syscall.O_EXCL) != 0 {
-		if _, err := statFuseRemote(ctx, n.client, remotePath); err == nil {
+		if _, err := n.runtime.statRemoteInfo(ctx, remotePath); err == nil {
 			return nil, nil, 0, syscall.EEXIST
 		} else if !errors.Is(mapWebDAVError(err), os.ErrNotExist) {
 			return nil, nil, 0, fuseErrno(err)
 		}
 	}
-	if _, err := n.client.WriteFile(ctx, remotePath, nil); err != nil {
+	version, err := n.runtime.writeFile(ctx, remotePath, nil, fuseObjectVersion{})
+	if err != nil {
 		return nil, nil, 0, fuseErrno(err)
 	}
 	perm := os.FileMode(mode & 0o777)
@@ -215,64 +837,148 @@ func (n *remoteFuseNode) Create(ctx context.Context, name string, flags uint32, 
 	}
 	info := remoteFileInfo{name: path.Base(remotePath), mode: perm, modTime: time.Now()}
 	fillFuseAttr(&out.Attr, info)
-	child := &remoteFuseNode{client: n.client, remotePath: remotePath, readOnly: n.readOnly}
-	handle := newRemoteFuseFile(n.client, remotePath, nil, true, false)
+	child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
+	handle := newRemoteFuseFile(n.runtime, remotePath, nil, true, false, version)
 	return n.NewInode(ctx, child, fuseStableAttr(remotePath, info)), handle, gofuse.FOPEN_DIRECT_IO, gofs.OK
 }
 
 func (n *remoteFuseNode) Open(ctx context.Context, flags uint32) (gofs.FileHandle, uint32, syscall.Errno) {
 	writable := flags&gofuse.O_ANYWRITE != 0
-	if writable && n.readOnly {
+	if writable && n.runtime.readOnly {
 		return nil, 0, syscall.EROFS
 	}
-	info, err := statFuseRemote(ctx, n.client, n.remotePath)
+	if info, abs, ok := n.runtime.localInfo(n.remotePath); ok || n.runtime.isLocalOnly(n.remotePath) {
+		if !ok {
+			return nil, 0, syscall.ENOENT
+		}
+		if info.IsDir() {
+			return nil, 0, syscall.EISDIR
+		}
+		fd, err := syscall.Open(abs, int(flags), 0)
+		if err != nil {
+			return nil, 0, fuseErrno(err)
+		}
+		return gofs.NewLoopbackFile(fd), 0, gofs.OK
+	}
+	if entry, ok, err := n.runtime.gitEntry(ctx, n.remotePath); err != nil {
+		return nil, 0, fuseErrno(err)
+	} else if ok {
+		if entry.kind() == "dir" {
+			return nil, 0, syscall.EISDIR
+		}
+		data := []byte{}
+		if !writable || flags&uint32(syscall.O_TRUNC) == 0 {
+			readData, readErr := n.runtime.gitReadFile(ctx, entry)
+			if readErr != nil {
+				return nil, 0, fuseErrno(readErr)
+			}
+			data = readData
+		}
+		dirty := writable && flags&uint32(syscall.O_TRUNC) != 0
+		return newGitFuseFile(n.runtime, entry.workspace, n.remotePath, data, writable, dirty, entry.fileMode()), gofuse.FOPEN_DIRECT_IO, gofs.OK
+	}
+	stat, err := n.runtime.statRemote(ctx, n.remotePath)
 	if err != nil {
 		return nil, 0, fuseErrno(err)
 	}
+	info := stat.info
 	if info.IsDir() {
 		return nil, 0, syscall.EISDIR
 	}
 	data := []byte{}
 	if !writable || flags&uint32(syscall.O_TRUNC) == 0 {
-		data, err = n.client.ReadFile(ctx, n.remotePath)
+		data, err = n.runtime.readFile(ctx, n.remotePath, stat.version)
 		if err != nil {
 			return nil, 0, fuseErrno(err)
 		}
 	}
 	dirty := writable && flags&uint32(syscall.O_TRUNC) != 0
-	return newRemoteFuseFile(n.client, n.remotePath, data, writable, dirty), gofuse.FOPEN_DIRECT_IO, gofs.OK
+	return newRemoteFuseFile(n.runtime, n.remotePath, data, writable, dirty, stat.version), gofuse.FOPEN_DIRECT_IO, gofs.OK
 }
 
 func (n *remoteFuseNode) Unlink(ctx context.Context, name string) syscall.Errno {
-	if n.readOnly {
+	if n.runtime.readOnly {
 		return syscall.EROFS
 	}
 	remotePath, errno := n.childPath(name)
 	if errno != gofs.OK {
 		return errno
 	}
-	if err := n.client.DeleteFile(ctx, remotePath, false); err != nil {
+	if _, abs, ok := n.runtime.localInfo(remotePath); ok || n.runtime.isLocalOnly(remotePath) {
+		if !ok {
+			return syscall.ENOENT
+		}
+		if err := os.Remove(abs); err != nil {
+			return fuseErrno(err)
+		}
+		return gofs.OK
+	}
+	if entry, ok, err := n.runtime.gitEntry(ctx, remotePath); err != nil {
+		return fuseErrno(err)
+	} else if ok {
+		if err := n.runtime.gitWhiteout(ctx, entry.workspace, remotePath); err != nil {
+			return fuseErrno(err)
+		}
+		if n.runtime.metadata != nil {
+			_ = n.runtime.metadata.remove(remotePath, false)
+		}
+		return gofs.OK
+	}
+	if err := n.runtime.client.DeleteFile(ctx, remotePath, false); err != nil {
 		return fuseErrno(err)
 	}
+	if n.runtime.metadata != nil {
+		_ = n.runtime.metadata.remove(remotePath, false)
+	}
+	n.runtime.invalidatePrefix(remotePath)
+	n.runtime.markDeletedOpenHandles(remotePath)
 	return gofs.OK
 }
 
 func (n *remoteFuseNode) Rmdir(ctx context.Context, name string) syscall.Errno {
-	if n.readOnly {
+	if n.runtime.readOnly {
 		return syscall.EROFS
 	}
 	remotePath, errno := n.childPath(name)
 	if errno != gofs.OK {
 		return errno
 	}
-	if err := n.client.DeleteFile(ctx, remotePath, false); err != nil {
+	if _, abs, ok := n.runtime.localInfo(remotePath); ok || n.runtime.isLocalOnly(remotePath) {
+		if !ok {
+			return syscall.ENOENT
+		}
+		if err := os.Remove(abs); err != nil {
+			return fuseErrno(err)
+		}
+		return gofs.OK
+	}
+	if entry, ok, err := n.runtime.gitEntry(ctx, remotePath); err != nil {
+		return fuseErrno(err)
+	} else if ok {
+		if entry.kind() != "dir" {
+			return syscall.ENOTDIR
+		}
+		if err := n.runtime.gitWhiteout(ctx, entry.workspace, remotePath); err != nil {
+			return fuseErrno(err)
+		}
+		if n.runtime.metadata != nil {
+			_ = n.runtime.metadata.remove(remotePath, true)
+		}
+		return gofs.OK
+	}
+	if err := n.runtime.client.DeleteFile(ctx, remotePath, false); err != nil {
 		return fuseErrno(err)
 	}
+	if n.runtime.metadata != nil {
+		_ = n.runtime.metadata.remove(remotePath, true)
+	}
+	n.runtime.invalidatePrefix(remotePath)
+	n.runtime.markDeletedOpenHandles(remotePath)
 	return gofs.OK
 }
 
 func (n *remoteFuseNode) Rename(ctx context.Context, name string, newParent gofs.InodeEmbedder, newName string, flags uint32) syscall.Errno {
-	if n.readOnly {
+	if n.runtime.readOnly {
 		return syscall.EROFS
 	}
 	if flags != 0 {
@@ -290,9 +996,76 @@ func (n *remoteFuseNode) Rename(ctx context.Context, name string, newParent gofs
 	if errno != gofs.OK {
 		return errno
 	}
-	if err := n.client.Rename(ctx, source, target); err != nil {
+	if n.runtime.shouldUseLocal(source) || parent.runtime.shouldUseLocal(target) {
+		sourceAbs, ok := n.runtime.localAbs(source)
+		if !ok {
+			return syscall.EINVAL
+		}
+		targetAbs, ok := parent.runtime.localAbs(target)
+		if !ok {
+			return syscall.EINVAL
+		}
+		if err := os.MkdirAll(filepath.Dir(targetAbs), 0o755); err != nil {
+			return fuseErrno(err)
+		}
+		if err := os.Rename(sourceAbs, targetAbs); err != nil {
+			return fuseErrno(err)
+		}
+		return gofs.OK
+	}
+	if sourceEntry, ok, err := n.runtime.gitEntry(ctx, source); err != nil {
+		return fuseErrno(err)
+	} else if ok {
+		targetParent, parentOK, err := parent.runtime.gitParentEntry(ctx, target)
+		if err != nil {
+			return fuseErrno(err)
+		}
+		if parentOK && targetParent.workspace.WorkspaceID == sourceEntry.workspace.WorkspaceID {
+			data := []byte{}
+			if sourceEntry.kind() != "dir" {
+				data, err = n.runtime.gitReadFile(ctx, sourceEntry)
+				if err != nil {
+					return fuseErrno(err)
+				}
+			}
+			if err := n.runtime.gitPutEntry(ctx, sourceEntry.workspace, target, sourceEntry.kind(), sourceEntry.mode(), data); err != nil {
+				return fuseErrno(err)
+			}
+			if err := n.runtime.gitWhiteout(ctx, sourceEntry.workspace, source); err != nil {
+				return fuseErrno(err)
+			}
+			if n.runtime.metadata != nil {
+				_ = n.runtime.metadata.move(source, target)
+			}
+			return gofs.OK
+		}
+	}
+	if parent.runtime.localParentExists(target) {
+		sourceAbs, ok := n.runtime.localAbs(source)
+		if !ok {
+			return syscall.EINVAL
+		}
+		targetAbs, ok := parent.runtime.localAbs(target)
+		if !ok {
+			return syscall.EINVAL
+		}
+		if err := os.MkdirAll(filepath.Dir(targetAbs), 0o755); err != nil {
+			return fuseErrno(err)
+		}
+		if err := os.Rename(sourceAbs, targetAbs); err != nil {
+			return fuseErrno(err)
+		}
+		return gofs.OK
+	}
+	if err := n.runtime.client.Rename(ctx, source, target); err != nil {
 		return fuseErrno(err)
 	}
+	if n.runtime.metadata != nil {
+		_ = n.runtime.metadata.move(source, target)
+	}
+	n.runtime.invalidatePrefix(source)
+	n.runtime.invalidatePrefix(target)
+	n.runtime.retargetOpenHandles(source, target)
 	return gofs.OK
 }
 
@@ -302,33 +1075,306 @@ func (n *remoteFuseNode) Setattr(ctx context.Context, f gofs.FileHandle, in *gof
 			return setter.Setattr(ctx, in, out)
 		}
 	}
-	size, ok := in.GetSize()
-	if !ok {
+	size, hasSize := in.GetSize()
+	_, hasMode := in.GetMode()
+	_, hasMTime := in.GetMTime()
+	_, hasATime := in.GetATime()
+	if !hasSize && !hasMode && !hasMTime && !hasATime {
 		return n.Getattr(ctx, f, out)
 	}
-	if n.readOnly {
+	if n.runtime.readOnly {
 		return syscall.EROFS
 	}
-	info, err := statFuseRemote(ctx, n.client, n.remotePath)
+	if info, abs, ok := n.runtime.localInfo(n.remotePath); ok || n.runtime.isLocalOnly(n.remotePath) {
+		if !ok {
+			return syscall.ENOENT
+		}
+		if size, ok := in.GetSize(); ok {
+			if info.IsDir() {
+				return syscall.EISDIR
+			}
+			if err := os.Truncate(abs, int64(size)); err != nil {
+				return fuseErrno(err)
+			}
+		}
+		if mode, ok := in.GetMode(); ok {
+			if err := os.Chmod(abs, os.FileMode(mode)); err != nil {
+				return fuseErrno(err)
+			}
+		}
+		if mtime, ok := in.GetMTime(); ok {
+			atime := mtime
+			if got, ok := in.GetATime(); ok {
+				atime = got
+			}
+			if err := os.Chtimes(abs, atime, mtime); err != nil {
+				return fuseErrno(err)
+			}
+		}
+		next, err := os.Lstat(abs)
+		if err != nil {
+			return fuseErrno(err)
+		}
+		fillFuseAttr(&out.Attr, next)
+		return gofs.OK
+	}
+	if entry, ok, err := n.runtime.gitEntry(ctx, n.remotePath); err != nil {
+		return fuseErrno(err)
+	} else if ok {
+		if entry.kind() == "dir" && hasSize {
+			return syscall.EISDIR
+		}
+		data := []byte{}
+		if entry.kind() != "dir" {
+			data, err = n.runtime.gitReadFile(ctx, entry)
+			if err != nil {
+				return fuseErrno(err)
+			}
+		}
+		if hasSize {
+			var errno syscall.Errno
+			data, errno = resizeFuseData(data, size)
+			if errno != gofs.OK {
+				return errno
+			}
+		}
+		mode := entry.mode()
+		if got, ok := in.GetMode(); ok {
+			mode = gitModeString(entry.kind(), os.FileMode(got))
+		}
+		if err := n.runtime.gitPutEntry(ctx, entry.workspace, n.remotePath, entry.kind(), mode, data); err != nil {
+			return fuseErrno(err)
+		}
+		fillFuseAttr(&out.Attr, entry.withModeAndSize(mode, int64(len(data))).info())
+		return gofs.OK
+	}
+	stat, err := n.runtime.statRemote(ctx, n.remotePath)
 	if err != nil {
 		return fuseErrno(err)
 	}
-	if info.IsDir() {
+	info := stat.info
+	if info.IsDir() && hasSize {
 		return syscall.EISDIR
 	}
-	data, err := n.client.ReadFile(ctx, n.remotePath)
-	if err != nil {
-		return fuseErrno(err)
+	var resized []byte
+	if hasSize {
+		data, err := n.runtime.readFile(ctx, n.remotePath, stat.version)
+		if err != nil {
+			return fuseErrno(err)
+		}
+		var errno syscall.Errno
+		resized, errno = resizeFuseData(data, size)
+		if errno != gofs.OK {
+			return errno
+		}
+		if _, err := n.runtime.writeFile(ctx, n.remotePath, resized, stat.version); err != nil {
+			return fuseErrno(err)
+		}
 	}
-	resized, errno := resizeFuseData(data, size)
+	if mode, ok := in.GetMode(); ok {
+		if err := n.runtime.client.Chmod(ctx, n.remotePath, int64(mode)); err != nil {
+			return fuseErrno(err)
+		}
+		if n.runtime.metadata != nil {
+			_ = n.runtime.metadata.setMode(n.remotePath, int64(mode))
+		}
+	}
+	if hasSize {
+		fillFuseAttrFromData(&out.Attr, n.remotePath, resized)
+		return gofs.OK
+	}
+	return n.Getattr(ctx, f, out)
+}
+
+func (n *remoteFuseNode) Readlink(ctx context.Context) ([]byte, syscall.Errno) {
+	if _, abs, ok := n.runtime.localInfo(n.remotePath); ok {
+		target, err := os.Readlink(abs)
+		if err != nil {
+			return nil, fuseErrno(err)
+		}
+		return []byte(target), gofs.OK
+	}
+	if entry, ok, err := n.runtime.gitEntry(ctx, n.remotePath); err != nil {
+		return nil, fuseErrno(err)
+	} else if ok && entry.kind() == "symlink" {
+		data, err := n.runtime.gitReadFile(ctx, entry)
+		if err != nil {
+			return nil, fuseErrno(err)
+		}
+		return data, gofs.OK
+	}
+	if n.runtime.metadata != nil {
+		if target, ok := n.runtime.metadata.symlinkTarget(n.remotePath); ok {
+			return []byte(target), gofs.OK
+		}
+	}
+	return nil, syscall.ENOTSUP
+}
+
+func (n *remoteFuseNode) Symlink(ctx context.Context, target, name string, out *gofuse.EntryOut) (*gofs.Inode, syscall.Errno) {
+	if n.runtime.readOnly {
+		return nil, syscall.EROFS
+	}
+	remotePath, errno := n.childPath(name)
 	if errno != gofs.OK {
-		return errno
+		return nil, errno
 	}
-	if _, err := n.client.WriteFile(ctx, n.remotePath, resized); err != nil {
-		return fuseErrno(err)
+	if n.runtime.isLocalOnly(remotePath) {
+		abs, ok := n.runtime.localAbs(remotePath)
+		if !ok {
+			return nil, syscall.EINVAL
+		}
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			return nil, fuseErrno(err)
+		}
+		if err := os.Symlink(target, abs); err != nil {
+			return nil, fuseErrno(err)
+		}
+		info, err := os.Lstat(abs)
+		if err != nil {
+			return nil, fuseErrno(err)
+		}
+		fillFuseAttr(&out.Attr, info)
+		child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
+		return n.NewInode(ctx, child, fuseStableAttr("local:"+remotePath, info)), gofs.OK
 	}
-	fillFuseAttrFromData(&out.Attr, n.remotePath, resized)
-	return gofs.OK
+	if entry, ok, err := n.runtime.gitParentEntry(ctx, remotePath); err != nil {
+		return nil, fuseErrno(err)
+	} else if ok {
+		if err := n.runtime.gitPutEntry(ctx, entry.workspace, remotePath, "symlink", "120000", []byte(target)); err != nil {
+			return nil, fuseErrno(err)
+		}
+		info := remoteFileInfo{name: path.Base(remotePath), size: int64(len(target)), mode: os.ModeSymlink | 0o777, modTime: time.Now()}
+		fillFuseAttr(&out.Attr, info)
+		child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
+		return n.NewInode(ctx, child, fuseStableAttr("git:"+remotePath, info)), gofs.OK
+	}
+	if n.runtime.localParentExists(remotePath) {
+		abs, ok := n.runtime.localAbs(remotePath)
+		if !ok {
+			return nil, syscall.EINVAL
+		}
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			return nil, fuseErrno(err)
+		}
+		if err := os.Symlink(target, abs); err != nil {
+			return nil, fuseErrno(err)
+		}
+		info, err := os.Lstat(abs)
+		if err != nil {
+			return nil, fuseErrno(err)
+		}
+		fillFuseAttr(&out.Attr, info)
+		child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
+		return n.NewInode(ctx, child, fuseStableAttr("local:"+remotePath, info)), gofs.OK
+	}
+	if err := n.runtime.client.Symlink(ctx, target, remotePath); err != nil {
+		return nil, fuseErrno(err)
+	}
+	if n.runtime.metadata != nil {
+		_ = n.runtime.metadata.setSymlink(remotePath, target)
+	}
+	info := remoteFileInfo{name: path.Base(remotePath), size: int64(len(target)), mode: os.ModeSymlink | 0o777, modTime: time.Now()}
+	fillFuseAttr(&out.Attr, info)
+	child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
+	return n.NewInode(ctx, child, fuseStableAttr(remotePath, info)), gofs.OK
+}
+
+func (n *remoteFuseNode) Link(ctx context.Context, target gofs.InodeEmbedder, name string, out *gofuse.EntryOut) (*gofs.Inode, syscall.Errno) {
+	if n.runtime.readOnly {
+		return nil, syscall.EROFS
+	}
+	sourceNode, ok := target.(*remoteFuseNode)
+	if !ok {
+		return nil, syscall.EIO
+	}
+	linkPath, errno := n.childPath(name)
+	if errno != gofs.OK {
+		return nil, errno
+	}
+	if sourceNode.runtime.shouldUseLocal(sourceNode.remotePath) || n.runtime.isLocalOnly(linkPath) {
+		sourceAbs, ok := sourceNode.runtime.localAbs(sourceNode.remotePath)
+		if !ok {
+			return nil, syscall.EINVAL
+		}
+		linkAbs, ok := n.runtime.localAbs(linkPath)
+		if !ok {
+			return nil, syscall.EINVAL
+		}
+		if err := os.MkdirAll(filepath.Dir(linkAbs), 0o755); err != nil {
+			return nil, fuseErrno(err)
+		}
+		if err := os.Link(sourceAbs, linkAbs); err != nil {
+			return nil, fuseErrno(err)
+		}
+		info, err := os.Lstat(linkAbs)
+		if err != nil {
+			return nil, fuseErrno(err)
+		}
+		fillFuseAttr(&out.Attr, info)
+		child := &remoteFuseNode{runtime: n.runtime, remotePath: linkPath}
+		return n.NewInode(ctx, child, fuseStableAttr("local:"+linkPath, info)), gofs.OK
+	}
+	if sourceEntry, ok, err := sourceNode.runtime.gitEntry(ctx, sourceNode.remotePath); err != nil {
+		return nil, fuseErrno(err)
+	} else if ok {
+		targetParent, parentOK, err := n.runtime.gitParentEntry(ctx, linkPath)
+		if err != nil {
+			return nil, fuseErrno(err)
+		}
+		if parentOK && targetParent.workspace.WorkspaceID == sourceEntry.workspace.WorkspaceID {
+			data, err := sourceNode.runtime.gitReadFile(ctx, sourceEntry)
+			if err != nil {
+				return nil, fuseErrno(err)
+			}
+			if err := n.runtime.gitPutEntry(ctx, sourceEntry.workspace, linkPath, sourceEntry.kind(), sourceEntry.mode(), data); err != nil {
+				return nil, fuseErrno(err)
+			}
+			if n.runtime.metadata != nil {
+				_ = n.runtime.metadata.copyMetadata(sourceNode.remotePath, linkPath)
+			}
+			info := sourceEntry.withName(path.Base(linkPath)).info()
+			fillFuseAttr(&out.Attr, info)
+			child := &remoteFuseNode{runtime: n.runtime, remotePath: linkPath}
+			return n.NewInode(ctx, child, fuseStableAttr("git:"+linkPath, info)), gofs.OK
+		}
+	}
+	if n.runtime.localParentExists(linkPath) {
+		sourceAbs, ok := sourceNode.runtime.localAbs(sourceNode.remotePath)
+		if !ok {
+			return nil, syscall.EINVAL
+		}
+		linkAbs, ok := n.runtime.localAbs(linkPath)
+		if !ok {
+			return nil, syscall.EINVAL
+		}
+		if err := os.MkdirAll(filepath.Dir(linkAbs), 0o755); err != nil {
+			return nil, fuseErrno(err)
+		}
+		if err := os.Link(sourceAbs, linkAbs); err != nil {
+			return nil, fuseErrno(err)
+		}
+		info, err := os.Lstat(linkAbs)
+		if err != nil {
+			return nil, fuseErrno(err)
+		}
+		fillFuseAttr(&out.Attr, info)
+		child := &remoteFuseNode{runtime: n.runtime, remotePath: linkPath}
+		return n.NewInode(ctx, child, fuseStableAttr("local:"+linkPath, info)), gofs.OK
+	}
+	if err := n.runtime.client.Hardlink(ctx, sourceNode.remotePath, linkPath); err != nil {
+		return nil, fuseErrno(err)
+	}
+	if n.runtime.metadata != nil {
+		_ = n.runtime.metadata.copyMetadata(sourceNode.remotePath, linkPath)
+	}
+	info, err := n.runtime.statRemoteInfo(ctx, linkPath)
+	if err != nil {
+		info = remoteFileInfo{name: path.Base(linkPath), mode: 0o644, modTime: time.Now()}
+	}
+	fillFuseAttr(&out.Attr, info)
+	child := &remoteFuseNode{runtime: n.runtime, remotePath: linkPath}
+	return n.NewInode(ctx, child, fuseStableAttr(linkPath, info)), gofs.OK
 }
 
 func (n *remoteFuseNode) childPath(name string) (string, syscall.Errno) {
@@ -350,25 +1396,39 @@ func (n *remoteFuseNode) childPath(name string) (string, syscall.Errno) {
 }
 
 type remoteFuseFile struct {
-	mu         sync.Mutex
-	client     *apifs.Client
-	remotePath string
-	data       []byte
-	writable   bool
-	dirty      bool
-	closed     bool
-	modTime    time.Time
+	mu               sync.Mutex
+	runtime          *remoteFuseRuntime
+	remotePath       string
+	data             []byte
+	version          fuseObjectVersion
+	baseSize         int64
+	writable         bool
+	dirty            bool
+	dirtyRanges      []fuseDirtyRange
+	forceWholeUpload bool
+	deleted          bool
+	closed           bool
+	modTime          time.Time
+	mode             os.FileMode
+	commit           func(context.Context, *remoteFuseFile) error
 }
 
-func newRemoteFuseFile(client *apifs.Client, remotePath string, data []byte, writable bool, dirty bool) *remoteFuseFile {
-	return &remoteFuseFile{
-		client:     client,
+func newRemoteFuseFile(runtime *remoteFuseRuntime, remotePath string, data []byte, writable bool, dirty bool, version fuseObjectVersion) *remoteFuseFile {
+	handle := &remoteFuseFile{
+		runtime:    runtime,
 		remotePath: remotePath,
 		data:       append([]byte(nil), data...),
+		version:    version,
+		baseSize:   int64(len(data)),
 		writable:   writable,
 		dirty:      dirty,
 		modTime:    time.Now(),
 	}
+	if dirty {
+		handle.markDirtyRange(0, int64(len(data)))
+	}
+	runtime.registerOpenHandle(handle)
+	return handle
 }
 
 var _ gofs.FileReader = (*remoteFuseFile)(nil)
@@ -413,6 +1473,7 @@ func (f *remoteFuseFile) Write(ctx context.Context, data []byte, off int64) (uin
 	}
 	copy(f.data[off:end], data)
 	f.dirty = true
+	f.markDirtyRange(off, end)
 	f.modTime = time.Now()
 	return uint32(len(data)), gofs.OK
 }
@@ -436,6 +1497,7 @@ func (f *remoteFuseFile) Release(ctx context.Context) syscall.Errno {
 		return gofs.OK
 	}
 	f.closed = true
+	defer f.runtime.unregisterOpenHandle(f)
 	return f.flushLocked(ctx)
 }
 
@@ -453,16 +1515,22 @@ func (f *remoteFuseFile) Setattr(ctx context.Context, in *gofuse.SetAttrIn, out 
 		}
 		f.data = resized
 		f.dirty = true
+		f.forceWholeUpload = true
 		f.modTime = time.Now()
 	}
-	fillFuseAttrFromData(&out.Attr, f.remotePath, f.data)
+	if mode, ok := in.GetMode(); ok {
+		f.mode = os.FileMode(mode)
+		f.dirty = true
+		f.forceWholeUpload = true
+	}
+	fillFuseAttrForHandle(&out.Attr, f.remotePath, f.data, f.mode)
 	return gofs.OK
 }
 
 func (f *remoteFuseFile) Getattr(ctx context.Context, out *gofuse.AttrOut) syscall.Errno {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	fillFuseAttrFromData(&out.Attr, f.remotePath, f.data)
+	fillFuseAttrForHandle(&out.Attr, f.remotePath, f.data, f.mode)
 	return gofs.OK
 }
 
@@ -470,32 +1538,97 @@ func (f *remoteFuseFile) flushLocked(ctx context.Context) syscall.Errno {
 	if !f.writable || !f.dirty {
 		return gofs.OK
 	}
-	if _, err := f.client.WriteFile(ctx, f.remotePath, f.data); err != nil {
+	if f.deleted {
+		f.dirty = false
+		return gofs.OK
+	}
+	if f.commit != nil {
+		if err := f.commit(ctx, f); err != nil {
+			return fuseErrno(err)
+		}
+		f.baseSize = int64(len(f.data))
+		f.dirtyRanges = nil
+		f.forceWholeUpload = false
+		f.dirty = false
+		return gofs.OK
+	}
+	dirtyRanges := append([]fuseDirtyRange(nil), f.dirtyRanges...)
+	if f.forceWholeUpload {
+		dirtyRanges = []fuseDirtyRange{{Start: 0, End: int64(len(f.data))}}
+	}
+	version, err := f.runtime.writeFileWithDirty(ctx, f.remotePath, f.data, f.version, f.baseSize, dirtyRanges)
+	if err != nil {
 		return fuseErrno(err)
 	}
+	f.version = version
+	f.baseSize = int64(len(f.data))
+	f.dirtyRanges = nil
+	f.forceWholeUpload = false
 	f.dirty = false
 	return gofs.OK
 }
 
+func (f *remoteFuseFile) markDirtyRange(start, end int64) {
+	if end < start {
+		return
+	}
+	if end == start {
+		end = start
+	}
+	f.dirtyRanges = mergeFuseDirtyRanges(append(f.dirtyRanges, fuseDirtyRange{Start: start, End: end}))
+}
+
+func (f *remoteFuseFile) retarget(source, target string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	switch {
+	case f.remotePath == source:
+		f.remotePath = target
+	case strings.HasPrefix(f.remotePath, treePrefix(source)):
+		f.remotePath = target + strings.TrimPrefix(f.remotePath, source)
+	}
+}
+
+func (f *remoteFuseFile) markDeleted(remotePath string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.remotePath == remotePath || strings.HasPrefix(f.remotePath, treePrefix(remotePath)) {
+		f.deleted = true
+	}
+}
+
+type fuseRemoteStat struct {
+	info    os.FileInfo
+	version fuseObjectVersion
+}
+
 func statFuseRemote(ctx context.Context, client *apifs.Client, remotePath string) (os.FileInfo, error) {
+	stat, err := statFuseRemoteVersion(ctx, client, remotePath)
+	if err != nil {
+		return nil, err
+	}
+	return stat.info, nil
+}
+
+func statFuseRemoteVersion(ctx context.Context, client *apifs.Client, remotePath string) (fuseRemoteStat, error) {
 	metadata, err := client.StatMetadata(ctx, remotePath)
 	if err == nil {
-		return fileInfoFromMetadata(remotePath, metadata), nil
+		return fuseRemoteStat{info: fileInfoFromMetadata(remotePath, metadata), version: fuseVersionFromMetadata(metadata)}, nil
 	}
 	if isAPINotFound(err) {
-		return nil, os.ErrNotExist
+		return fuseRemoteStat{}, os.ErrNotExist
 	}
 	if shouldFallbackStat(err) {
 		stat, statErr := client.Stat(ctx, remotePath)
 		if statErr == nil {
-			return fileInfoFromStat(remotePath, stat), nil
+			return fuseRemoteStat{info: fileInfoFromStat(remotePath, stat), version: fuseVersionFromStat(stat)}, nil
 		}
 		if isAPINotFound(statErr) {
-			return nil, os.ErrNotExist
+			return fuseRemoteStat{}, os.ErrNotExist
 		}
-		return nil, mapWebDAVError(statErr)
+		return fuseRemoteStat{}, mapWebDAVError(statErr)
 	}
-	return nil, mapWebDAVError(err)
+	return fuseRemoteStat{}, mapWebDAVError(err)
 }
 
 func fillFuseAttr(attr *gofuse.Attr, info os.FileInfo) {
@@ -506,6 +1639,14 @@ func fillFuseAttr(attr *gofuse.Attr, info os.FileInfo) {
 		}
 		attr.Mode = gofuse.S_IFDIR | mode
 		attr.Size = 0
+	} else if info.Mode()&os.ModeSymlink != 0 {
+		if mode == 0 {
+			mode = 0o777
+		}
+		attr.Mode = gofuse.S_IFLNK | mode
+		if info.Size() > 0 {
+			attr.Size = uint64(info.Size())
+		}
 	} else {
 		if mode == 0 {
 			mode = 0o644
@@ -528,10 +1669,19 @@ func fillFuseAttrFromData(attr *gofuse.Attr, remotePath string, data []byte) {
 	fillFuseAttr(attr, remoteFileInfo{name: path.Base(remotePath), size: int64(len(data)), mode: 0o644, modTime: time.Now()})
 }
 
+func fillFuseAttrForHandle(attr *gofuse.Attr, remotePath string, data []byte, mode os.FileMode) {
+	if mode == 0 {
+		mode = 0o644
+	}
+	fillFuseAttr(attr, remoteFileInfo{name: path.Base(remotePath), size: int64(len(data)), mode: mode, modTime: time.Now()})
+}
+
 func fuseStableAttr(remotePath string, info os.FileInfo) gofs.StableAttr {
 	mode := uint32(gofuse.S_IFREG)
 	if info.IsDir() {
 		mode = gofuse.S_IFDIR
+	} else if info.Mode()&os.ModeSymlink != 0 {
+		mode = gofuse.S_IFLNK
 	}
 	return gofs.StableAttr{Mode: mode, Ino: fuseInode(remotePath)}
 }
@@ -571,6 +1721,8 @@ func fuseErrno(err error) syscall.Errno {
 	}
 	err = mapWebDAVError(err)
 	switch {
+	case errors.Is(err, errFuseWriteConflict):
+		return syscall.ESTALE
 	case errors.Is(err, os.ErrNotExist):
 		return syscall.ENOENT
 	case errors.Is(err, os.ErrPermission):

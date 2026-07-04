@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -89,6 +91,12 @@ type WriteResponse struct {
 	Revision int64 `json:"revision,omitempty"`
 }
 
+type WriteFileOptions struct {
+	ExpectedRevision *int64
+	Tags             map[string]string
+	Description      string
+}
+
 type ProvisionRequest struct {
 	PublicKey              string `json:"public_key,omitempty"`
 	PrivateKey             string `json:"private_key,omitempty"`
@@ -123,6 +131,10 @@ func (c *Client) Status(ctx context.Context) (StatusResponse, error) {
 }
 
 func (c *Client) WriteFile(ctx context.Context, remotePath string, data []byte) (WriteResponse, error) {
+	return c.WriteFileWithOptions(ctx, remotePath, data, WriteFileOptions{})
+}
+
+func (c *Client) WriteFileWithOptions(ctx context.Context, remotePath string, data []byte, opts WriteFileOptions) (WriteResponse, error) {
 	req, err := c.api.NewRequest(ctx, http.MethodPut, fsPath(remotePath), nil)
 	if err != nil {
 		return WriteResponse{}, err
@@ -133,6 +145,15 @@ func (c *Client) WriteFile(ctx context.Context, remotePath string, data []byte) 
 	}
 	req.ContentLength = int64(len(data))
 	req.Header.Set("Content-Type", "application/octet-stream")
+	if opts.ExpectedRevision != nil {
+		req.Header.Set("X-Dat9-Expected-Revision", strconv.FormatInt(*opts.ExpectedRevision, 10))
+	}
+	if err := setTagHeaders(req, opts.Tags); err != nil {
+		return WriteResponse{}, err
+	}
+	if strings.TrimSpace(opts.Description) != "" {
+		req.Header.Set("X-Dat9-Description", opts.Description)
+	}
 	res, err := c.api.DoRaw(req)
 	if err != nil {
 		return WriteResponse{}, err
@@ -150,18 +171,113 @@ func (c *Client) WriteFile(ctx context.Context, remotePath string, data []byte) 
 }
 
 func (c *Client) ReadFile(ctx context.Context, remotePath string) ([]byte, error) {
+	return c.readFile(ctx, remotePath, 0, 0, false)
+}
+
+func (c *Client) ReadFileRange(ctx context.Context, remotePath string, offset, length int64) ([]byte, error) {
+	if offset < 0 {
+		return nil, apperr.New("fs.invalid_range", "usage", 2, "--offset must be non-negative")
+	}
+	if length < 0 {
+		return nil, apperr.New("fs.invalid_range", "usage", 2, "--length must be non-negative")
+	}
+	if length == 0 {
+		return []byte{}, nil
+	}
+	if offset > (int64(^uint64(0)>>1) - length + 1) {
+		return nil, apperr.New("fs.invalid_range", "usage", 2, "--offset plus --length overflows")
+	}
+	return c.readFile(ctx, remotePath, offset, length, true)
+}
+
+func (c *Client) readFile(ctx context.Context, remotePath string, offset, length int64, ranged bool) ([]byte, error) {
 	req, err := c.api.NewRequest(ctx, http.MethodGet, fsPath(remotePath), nil)
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.api.DoRaw(req)
+	rangeHeader := ""
+	if ranged {
+		rangeHeader = "bytes=" + strconv.FormatInt(offset, 10) + "-" + strconv.FormatInt(offset+length-1, 10)
+		req.Header.Set("Range", rangeHeader)
+	}
+	res, err := c.api.DoRawNoRedirect(req)
 	if err != nil {
+		var apiErr *api.Error
+		if ranged && errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+			return []byte{}, nil
+		}
 		return nil, err
+	}
+	if res.StatusCode >= 300 && res.StatusCode < 400 {
+		return c.readRedirectedFile(ctx, res, rangeHeader, offset, length, ranged)
 	}
 	defer res.Body.Close()
 	data, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, apperr.Wrap("api.read_response", "runtime", 1, "read tdc fs response body", err)
+	}
+	if ranged && res.StatusCode == http.StatusOK {
+		if offset >= int64(len(data)) {
+			return []byte{}, nil
+		}
+		end := offset + length
+		if end > int64(len(data)) {
+			end = int64(len(data))
+		}
+		return append([]byte(nil), data[offset:end]...), nil
+	}
+	return data, nil
+}
+
+func (c *Client) readRedirectedFile(ctx context.Context, res *http.Response, rangeHeader string, offset, length int64, ranged bool) ([]byte, error) {
+	defer res.Body.Close()
+	location, err := res.Location()
+	if err != nil {
+		return nil, apperr.Wrap("api.invalid_redirect", "api", 1, "tdc fs returned an invalid download redirect", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, location.String(), nil)
+	if err != nil {
+		return nil, apperr.Wrap("api.build_request", "runtime", 1, "build redirected tdc fs download request", err)
+	}
+	req.Header.Set("User-Agent", c.api.UserAgent)
+	if rangeHeader != "" {
+		req.Header.Set("Range", rangeHeader)
+	}
+	redirected, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, &api.Error{
+			Code:     "api.network_error",
+			Category: "api",
+			ExitCode: 1,
+			Message:  "API request failed: check network connectivity and try again",
+			Cause:    err,
+		}
+	}
+	defer redirected.Body.Close()
+	if ranged && redirected.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+		return []byte{}, nil
+	}
+	if redirected.StatusCode < 200 || redirected.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(redirected.Body, 8*1024))
+		message := "redirected tdc fs download failed with HTTP " + strconv.Itoa(redirected.StatusCode)
+		if trimmed := strings.TrimSpace(string(body)); trimmed != "" {
+			message += ": " + trimmed
+		}
+		return nil, apperr.New("api.remote_error", "api", 1, message)
+	}
+	data, err := io.ReadAll(redirected.Body)
+	if err != nil {
+		return nil, apperr.Wrap("api.read_response", "runtime", 1, "read redirected tdc fs response body", err)
+	}
+	if ranged && redirected.StatusCode == http.StatusOK {
+		if offset >= int64(len(data)) {
+			return []byte{}, nil
+		}
+		end := offset + length
+		if end > int64(len(data)) {
+			end = int64(len(data))
+		}
+		return append([]byte(nil), data[offset:end]...), nil
 	}
 	return data, nil
 }
@@ -266,6 +382,55 @@ func (c *Client) Mkdir(ctx context.Context, remotePath string, mode int64) error
 	if err != nil {
 		return err
 	}
+	res, err := c.api.DoRaw(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	_, _ = io.Copy(io.Discard, res.Body)
+	return nil
+}
+
+func (c *Client) Chmod(ctx context.Context, remotePath string, mode int64) error {
+	body := struct {
+		Mode int64 `json:"mode"`
+	}{Mode: mode}
+	req, err := c.api.NewRequest(ctx, http.MethodPost, fsPathWithRawQuery(remotePath, "chmod"), body)
+	if err != nil {
+		return err
+	}
+	res, err := c.api.DoRaw(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	_, _ = io.Copy(io.Discard, res.Body)
+	return nil
+}
+
+func (c *Client) Symlink(ctx context.Context, target, linkPath string) error {
+	body := struct {
+		Target string `json:"target"`
+	}{Target: target}
+	req, err := c.api.NewRequest(ctx, http.MethodPost, fsPathWithRawQuery(linkPath, "symlink=1"), body)
+	if err != nil {
+		return err
+	}
+	res, err := c.api.DoRaw(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	_, _ = io.Copy(io.Discard, res.Body)
+	return nil
+}
+
+func (c *Client) Hardlink(ctx context.Context, sourcePath, linkPath string) error {
+	req, err := c.api.NewRequest(ctx, http.MethodPost, fsPathWithRawQuery(linkPath, "hardlink=1"), nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-Dat9-Hardlink-Source", sourcePath)
 	res, err := c.api.DoRaw(req)
 	if err != nil {
 		return err
@@ -402,6 +567,24 @@ func statFromHeaders(remotePath string, headers http.Header) StatResponse {
 		ResourceID: headers.Get("X-Dat9-Resource-Id"),
 		Nlink:      nlink,
 	}
+}
+
+func setTagHeaders(req *http.Request, tags map[string]string) error {
+	if len(tags) == 0 {
+		return nil
+	}
+	if err := validateTags(tags); err != nil {
+		return err
+	}
+	keys := make([]string, 0, len(tags))
+	for key := range tags {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		req.Header.Add("X-Dat9-Tag", key+"="+tags[key])
+	}
+	return nil
 }
 
 func int64Header(headers http.Header, name string) (int64, bool) {

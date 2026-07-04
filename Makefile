@@ -1,4 +1,5 @@
 GO ?= go
+GORELEASER ?= goreleaser
 MODULE := github.com/Icemap/tdc
 BINARY_NAME := tdc
 BIN_DIR := bin
@@ -12,9 +13,11 @@ DATE ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 LDFLAGS := -s -w \
 	-X $(MODULE)/internal/version.version=$(VERSION) \
 	-X $(MODULE)/internal/version.commit=$(COMMIT) \
-	-X $(MODULE)/internal/version.date=$(DATE)
+	-X $(MODULE)/internal/version.date=$(DATE) \
+	-X $(MODULE)/internal/version.installSource=local \
+	-X $(MODULE)/internal/version.releaseChannel=stable
 
-.PHONY: all build test e2e live-e2e clean
+.PHONY: all build test e2e live-e2e release-snapshot clean
 
 all: build
 
@@ -31,5 +34,8 @@ e2e: build
 live-e2e: build
 	TDC_E2E_BIN="$(abspath $(TDC_BIN))" TDC_LIVE=1 TDC_PROFILE="$(LIVE_E2E_PROFILE)" $(GO) test ./e2e -count=1 -v -timeout 30m -run '^TestLive'
 
+release-snapshot:
+	$(GORELEASER) release --snapshot --clean
+
 clean:
-	rm -rf $(BIN_DIR)
+	rm -rf $(BIN_DIR) dist

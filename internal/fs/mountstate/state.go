@@ -20,7 +20,11 @@ type State struct {
 	Driver         string    `json:"driver"`
 	PID            int       `json:"pid"`
 	Endpoint       string    `json:"endpoint"`
+	LocalRoot      string    `json:"local_root,omitempty"`
+	MountProfile   string    `json:"mount_profile,omitempty"`
+	PackPaths      []string  `json:"pack_paths,omitempty"`
 	ReadOnly       bool      `json:"read_only,omitempty"`
+	ControlSocket  string    `json:"control_socket,omitempty"`
 	StartedAt      time.Time `json:"started_at"`
 }
 
@@ -83,6 +87,20 @@ func LogPath(homeDir, mountPath string) (string, error) {
 	}
 	sum := sha256.Sum256([]byte(canonical))
 	return filepath.Join(homeDir, ".tdc", "mounts", hex.EncodeToString(sum[:8])+".log"), nil
+}
+
+func ControlSocketPath(mountPath string) (string, error) {
+	canonical, err := CanonicalMountPath(mountPath)
+	if err != nil {
+		return "", err
+	}
+	uid := fmt.Sprintf("%d", os.Getuid())
+	sum := sha256.Sum256([]byte(uid + "\x00" + canonical))
+	dir := strings.TrimSpace(os.Getenv("XDG_RUNTIME_DIR"))
+	if dir == "" || !filepath.IsAbs(dir) {
+		dir = filepath.Join(os.TempDir(), "tdc-"+uid)
+	}
+	return filepath.Join(dir, "tdc-mount-"+hex.EncodeToString(sum[:8])+".sock"), nil
 }
 
 func Write(homeDir string, state State) (string, error) {

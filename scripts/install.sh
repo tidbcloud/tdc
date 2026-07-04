@@ -1,0 +1,352 @@
+#!/bin/sh
+set -eu
+
+REPO="Icemap/tdc"
+DEFAULT_INSTALL_DIR="/usr/local/bin"
+VERSION="latest"
+INSTALL_DIR=""
+INSTALL_DIR_EXPLICIT=0
+DRY_RUN=0
+YES=0
+
+BOLD=''
+DIM=''
+GREEN=''
+YELLOW=''
+RED=''
+RESET=''
+if [ -t 1 ]; then
+  BOLD="$(printf '\033[1m')"
+  DIM="$(printf '\033[2m')"
+  GREEN="$(printf '\033[0;32m')"
+  YELLOW="$(printf '\033[0;33m')"
+  RED="$(printf '\033[0;31m')"
+  RESET="$(printf '\033[0m')"
+fi
+
+info() { printf "  ${DIM}%s${RESET}\n" "$1"; }
+success() { printf "  ${GREEN}%s${RESET}\n" "$1"; }
+warn() { printf "  ${YELLOW}%s${RESET}\n" "$1"; }
+error() { printf "  ${RED}tdc install [ERROR]:${RESET} %s\n" "$1" >&2; exit 1; }
+
+usage() {
+  cat <<'USAGE'
+Install tdc from GitHub Releases.
+
+Usage:
+  install.sh [--version latest|v0.1.0] [--install-dir PATH] [--dry-run] [--yes]
+
+Options:
+  --version       Release version to install. Defaults to latest.
+  --install-dir   Directory that will receive the tdc binary. Overrides TDC_INSTALL_DIR.
+  --dry-run       Print the planned download and install path without changes.
+  --yes           Replace an existing binary without prompting.
+  --help          Show this help.
+USAGE
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --version)
+      VERSION="${2:-}"
+      shift 2
+      ;;
+    --install-dir)
+      INSTALL_DIR="${2:-}"
+      INSTALL_DIR_EXPLICIT=1
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    --yes)
+      YES=1
+      shift
+      ;;
+    --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "tdc install [ERROR]: unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+need() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    error "required command not found: $1"
+  fi
+}
+
+need tar
+
+download() {
+  if command -v curl >/dev/null 2>&1; then
+    if [ -t 2 ]; then
+      curl -fSL --progress-bar -o "$2" "$1"
+    else
+      curl -fsSL -o "$2" "$1"
+    fi
+  elif command -v wget >/dev/null 2>&1; then
+    if [ -t 2 ]; then
+      wget --show-progress -q -O "$2" "$1" 2>&1
+    else
+      wget -q -O "$2" "$1"
+    fi
+  else
+    error "neither curl nor wget found"
+  fi
+}
+
+download_quiet_stdout() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$1" 2>/dev/null || true
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O - "$1" 2>/dev/null || true
+  else
+    true
+  fi
+}
+
+case "$(uname -s)" in
+  Darwin) OS="darwin" ;;
+  Linux) OS="linux" ;;
+  *)
+    error "unsupported OS: $(uname -s)"
+    ;;
+esac
+
+case "$(uname -m)" in
+  x86_64|amd64) ARCH="amd64" ;;
+  arm64|aarch64) ARCH="arm64" ;;
+  *)
+    error "unsupported architecture: $(uname -m)"
+    ;;
+esac
+
+resolve_install_dir() {
+  if [ "$INSTALL_DIR_EXPLICIT" -eq 1 ]; then
+    [ -n "$INSTALL_DIR" ] || error "--install-dir cannot be empty"
+    info "Install dir: ${INSTALL_DIR} (from --install-dir)"
+    return
+  fi
+  if [ -n "${TDC_INSTALL_DIR:-}" ]; then
+    INSTALL_DIR="$TDC_INSTALL_DIR"
+    info "Install dir: ${INSTALL_DIR} (from TDC_INSTALL_DIR)"
+    return
+  fi
+
+  EXISTING="$(command -v tdc 2>/dev/null || true)"
+  if [ -n "$EXISTING" ] && [ -x "$EXISTING" ]; then
+    EXISTING_DIR="$(dirname "$EXISTING")"
+    INSTALL_DIR="$EXISTING_DIR"
+    info "Upgrading active tdc in ${INSTALL_DIR}"
+    return
+  fi
+
+  INSTALL_DIR="$DEFAULT_INSTALL_DIR"
+  info "Install dir: ${INSTALL_DIR}"
+}
+
+resolve_install_dir
+
+if [ "$VERSION" = "latest" ]; then
+  RELEASE_BASE="https://github.com/${REPO}/releases/latest/download"
+else
+  case "$VERSION" in
+    v*) TAG="$VERSION" ;;
+    *) TAG="v$VERSION" ;;
+  esac
+  RELEASE_BASE="https://github.com/${REPO}/releases/download/${TAG}"
+fi
+
+ARTIFACT="tdc_${OS}_${ARCH}.tar.gz"
+ARCHIVE_URL="${RELEASE_BASE}/${ARTIFACT}"
+CHECKSUMS_URL="${RELEASE_BASE}/tdc_checksums.txt"
+TARGET="${INSTALL_DIR}/tdc"
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  cat <<EOF
+tdc install dry-run
+version: ${VERSION}
+artifact: ${ARTIFACT}
+archive_url: ${ARCHIVE_URL}
+checksums_url: ${CHECKSUMS_URL}
+target: ${TARGET}
+EOF
+  exit 0
+fi
+
+if [ -e "$TARGET" ] && [ "$YES" -ne 1 ] && [ -t 0 ]; then
+  printf 'Replace existing %s? [y/N] ' "$TARGET" >&2
+  read answer
+  case "$answer" in
+    y|Y|yes|YES) ;;
+    *)
+      echo "tdc install [ERROR]: cancelled" >&2
+      exit 130
+      ;;
+  esac
+fi
+
+bootstrap_config() {
+  if [ -z "${HOME:-}" ]; then
+    return
+  fi
+  CONFIG_DIR="${HOME}/.tdc"
+  CONFIG_FILE="${CONFIG_DIR}/config"
+  mkdir -p "$CONFIG_DIR" 2>/dev/null || true
+  chmod 700 "$CONFIG_DIR" 2>/dev/null || true
+  if [ ! -f "$CONFIG_FILE" ]; then
+    cat > "$CONFIG_FILE" <<'CONF'
+[default]
+cloud_provider = 'aws'
+region_code = 'us-east-1'
+CONF
+    chmod 644 "$CONFIG_FILE" 2>/dev/null || true
+    info "Bootstrapped ${CONFIG_FILE} with default aws/us-east-1 placement"
+  fi
+}
+
+install_binary() {
+  if [ ! -d "$INSTALL_DIR" ]; then
+    mkdir -p "$INSTALL_DIR" 2>/dev/null || {
+      command -v sudo >/dev/null 2>&1 || error "cannot create ${INSTALL_DIR}; install to a user-writable directory with --install-dir"
+      info "Creating ${INSTALL_DIR} with sudo"
+      sudo mkdir -p "$INSTALL_DIR"
+    }
+  fi
+
+  if [ -w "$INSTALL_DIR" ]; then
+    mv "$1" "$TARGET"
+  else
+    command -v sudo >/dev/null 2>&1 || error "cannot write to ${INSTALL_DIR}; install to a user-writable directory with --install-dir"
+    info "Installing to ${INSTALL_DIR} with sudo"
+    sudo mv "$1" "$TARGET"
+  fi
+}
+
+report_path_status() {
+  ACTIVE="$(command -v tdc 2>/dev/null || true)"
+  if [ -z "$ACTIVE" ]; then
+    warn "tdc is installed at ${TARGET}, but ${INSTALL_DIR} is not on your PATH"
+    warn "Run ${TARGET} directly or add ${INSTALL_DIR} to PATH"
+    case "$INSTALL_DIR" in
+      "$HOME"/*)
+        warn "For zsh/bash: export PATH=\"${INSTALL_DIR}:\$PATH\""
+        ;;
+    esac
+    return
+  fi
+
+  if [ "$ACTIVE" != "$TARGET" ]; then
+    warn "PATH shadowing detected: tdc resolves to ${ACTIVE}"
+    warn "Installed binary: ${TARGET}"
+    warn "Re-run with TDC_INSTALL_DIR=$(dirname "$ACTIVE") to replace the active binary"
+  fi
+}
+
+print_regions() {
+  printf "\n"
+  printf "  ${BOLD}Config regions:${RESET}\n"
+  printf "    aws: us-east-1, us-west-2, eu-central-1, ap-northeast-1, ap-southeast-1\n"
+  printf "    alibaba_cloud: ap-southeast-1\n"
+  printf "\n"
+  printf "  ${BOLD}tdc fs regions:${RESET}\n"
+  MANIFEST="$(download_quiet_stdout "https://drive9.ai/manifest/regions/drive9-regions.json")"
+  FS_REGIONS="$(printf "%s\n" "$MANIFEST" | awk '
+    /"mode"[[:space:]]*:[[:space:]]*"tidb_cloud_native"/ { native=1 }
+    /"cloud_provider"[[:space:]]*:/ {
+      provider=$0
+      sub(/^.*"cloud_provider"[[:space:]]*:[[:space:]]*"/, "", provider)
+      sub(/".*$/, "", provider)
+    }
+    /"tidb_region"[[:space:]]*:/ {
+      region=$0
+      sub(/^.*"tidb_region"[[:space:]]*:[[:space:]]*"/, "", region)
+      sub(/".*$/, "", region)
+    }
+    /^[[:space:]]*}/ {
+      if (native && provider != "" && region != "") {
+        print "    " provider ": " region
+      }
+      native=0; provider=""; region=""
+    }
+  ' | sort -u)"
+  if [ -n "$FS_REGIONS" ]; then
+    printf "%s\n" "$FS_REGIONS"
+  else
+    printf "    aws: us-east-1, ap-southeast-1\n"
+    warn "Could not fetch the latest tdc fs region manifest; run tdc fs check-file-system after configure"
+  fi
+}
+
+print_next_steps() {
+  printf "\n"
+  printf "  ${BOLD}Get started:${RESET}\n"
+  printf "\n"
+  printf "    ${BOLD}1.${RESET} Configure credentials\n"
+  printf "       ${DIM}\$${RESET} tdc configure\n"
+  printf "\n"
+  printf "    ${BOLD}2.${RESET} List projects\n"
+  printf "       ${DIM}\$${RESET} tdc organization list-projects --output human\n"
+  printf "\n"
+  printf "    ${BOLD}3.${RESET} Create or check tdc fs\n"
+  printf "       ${DIM}\$${RESET} tdc fs create-file-system --file-system-name workspace\n"
+  printf "       ${DIM}\$${RESET} tdc fs check-file-system --output human\n"
+  printf "\n"
+  printf "    ${BOLD}4.${RESET} Mount tdc fs when FUSE is available\n"
+  printf "       ${DIM}\$${RESET} tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace\n"
+  printf "\n"
+  printf "  Docs: ${DIM}https://github.com/Icemap/tdc${RESET}\n"
+}
+
+TMP_DIR="$(mktemp -d)"
+cleanup() {
+  rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT INT TERM
+
+printf "\n"
+printf "  ${BOLD}tdc${RESET} installer\n"
+printf "  ${DIM}────────────────────────────${RESET}\n"
+printf "\n"
+info "Platform: ${OS}/${ARCH}"
+info "Artifact: ${ARTIFACT}"
+
+download "$ARCHIVE_URL" "${TMP_DIR}/${ARTIFACT}"
+download "$CHECKSUMS_URL" "${TMP_DIR}/tdc_checksums.txt"
+
+EXPECTED="$(awk -v name="$ARTIFACT" '$2 == name { print $1 }' "${TMP_DIR}/tdc_checksums.txt" | head -n 1)"
+if [ -z "$EXPECTED" ]; then
+  error "checksum for ${ARTIFACT} not found"
+fi
+
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL="$(sha256sum "${TMP_DIR}/${ARTIFACT}" | awk '{ print $1 }')"
+else
+  ACTUAL="$(shasum -a 256 "${TMP_DIR}/${ARTIFACT}" | awk '{ print $1 }')"
+fi
+
+if [ "$EXPECTED" != "$ACTUAL" ]; then
+  error "checksum mismatch for ${ARTIFACT}"
+fi
+
+tar -xzf "${TMP_DIR}/${ARTIFACT}" -C "$TMP_DIR"
+FOUND="$(find "$TMP_DIR" -type f -name tdc | head -n 1)"
+if [ -z "$FOUND" ]; then
+  error "archive did not contain tdc"
+fi
+chmod 0755 "$FOUND"
+install_binary "$FOUND"
+
+"$TARGET" --version
+success "tdc installed to ${TARGET}"
+bootstrap_config
+report_path_status
+print_regions
+print_next_steps

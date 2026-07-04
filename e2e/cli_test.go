@@ -3,6 +3,8 @@ package e2e
 import (
 	"bytes"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,11 +33,33 @@ func TestHelpAndVersion(t *testing.T) {
 	subcommand.wantStdoutContains("Mount a tdc fs resource locally.")
 	subcommand.wantStdoutContains("--mount-path")
 	subcommand.wantStdoutContains("--foreground")
+	subcommand.wantStdoutContains("--mount-profile")
+	subcommand.wantStdoutContains("--local-root")
+	subcommand.wantStdoutContains("--pack-path")
 
 	copyFile := runTDC(t, bin, "fs", "copy-file", "help")
 	copyFile.wantExitCode(0)
 	copyFile.wantStdoutContains("--from-local")
 	copyFile.wantStdoutContains("--to-remote")
+	copyFile.wantStdoutContains("--from-stdin")
+	copyFile.wantStdoutContains("--to-stdout")
+	copyFile.wantStdoutContains("--description")
+
+	chmodFile := runTDC(t, bin, "fs", "chmod-file", "help")
+	chmodFile.wantExitCode(0)
+	chmodFile.wantStdoutContains("--mode")
+
+	packFileSystem := runTDC(t, bin, "fs", "pack-file-system", "help")
+	packFileSystem.wantExitCode(0)
+	packFileSystem.wantStdoutContains("--archive-path")
+	packFileSystem.wantStdoutContains("--mount-profile")
+	packFileSystem.wantStdoutContains("--path")
+
+	gitClone := runTDC(t, bin, "git", "clone-git-workspace", "help")
+	gitClone.wantExitCode(0)
+	gitClone.wantStdoutContains("--repo-url")
+	gitClone.wantStdoutContains("--target-path")
+	gitClone.wantStdoutContains("--hydrate")
 
 	version := runTDC(t, bin, "fs", "mount-file-system", "--version")
 	version.wantExitCode(0)
@@ -53,9 +77,32 @@ func TestErrorsAreRenderedAtCLIBoundary(t *testing.T) {
 	unknown.wantExitCode(2)
 	unknown.wantStderrContains(`tdc [ERROR]: unknown command "missing-command" for "tdc db"`)
 
-	placeholder := runTDC(t, bin, "cli", "check-update")
-	placeholder.wantExitCode(2)
-	placeholder.wantStderrContains("tdc [ERROR]: tdc cli check-update is not implemented yet")
+	releaseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/releases/latest" {
+			http.NotFound(w, r)
+			return
+		}
+		artifact := artifactNameForRuntime(t)
+		fmt.Fprintf(w, `{
+			"tag_name": "v99.0.0",
+			"html_url": "https://github.com/Icemap/tdc/releases/tag/v99.0.0",
+			"assets": [
+				{
+					"name": %q,
+					"browser_download_url": "https://github.com/Icemap/tdc/releases/download/v99.0.0/%s"
+				}
+			]
+		}`, artifact, artifact)
+	}))
+	defer releaseServer.Close()
+
+	checkUpdate := runTDCWithInput(t, bin, "", []string{"TDC_RELEASE_API_BASE_URL=" + releaseServer.URL}, "cli", "check-update", "--query", "latest_version")
+	checkUpdate.wantExitCode(0)
+	checkUpdate.wantStdoutContains(`"99.0.0"`)
+
+	update := runTDC(t, bin, "cli", "update", "--dry-run")
+	update.wantExitCode(1)
+	update.wantStderrContains("tdc [ERROR]: tdc install source")
 
 	invalidQuery := runTDCWithInput(t, bin, "", tdcConfigEnv(), append(createClusterDryRunArgs(), "--query", "command[")...)
 	invalidQuery.wantExitCode(2)
@@ -100,6 +147,25 @@ func createClusterDryRunArgs() []string {
 		"--db-cluster-type", "starter",
 		"--project-id", "project-1",
 		"--dry-run",
+	}
+}
+
+func artifactNameForRuntime(t *testing.T) string {
+	t.Helper()
+	switch runtime.GOOS {
+	case "darwin", "linux":
+		if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+			t.Skipf("unsupported release target %s/%s", runtime.GOOS, runtime.GOARCH)
+		}
+		return fmt.Sprintf("tdc_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+	case "windows":
+		if runtime.GOARCH != "amd64" {
+			t.Skipf("unsupported release target %s/%s", runtime.GOOS, runtime.GOARCH)
+		}
+		return "tdc_windows_amd64.zip"
+	default:
+		t.Skipf("unsupported release target %s/%s", runtime.GOOS, runtime.GOARCH)
+		return ""
 	}
 }
 

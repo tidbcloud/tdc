@@ -199,6 +199,30 @@ func (c *Client) DoRaw(req *http.Request) (*http.Response, error) {
 	return res, nil
 }
 
+func (c *Client) DoRawNoRedirect(req *http.Request) (*http.Response, error) {
+	httpClient := *c.HTTPClient
+	httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	client := *c
+	client.HTTPClient = &httpClient
+	res, err := client.do(req)
+	if err != nil {
+		return nil, &Error{
+			Code:     "api.network_error",
+			Category: "api",
+			ExitCode: 1,
+			Message:  "API request failed: check network connectivity and try again",
+			Cause:    err,
+		}
+	}
+	if res.StatusCode >= 400 || res.StatusCode < 200 {
+		defer res.Body.Close()
+		return nil, client.statusError(req, res)
+	}
+	return res, nil
+}
+
 func (c *Client) do(req *http.Request) (*http.Response, error) {
 	attempts := c.MaxRetries + 1
 	if attempts < 1 {
