@@ -12,6 +12,8 @@ upload resume, efficient append with fallback, recursive copy, and
 remote-to-local download resume, stdin/stdout copy, tags/descriptions, chmod,
 symlink, hardlink, and pack/unpack workflows. tdc fs layer workflows are
 implemented for create/list/describe/diff/replay/entry/object/checkpoint/events/rollback/commit.
+Common tdc fs file and mount commands also have Unix-style command aliases,
+while all flags remain long-only.
 tdc vault workflows are implemented for secret create/read/replace/delete,
 delegated grants/tokens, audit listing, command environment injection, and a
 read-only vault mount filesystem view. The tdc journal workflow is implemented
@@ -87,6 +89,9 @@ Implemented:
 - `tdc fs mount-file-system`
 - `tdc fs drain-file-system`
 - `tdc fs unmount-file-system`
+- Unix-style `tdc fs` command aliases: `cp`, `cat`, `ls`, `stat`, `mv`, `rm`,
+  `mkdir`, `chmod`, `symlink`, `hardlink`, `grep`, `find`, `mount`, `drain`,
+  and `umount`
 - `tdc vault create-secret`
 - `tdc vault replace-secret`
 - `tdc vault read-secret`
@@ -268,6 +273,41 @@ creates one `tdc-e2e-branch-*` branch on that cluster, lists/describes/deletes
 the branch, updates the cluster, reads it again, deletes it, and verifies
 deletion. As TiDB Cloud API commands are implemented, their real live tests must
 be added to this same target.
+
+## GitHub Actions
+
+The repository has two CI workflows:
+
+- `ci`: runs on pull requests and pushes to `main`. It downloads dependencies,
+  checks `gofmt`, checks `go mod tidy`, runs `make test`, runs `make e2e`, and
+  runs `make build`. It does not use TiDB Cloud credentials or live services.
+- `live-e2e`: runs only when manually started with `workflow_dispatch`. It uses
+  repository-level variables and secrets, configures the `live-e2e` profile,
+  creates a temporary `tdc-live-e2e-*` tdc fs resource, runs `make live-e2e`,
+  and attempts to delete that temporary fs resource in an always-run cleanup
+  step.
+
+Configure these repository variables for `live-e2e`:
+
+```text
+TDC_CLOUD_PROVIDER=aws
+TDC_REGION_CODE=us-east-1
+```
+
+Configure these repository secrets for `live-e2e`:
+
+```text
+TDC_PUBLIC_KEY=...
+TDC_PRIVATE_KEY=...
+```
+
+The workflow stores generated `~/.tdc/` state under the runner temp directory
+and does not upload it as an artifact. The live suite creates and deletes real
+TiDB Cloud Starter and tdc fs resources scoped to unique `tdc-e2e-*` and
+`tdc-live-e2e-*` names. On GitHub-hosted Linux runners, the workflow installs
+`fuse3` before running the suite; if `/dev/fuse` is unavailable on the hosted
+runner, move live mount coverage to a FUSE-capable runner instead of weakening
+`make live-e2e`.
 
 Clean build artifacts:
 
@@ -602,6 +642,35 @@ tdc fs find-files --path /workspace --file-name-pattern "*.md"
 tdc fs find-files --path /workspace --file-name-pattern "*.md" --layer-id layer-1
 ```
 
+The common data-plane commands also have Unix-style aliases. These aliases only
+replace the command name; flags stay long-only:
+
+| Canonical | Alias |
+| --- | --- |
+| `tdc fs copy-file` | `tdc fs cp` |
+| `tdc fs read-file` | `tdc fs cat` |
+| `tdc fs list-files` | `tdc fs ls` |
+| `tdc fs describe-file` | `tdc fs stat` |
+| `tdc fs move-file` | `tdc fs mv` |
+| `tdc fs delete-file` | `tdc fs rm` |
+| `tdc fs create-directory` | `tdc fs mkdir` |
+| `tdc fs chmod-file` | `tdc fs chmod` |
+| `tdc fs create-symlink` | `tdc fs symlink` |
+| `tdc fs create-hardlink` | `tdc fs hardlink` |
+| `tdc fs search-file-content` | `tdc fs grep` |
+| `tdc fs find-files` | `tdc fs find` |
+
+Examples:
+
+```bash
+tdc fs cp --from-local ./README.md --to-remote /workspace/README.md
+tdc fs cat --path /workspace/README.md
+tdc fs ls --path /workspace --output human
+tdc fs rm --path /workspace/archive --recursive
+tdc fs grep --path /workspace --pattern "hello"
+tdc fs find --path /workspace --file-name-pattern "*.md"
+```
+
 These commands use the active profile's stored `fs_api_key` as Bearer auth and
 call the tdc fs data-plane endpoint selected from the hosted region manifest.
 Run `tdc fs create-file-system` before using them, or configure the flat
@@ -852,6 +921,10 @@ tdc fs unmount-file-system --mount-path ./workspace --pack-archive-path /workspa
 tdc fs unmount-file-system --mount-path ./workspace --no-auto-pack
 tdc fs unmount-file-system --mount-path ./workspace --ignore-absent
 ```
+
+Mount runtime aliases are `tdc fs mount` for `tdc fs mount-file-system`,
+`tdc fs drain` for `tdc fs drain-file-system`, and `tdc fs umount` for
+`tdc fs unmount-file-system`.
 
 `mount-file-system` defaults to `--driver auto`, which prefers FUSE and falls
 back to WebDAV only when FUSE prerequisites are unavailable and WebDAV is

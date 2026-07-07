@@ -152,6 +152,7 @@ const (
 
 type controlPlaneCommandSpec struct {
 	Use        string
+	Aliases    []string
 	Short      string
 	Long       string
 	Mutation   mutationMode
@@ -226,9 +227,10 @@ func newControlPlaneCommand(spec controlPlaneCommandSpec, info version.Info) *co
 		panic(fmt.Sprintf("control-plane command %s must declare a permission", spec.Use))
 	}
 	cmd := newCommand(commandSpec{
-		Use:   spec.Use,
-		Short: spec.Short,
-		Long:  spec.Long,
+		Use:     spec.Use,
+		Aliases: spec.Aliases,
+		Short:   spec.Short,
+		Long:    spec.Long,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := commandContext{cmd: cmd}
 			if spec.Mutation == mutatingCommand {
@@ -470,7 +472,11 @@ func findChildCommand(cmd *cobra.Command, name string) *cobra.Command {
 const helpTemplate = `{{with (or .Long .Short)}}{{.}}
 
 {{end}}Usage:
-  {{.UseLine}}{{if .HasAvailableSubCommands}}
+  {{.UseLine}}{{if .Aliases}}
+
+Aliases:
+{{range .Aliases}}  {{.}}
+{{end}}{{end}}{{if .HasAvailableSubCommands}}
 
 Commands:
 {{range .Commands}}{{if (or .IsAvailableCommand (eq .Name "help"))}}  {{rpad .Name .NamePadding }} {{.Short}}

@@ -946,6 +946,7 @@ func newFSCheckFileSystemCommand(info version.Info) *cobra.Command {
 func newFSCopyFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "copy-file",
+		Aliases:    []string{"cp"},
 		Short:      "Copy a file between local storage and tdc fs.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
@@ -991,6 +992,7 @@ func newFSCopyFileCommand(info version.Info) *cobra.Command {
 func newFSReadFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "read-file",
+		Aliases:    []string{"cat"},
 		Short:      "Read a file from tdc fs.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
@@ -1037,6 +1039,7 @@ func newFSReadFileCommand(info version.Info) *cobra.Command {
 func newFSListFilesCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "list-files",
+		Aliases:    []string{"ls"},
 		Short:      "List files in tdc fs.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
@@ -1062,6 +1065,7 @@ func newFSListFilesCommand(info version.Info) *cobra.Command {
 func newFSDescribeFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "describe-file",
+		Aliases:    []string{"stat"},
 		Short:      "Describe a tdc fs file.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
@@ -1087,6 +1091,7 @@ func newFSDescribeFileCommand(info version.Info) *cobra.Command {
 func newFSMoveFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "move-file",
+		Aliases:    []string{"mv"},
 		Short:      "Move a tdc fs file.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
@@ -1124,6 +1129,7 @@ func newFSMoveFileCommand(info version.Info) *cobra.Command {
 func newFSDeleteFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "delete-file",
+		Aliases:    []string{"rm"},
 		Short:      "Delete a tdc fs file.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
@@ -1155,6 +1161,7 @@ func newFSDeleteFileCommand(info version.Info) *cobra.Command {
 func newFSCreateDirectoryCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-directory",
+		Aliases:    []string{"mkdir"},
 		Short:      "Create a tdc fs directory.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
@@ -1186,6 +1193,7 @@ func newFSCreateDirectoryCommand(info version.Info) *cobra.Command {
 func newFSChmodFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "chmod-file",
+		Aliases:    []string{"chmod"},
 		Short:      "Change tdc fs file permissions.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
@@ -1213,6 +1221,7 @@ func newFSChmodFileCommand(info version.Info) *cobra.Command {
 func newFSSymlinkFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-symlink",
+		Aliases:    []string{"symlink"},
 		Short:      "Create a tdc fs symbolic link.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
@@ -1240,6 +1249,7 @@ func newFSSymlinkFileCommand(info version.Info) *cobra.Command {
 func newFSHardlinkFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-hardlink",
+		Aliases:    []string{"hardlink"},
 		Short:      "Create a tdc fs hard link.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
@@ -1267,6 +1277,7 @@ func newFSHardlinkFileCommand(info version.Info) *cobra.Command {
 func newFSSearchFileContentCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "search-file-content",
+		Aliases:    []string{"grep"},
 		Short:      "Search file content in tdc fs.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
@@ -1310,6 +1321,7 @@ func newFSSearchFileContentCommand(info version.Info) *cobra.Command {
 func newFSFindFilesCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "find-files",
+		Aliases:    []string{"find"},
 		Short:      "Find files in tdc fs.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
@@ -1856,6 +1868,7 @@ func newFSUnpackFileSystemCommand(info version.Info) *cobra.Command {
 func newFSMountFileSystemCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "mount-file-system",
+		Aliases:    []string{"mount"},
 		Short:      "Mount a tdc fs resource locally.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSMount,
@@ -1905,6 +1918,7 @@ func newFSMountFileSystemCommand(info version.Info) *cobra.Command {
 func newFSUnmountFileSystemCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "unmount-file-system",
+		Aliases:    []string{"umount"},
 		Short:      "Unmount a tdc fs resource.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSMount,
@@ -1960,6 +1974,7 @@ func newFSUnmountFileSystemCommand(info version.Info) *cobra.Command {
 func newFSDrainFileSystemCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "drain-file-system",
+		Aliases:    []string{"drain"},
 		Short:      "Flush dirty FUSE mount state for a tdc fs resource.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSMount,

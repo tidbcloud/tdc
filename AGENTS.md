@@ -33,6 +33,8 @@ Implemented:
   `docs/spec/done/0007-starter-db-branch-lifecycle.md`
 - Starter DB SQL access and query from
   `docs/spec/done/0008-starter-db-sql-access-and-query.md`
+- tdc fs Unix-style command aliases from
+  `docs/spec/done/0014-tdc-fs-unix-command-aliases.md`
 - tdc fs control plane from
   `docs/spec/done/0009-tdc-fs-control-plane.md`
 - tdc fs data plane from
@@ -91,6 +93,9 @@ Implemented:
 - `tdc fs mount-file-system`
 - `tdc fs drain-file-system`
 - `tdc fs unmount-file-system`
+- Unix-style `tdc fs` command aliases: `cp`, `cat`, `ls`, `stat`, `mv`, `rm`,
+  `mkdir`, `chmod`, `symlink`, `hardlink`, `grep`, `find`, `mount`, `drain`,
+  and `umount`
 - `tdc vault create-secret`
 - `tdc vault replace-secret`
 - `tdc vault read-secret`
@@ -285,6 +290,9 @@ Follow these rules unless `docs/priciples.md` is updated:
 - Use long flags only, for example `--profile` and `--db-cluster-name`.
 - Do not add short flags or one-letter aliases. The current CLI rejects short
   flags before invoking Cobra.
+- `tdc fs` Unix-style aliases are command-name aliases only. They must keep the
+  same long flags, output modes, auth, permissions, dry-run behavior, and command
+  handlers as their canonical commands.
 - Do not prompt for input except inside `tdc configure`.
 - Successful structured control-plane commands output JSON by default.
 - Implement DB, organization, and fs control-plane commands through
@@ -518,6 +526,21 @@ Registered command surface:
 - `tdc fs mount-file-system`
 - `tdc fs drain-file-system`
 - `tdc fs unmount-file-system`
+- `tdc fs cp` aliases `tdc fs copy-file`
+- `tdc fs cat` aliases `tdc fs read-file`
+- `tdc fs ls` aliases `tdc fs list-files`
+- `tdc fs stat` aliases `tdc fs describe-file`
+- `tdc fs mv` aliases `tdc fs move-file`
+- `tdc fs rm` aliases `tdc fs delete-file`
+- `tdc fs mkdir` aliases `tdc fs create-directory`
+- `tdc fs chmod` aliases `tdc fs chmod-file`
+- `tdc fs symlink` aliases `tdc fs create-symlink`
+- `tdc fs hardlink` aliases `tdc fs create-hardlink`
+- `tdc fs grep` aliases `tdc fs search-file-content`
+- `tdc fs find` aliases `tdc fs find-files`
+- `tdc fs mount` aliases `tdc fs mount-file-system`
+- `tdc fs drain` aliases `tdc fs drain-file-system`
+- `tdc fs umount` aliases `tdc fs unmount-file-system`
 - `tdc vault create-secret`
 - `tdc vault replace-secret`
 - `tdc vault read-secret`

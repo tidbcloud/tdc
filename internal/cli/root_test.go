@@ -156,6 +156,70 @@ func TestServiceCommandsDeclarePermissions(t *testing.T) {
 	})
 }
 
+func TestFSUnixAliasesResolveToCanonicalCommands(t *testing.T) {
+	root := NewRootCommand(testVersion())
+	fs := findChildCommand(root, "fs")
+	if fs == nil {
+		t.Fatal("missing fs command")
+	}
+
+	tests := []struct {
+		canonical string
+		alias     string
+	}{
+		{canonical: "copy-file", alias: "cp"},
+		{canonical: "read-file", alias: "cat"},
+		{canonical: "list-files", alias: "ls"},
+		{canonical: "describe-file", alias: "stat"},
+		{canonical: "move-file", alias: "mv"},
+		{canonical: "delete-file", alias: "rm"},
+		{canonical: "create-directory", alias: "mkdir"},
+		{canonical: "chmod-file", alias: "chmod"},
+		{canonical: "create-symlink", alias: "symlink"},
+		{canonical: "create-hardlink", alias: "hardlink"},
+		{canonical: "search-file-content", alias: "grep"},
+		{canonical: "find-files", alias: "find"},
+		{canonical: "mount-file-system", alias: "mount"},
+		{canonical: "drain-file-system", alias: "drain"},
+		{canonical: "unmount-file-system", alias: "umount"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.alias, func(t *testing.T) {
+			canonical := findChildCommand(fs, tt.canonical)
+			if canonical == nil {
+				t.Fatalf("missing canonical command %s", tt.canonical)
+			}
+			if !containsString(canonical.Aliases, tt.alias) {
+				t.Fatalf("expected %s aliases to contain %q, got %#v", tt.canonical, tt.alias, canonical.Aliases)
+			}
+
+			resolved, _, err := root.Find([]string{"fs", tt.alias})
+			if err != nil {
+				t.Fatalf("resolve alias: %v", err)
+			}
+			if resolved.Name() != tt.canonical {
+				t.Fatalf("expected alias %s to resolve to %s, got %s", tt.alias, tt.canonical, resolved.Name())
+			}
+			path := resolved.CommandPath()
+			if want := "tdc fs " + tt.canonical; path != want {
+				t.Fatalf("expected canonical path %q, got %q", want, path)
+			}
+			if _, err := authz.ForCommand(path); err != nil {
+				t.Fatalf("alias %s resolved to command without permission: %v", tt.alias, err)
+			}
+
+			stdout, _, err := executeForTest("fs", tt.alias, "help")
+			if err != nil {
+				t.Fatalf("expected alias help to succeed, got %v", err)
+			}
+			if !strings.Contains(stdout, "Aliases:") || !strings.Contains(stdout, "  "+tt.alias) {
+				t.Fatalf("expected alias help to list %q, got:\n%s", tt.alias, stdout)
+			}
+		})
+	}
+}
+
 func TestCLICheckUpdateUsesReleaseMetadata(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/releases/latest" {
@@ -183,6 +247,15 @@ func TestCLICheckUpdateUsesReleaseMetadata(t *testing.T) {
 	if got := stdout; got != "\"0.1.0\"\n" {
 		t.Fatalf("unexpected output %q", got)
 	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestCLIUpdateRefusesUnownedLocalBuild(t *testing.T) {

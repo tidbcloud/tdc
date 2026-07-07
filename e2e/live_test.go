@@ -98,6 +98,21 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"fs", "pack-file-system", "help"},
 		{"fs", "unpack-file-system", "help"},
 		{"fs", "drain-file-system", "help"},
+		{"fs", "cp", "help"},
+		{"fs", "cat", "help"},
+		{"fs", "ls", "help"},
+		{"fs", "stat", "help"},
+		{"fs", "mv", "help"},
+		{"fs", "rm", "help"},
+		{"fs", "mkdir", "help"},
+		{"fs", "chmod", "help"},
+		{"fs", "symlink", "help"},
+		{"fs", "hardlink", "help"},
+		{"fs", "grep", "help"},
+		{"fs", "find", "help"},
+		{"fs", "mount", "help"},
+		{"fs", "drain", "help"},
+		{"fs", "umount", "help"},
 		{"vault", "create-secret", "help"},
 		{"vault", "replace-secret", "help"},
 		{"vault", "read-secret", "help"},
@@ -439,6 +454,66 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	if readHardlink.stdout != fullContent {
 		readHardlink.fail("hardlink should read the source file contents")
 	}
+
+	aliasDir := rootPath + "/alias"
+	aliasMkdir := runTDC(t, bin, "--profile", profileName, "fs", "mkdir", "--path", aliasDir, "--mode", "0755")
+	aliasMkdir.wantExitCode(0)
+	aliasMkdir.wantStdoutContains(`"status": "created"`)
+
+	aliasContent := "alias live e2e " + suffix + "\n"
+	aliasLocalFile := filepath.Join(t.TempDir(), "alias.txt")
+	if err := os.WriteFile(aliasLocalFile, []byte(aliasContent), 0o644); err != nil {
+		t.Fatalf("write alias local file: %v", err)
+	}
+	aliasPath := aliasDir + "/alias.txt"
+	aliasUpload := runTDC(t, bin, "--profile", profileName, "fs", "cp", "--from-local", aliasLocalFile, "--to-remote", aliasPath)
+	aliasUpload.wantExitCode(0)
+	aliasUpload.wantStdoutContains(`"status": "copied"`)
+
+	aliasList := runTDC(t, bin, "--profile", profileName, "fs", "ls", "--path", aliasDir)
+	aliasList.wantExitCode(0)
+	aliasList.wantStdoutContains("alias.txt")
+
+	aliasStat := runTDC(t, bin, "--profile", profileName, "fs", "stat", "--path", aliasPath)
+	aliasStat.wantExitCode(0)
+	aliasStat.wantStdoutContains(`"size_bytes"`)
+
+	aliasRead := runTDC(t, bin, "--profile", profileName, "fs", "cat", "--path", aliasPath)
+	aliasRead.wantExitCode(0)
+	if aliasRead.stdout != aliasContent {
+		aliasRead.fail("cat alias should return raw file bytes exactly")
+	}
+
+	aliasChmod := runTDC(t, bin, "--profile", profileName, "fs", "chmod", "--path", aliasPath, "--mode", "0600")
+	aliasChmod.wantExitCode(0)
+	aliasChmod.wantStdoutContains(`"status": "updated"`)
+
+	aliasSymlinkPath := aliasDir + "/alias.link"
+	aliasSymlink := runTDC(t, bin, "--profile", profileName, "fs", "symlink", "--target", "alias.txt", "--link-path", aliasSymlinkPath)
+	aliasSymlink.wantExitCode(0)
+	aliasSymlink.wantStdoutContains(`"status": "created"`)
+
+	aliasHardlinkPath := aliasDir + "/alias.hard"
+	aliasHardlink := runTDC(t, bin, "--profile", profileName, "fs", "hardlink", "--source-path", aliasPath, "--link-path", aliasHardlinkPath)
+	aliasHardlink.wantExitCode(0)
+	aliasHardlink.wantStdoutContains(`"status": "created"`)
+
+	waitLiveFSResult(t, bin, []string{"--profile", profileName, "fs", "grep", "--path", aliasDir, "--pattern", "alias live e2e", "--limit", "5"}, "alias.txt", 2*time.Minute, "grep alias file content")
+	waitLiveFSResult(t, bin, []string{"--profile", profileName, "fs", "find", "--path", aliasDir, "--file-name-pattern", "alias.txt", "--limit", "5"}, aliasPath, 2*time.Minute, "find alias file by name")
+
+	aliasCopyPath := aliasDir + "/alias.copy.txt"
+	aliasCopy := runTDC(t, bin, "--profile", profileName, "fs", "cp", "--from-remote", aliasPath, "--to-remote", aliasCopyPath)
+	aliasCopy.wantExitCode(0)
+	aliasCopy.wantStdoutContains(`"status": "copied"`)
+
+	aliasMovedPath := aliasDir + "/alias.moved.txt"
+	aliasMove := runTDC(t, bin, "--profile", profileName, "fs", "mv", "--from-remote", aliasCopyPath, "--to-remote", aliasMovedPath)
+	aliasMove.wantExitCode(0)
+	aliasMove.wantStdoutContains(`"status": "moved"`)
+
+	aliasDelete := runTDC(t, bin, "--profile", profileName, "fs", "rm", "--path", aliasMovedPath)
+	aliasDelete.wantExitCode(0)
+	aliasDelete.wantStdoutContains(`"status": "deleted"`)
 
 	largePath := rootPath + "/large.bin"
 	largeContent := strings.Repeat("0123456789abcdef", 4096)
@@ -1099,7 +1174,7 @@ func TestLiveFSMountRuntime(t *testing.T) {
 	upload := runTDC(t, bin, "--profile", profileName, "fs", "copy-file", "--from-local", localSeed, "--to-remote", remoteRoot+"/README.md")
 	upload.wantExitCode(0)
 
-	mount := runTDC(t, bin, "--profile", profileName, "fs", "mount-file-system", "--mount-path", mountPath, "--remote-path", remoteRoot, "--ready-timeout", "30s")
+	mount := runTDC(t, bin, "--profile", profileName, "fs", "mount", "--mount-path", mountPath, "--remote-path", remoteRoot, "--ready-timeout", "30s")
 	mount.wantExitCode(0)
 	mount.wantStdoutContains(`"status": "mounted"`)
 	mount.wantStdoutContains(`"driver": "fuse"`)
@@ -1110,13 +1185,13 @@ func TestLiveFSMountRuntime(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(mountPath, "local-write.txt"), []byte(localWrite), 0o644); err != nil {
 		t.Fatalf("write through mount failed: %v", err)
 	}
-	drain := runTDC(t, bin, "--profile", profileName, "fs", "drain-file-system", "--mount-path", mountPath, "--timeout", "30s")
+	drain := runTDC(t, bin, "--profile", profileName, "fs", "drain", "--mount-path", mountPath, "--timeout", "30s")
 	drain.wantExitCode(0)
 	drain.wantStdoutContains(`"status": "drained"`)
 	drain.wantStdoutContains(`"ok": true`)
 	waitLiveRemoteRead(t, bin, profileName, remoteRoot+"/local-write.txt", localWrite, 30*time.Second)
 
-	unmount := runTDC(t, bin, "--profile", profileName, "fs", "unmount-file-system", "--mount-path", mountPath)
+	unmount := runTDC(t, bin, "--profile", profileName, "fs", "umount", "--mount-path", mountPath)
 	unmount.wantExitCode(0)
 	unmount.wantStdoutContains(`"status": "unmounted"`)
 	unmounted = true

@@ -66,6 +66,43 @@ func TestHelpAndVersion(t *testing.T) {
 	version.wantStdoutContains("tdc ")
 }
 
+func TestFSUnixAliasHelp(t *testing.T) {
+	bin := tdcBinary(t)
+
+	tests := []struct {
+		alias     string
+		canonical string
+		flag      string
+	}{
+		{alias: "cp", canonical: "copy-file", flag: "--from-local"},
+		{alias: "cat", canonical: "read-file", flag: "--path"},
+		{alias: "ls", canonical: "list-files", flag: "--path"},
+		{alias: "stat", canonical: "describe-file", flag: "--path"},
+		{alias: "mv", canonical: "move-file", flag: "--from-remote"},
+		{alias: "rm", canonical: "delete-file", flag: "--recursive"},
+		{alias: "mkdir", canonical: "create-directory", flag: "--mode"},
+		{alias: "chmod", canonical: "chmod-file", flag: "--mode"},
+		{alias: "symlink", canonical: "create-symlink", flag: "--link-path"},
+		{alias: "hardlink", canonical: "create-hardlink", flag: "--source-path"},
+		{alias: "grep", canonical: "search-file-content", flag: "--pattern"},
+		{alias: "find", canonical: "find-files", flag: "--file-name-pattern"},
+		{alias: "mount", canonical: "mount-file-system", flag: "--mount-path"},
+		{alias: "drain", canonical: "drain-file-system", flag: "--timeout"},
+		{alias: "umount", canonical: "unmount-file-system", flag: "--ignore-absent"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.alias, func(t *testing.T) {
+			result := runTDC(t, bin, "fs", tt.alias, "help")
+			result.wantExitCode(0)
+			result.wantStdoutContains("tdc fs " + tt.canonical)
+			result.wantStdoutContains("Aliases:")
+			result.wantStdoutContains("  " + tt.alias)
+			result.wantStdoutContains(tt.flag)
+		})
+	}
+}
+
 func TestErrorsAreRenderedAtCLIBoundary(t *testing.T) {
 	bin := tdcBinary(t)
 

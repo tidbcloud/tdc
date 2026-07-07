@@ -167,7 +167,7 @@ tdc --version
 ## Implementation Design
 
 - `.goreleaser.yaml` defines cgo-free Go builds for supported OS/arch pairs, stable archive names, `tdc_checksums.txt`, and GitHub release extra files for `install.sh` and `install.ps1`.
-- `.github/workflows/release.yml` runs GoReleaser on `v*` tags with `contents: write`. This workflow is intentionally only release publishing; full CI/CD remains in `0014`.
+- `.github/workflows/release.yml` runs GoReleaser on `v*` tags with `contents: write`. This workflow is intentionally only release publishing; full CI/CD remains in `0013`.
 - `scripts/install.sh` supports macOS/Linux `amd64` and `arm64`.
 - `scripts/install.ps1` supports Windows `amd64`.
 - `internal/version` carries release metadata through Go linker variables.
