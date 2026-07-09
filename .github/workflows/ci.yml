@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Check formatting
+        run: |
+          set -euo pipefail
+          unformatted="$(git ls-files -- '*.go' ':!:ref/**' | xargs gofmt -l)"
+          if [ -n "$unformatted" ]; then
+            echo "Go files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Check go mod tidy
+        run: |
+          set -euo pipefail
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Run binary e2e tests
+        run: make e2e
+
+      - name: Build
+        run: make build
