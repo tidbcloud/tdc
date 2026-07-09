@@ -337,7 +337,6 @@ func newDBDeleteClusterCommand(info version.Info) *cobra.Command {
 		},
 	}, info)
 	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
-	cmd.Flags().String("confirm-db-cluster-name", "", "required exact remote cluster display name confirmation")
 	return cmd
 }
 
@@ -480,14 +479,13 @@ func newDBDeleteBranchCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
 	cmd.Flags().String("db-cluster-branch-id", "", "Starter DB cluster branch id")
-	cmd.Flags().String("confirm-db-cluster-branch-name", "", "required exact remote branch display name confirmation")
 	return cmd
 }
 
 func newDBPrepareQueryAccessCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "prepare-db-query-access",
-		Short:      "Prepare local SQL credentials for query execution.",
+		Use:        "create-db-sql-users",
+		Short:      "Create or repair tdc-managed DB SQL users.",
 		Mutation:   mutatingCommand,
 		Permission: authz.StarterSQLUserCreate,
 		Run: func(ctx commandContext) (any, error) {
@@ -525,8 +523,8 @@ func newDBPrepareQueryAccessCommand(info version.Info) *cobra.Command {
 
 func newDBCreateConnectionStringCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "create-db-connection-string",
-		Short:      "Create a DB connection string from prepared credentials.",
+		Use:        "format-db-connection-string",
+		Short:      "Format a DB connection string from prepared credentials.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.StarterSQLUserRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -578,7 +576,7 @@ func newDBExecuteSQLCommand(info version.Info) *cobra.Command {
 	addSQLCredentialFlags(cmd)
 	cmd.Flags().String("database", "", "database/default schema name")
 	cmd.Flags().String("sql", "", "one SQL statement to execute")
-	cmd.Flags().String("transport", "http", "SQL execution transport: http or mysql")
+	cmd.Flags().String("transport", "https", "SQL execution transport: https or mysql")
 	return cmd
 }
 
@@ -657,14 +655,9 @@ func deleteClusterOptions(ctx commandContext, profile *config.Profile) (db.Delet
 	if err != nil {
 		return db.DeleteClusterOptions{}, err
 	}
-	confirmName, err := ctx.StringFlag("confirm-db-cluster-name")
-	if err != nil {
-		return db.DeleteClusterOptions{}, err
-	}
 	return db.DeleteClusterOptions{
-		Profile:              profile,
-		ClusterID:            clusterID,
-		ConfirmDBClusterName: confirmName,
+		Profile:   profile,
+		ClusterID: clusterID,
 	}, nil
 }
 
@@ -693,15 +686,10 @@ func deleteBranchOptions(ctx commandContext, profile *config.Profile) (db.Delete
 	if err != nil {
 		return db.DeleteBranchOptions{}, err
 	}
-	confirmName, err := ctx.StringFlag("confirm-db-cluster-branch-name")
-	if err != nil {
-		return db.DeleteBranchOptions{}, err
-	}
 	return db.DeleteBranchOptions{
-		Profile:                    profile,
-		ClusterID:                  clusterID,
-		BranchID:                   branchID,
-		ConfirmDBClusterBranchName: confirmName,
+		Profile:   profile,
+		ClusterID: clusterID,
+		BranchID:  branchID,
 	}, nil
 }
 

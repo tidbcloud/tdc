@@ -44,11 +44,11 @@ func Execute(ctx context.Context, opts Options) (sqlresult.Result, error) {
 	}
 	body, err := json.Marshal(map[string]string{"query": opts.SQL})
 	if err != nil {
-		return sqlresult.Result{}, apperr.Wrap("db.sql_http_encode", "runtime", 1, "encode SQL HTTP request", err)
+		return sqlresult.Result{}, apperr.Wrap("db.sql_http_encode", "runtime", 1, "encode SQL HTTPS API request", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return sqlresult.Result{}, apperr.Wrap("db.sql_http_request", "runtime", 1, "build SQL HTTP request", err)
+		return sqlresult.Result{}, apperr.Wrap("db.sql_http_request", "runtime", 1, "build SQL HTTPS API request", err)
 	}
 	req.SetBasicAuth(opts.Username, opts.Password)
 	req.Header.Set("Content-Type", "application/json")
@@ -63,12 +63,12 @@ func Execute(ctx context.Context, opts Options) (sqlresult.Result, error) {
 	traceID := traceID()
 	req.Header.Set("X-Debug-Trace-Id", traceID)
 	if opts.Debug && opts.DebugWriter != nil {
-		_, _ = fmt.Fprintf(opts.DebugWriter, "tdc [DEBUG]: sql http request id: %s\n", traceID)
+		_, _ = fmt.Fprintf(opts.DebugWriter, "tdc [DEBUG]: sql https api request id: %s\n", traceID)
 	}
 
 	res, err := client.Do(req)
 	if err != nil {
-		return sqlresult.Result{}, apperr.Wrap("db.sql_http_network", "database", 1, "SQL HTTP request failed: check network connectivity and cluster endpoint", err)
+		return sqlresult.Result{}, apperr.Wrap("db.sql_http_network", "database", 1, "SQL HTTPS API request failed: check network connectivity and cluster endpoint", err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
@@ -76,7 +76,7 @@ func Execute(ctx context.Context, opts Options) (sqlresult.Result, error) {
 	}
 	var wire responseWire
 	if err := json.NewDecoder(res.Body).Decode(&wire); err != nil {
-		return sqlresult.Result{}, apperr.Wrap("db.sql_http_decode", "database", 1, "SQL HTTP response was not valid JSON", err)
+		return sqlresult.Result{}, apperr.Wrap("db.sql_http_decode", "database", 1, "SQL HTTPS API response was not valid JSON", err)
 	}
 	fields := wire.Fields()
 	rows := sqlresult.DecodeRows(fields, wire.Rows)
@@ -86,7 +86,7 @@ func Execute(ctx context.Context, opts Options) (sqlresult.Result, error) {
 		RowCount:     len(rows),
 		RowsAffected: wire.RowsAffected,
 		LastInsertID: wire.LastInsertID,
-		Transport:    "http",
+		Transport:    "https",
 		AccessMode:   opts.AccessMode,
 		ClusterID:    opts.ClusterID,
 		Session:      res.Header.Get("TiDB-Session"),
@@ -97,7 +97,7 @@ func endpointURL(opts Options) (string, error) {
 	if opts.BaseURL != "" {
 		parsed, err := url.Parse(opts.BaseURL)
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-			return "", apperr.Wrap("db.sql_http_invalid_endpoint", "config", 2, fmt.Sprintf("invalid SQL HTTP endpoint %q", opts.BaseURL), err)
+			return "", apperr.Wrap("db.sql_http_invalid_endpoint", "config", 2, fmt.Sprintf("invalid SQL HTTPS API endpoint %q", opts.BaseURL), err)
 		}
 		parsed.Path = strings.TrimRight(parsed.Path, "/") + "/v1beta/sql"
 		return parsed.String(), nil
@@ -123,7 +123,7 @@ func statusError(res *http.Response) error {
 		}
 	}
 	if message == "" {
-		message = fmt.Sprintf("SQL HTTP request failed with HTTP %d", res.StatusCode)
+		message = fmt.Sprintf("SQL HTTPS API request failed with HTTP %d", res.StatusCode)
 	}
 	return apperr.New("db.sql_execution_failed", "database", 1, message)
 }

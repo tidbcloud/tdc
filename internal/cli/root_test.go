@@ -377,15 +377,15 @@ func TestMutatingControlPlaneDryRunRendersJSON(t *testing.T) {
 	}
 }
 
-func TestMutatingControlPlaneDryRunSupportsHumanOutput(t *testing.T) {
+func TestMutatingControlPlaneDryRunSupportsTextOutput(t *testing.T) {
 	withConfigEnv(t)
 
-	stdout, _, err := executeForTest("db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--db-cluster-type", "starter", "--project-id", "project-1", "--dry-run", "--output", "human")
+	stdout, _, err := executeForTest("db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--db-cluster-type", "starter", "--project-id", "project-1", "--dry-run", "--output", "text")
 	if err != nil {
 		t.Fatalf("expected dry-run to succeed, got %v", err)
 	}
 	if !strings.Contains(stdout, "Dry run: tdc db create-db-cluster") {
-		t.Fatalf("unexpected human output:\n%s", stdout)
+		t.Fatalf("unexpected text output:\n%s", stdout)
 	}
 }
 

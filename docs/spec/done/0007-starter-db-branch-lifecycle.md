@@ -20,7 +20,8 @@ Initial command set:
 - Mutating branch commands support `--dry-run`.
 - Commands must not prompt.
 - Branch operations require explicit cluster identification.
-- Delete must use a non-interactive safety mechanism.
+- Delete is non-interactive and deletes by explicit cluster ID plus branch ID
+  after reading the remote branch.
 
 ## Inputs And Config
 
@@ -49,7 +50,7 @@ Users can manage Starter branch workflows without adding another command level:
 tdc db create-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-name dev --dry-run
 tdc db list-db-cluster-branches --db-cluster-id <cluster-id>
 tdc db describe-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id>
-tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id> --confirm-db-cluster-branch-name dev
+tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id>
 ```
 
 Branches use the same provider/region routing as their parent Starter cluster
@@ -62,8 +63,9 @@ commands.
 - `internal/api/starter` adds branch endpoints and response models under the
   same Starter client.
 - `internal/db/validate` validates cluster and branch identifiers.
-- Delete safety is implemented through an explicit long flag, initially
-  `--confirm-db-cluster-branch-name <name>`.
+- Delete safety is implemented through explicit cluster and branch IDs plus a
+  remote read before mutation. It does not require a display name confirmation
+  flag.
 
 ## API Call Chain
 
@@ -85,8 +87,9 @@ Command mapping:
 - `tdc db describe-db-cluster-branch`
   1. Call `GET /v1beta1/clusters/{clusterId}/branches/{branchId}`.
 - `tdc db delete-db-cluster-branch`
-  1. Validate `--confirm-db-cluster-branch-name`.
-  2. Call `DELETE /v1beta1/clusters/{clusterId}/branches/{branchId}`.
+  1. Validate `--db-cluster-id` and `--db-cluster-branch-id`.
+  2. Call `GET /v1beta1/clusters/{clusterId}/branches/{branchId}`.
+  3. Call `DELETE /v1beta1/clusters/{clusterId}/branches/{branchId}`.
 
 Available but out of scope for this spec:
 

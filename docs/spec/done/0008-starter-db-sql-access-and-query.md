@@ -9,17 +9,17 @@ clusters in an agent-friendly, deterministic way.
 
 Initial command set:
 
-- `tdc db prepare-db-query-access`
-- `tdc db create-db-connection-string`
+- `tdc db create-db-sql-users`
+- `tdc db format-db-connection-string`
 - `tdc db execute-sql-statement`
 
 Primary shapes:
 
 ```bash
-tdc db prepare-db-query-access --db-cluster-id <cluster-id>
-tdc db create-db-connection-string --db-cluster-id <cluster-id>
-tdc db create-db-connection-string --db-cluster-id <cluster-id> --read-only --format env
-tdc db create-db-connection-string --db-cluster-id <cluster-id> --admin --format jdbc
+tdc db create-db-sql-users --db-cluster-id <cluster-id>
+tdc db format-db-connection-string --db-cluster-id <cluster-id>
+tdc db format-db-connection-string --db-cluster-id <cluster-id> --read-only --format env
+tdc db format-db-connection-string --db-cluster-id <cluster-id> --admin --format jdbc
 tdc db execute-sql-statement --db-cluster-id <cluster-id> --sql "select 1"
 tdc db execute-sql-statement --db-cluster-id <cluster-id> --read-write --sql "insert into t values (1)"
 tdc db execute-sql-statement --db-cluster-id <cluster-id> --read-only --sql "select * from t"
@@ -28,58 +28,58 @@ tdc db execute-sql-statement --db-cluster-id <cluster-id> --admin --sql "show gr
 
 ## Behavior
 
-- `prepare-db-query-access` creates and stores three tdc-managed SQL users for the target
+- `create-db-sql-users` creates and stores three tdc-managed SQL users for the target
   cluster:
   - `read_only`, backed by TiDB Cloud built-in role `role_readonly`.
   - `read_write`, backed by TiDB Cloud built-in role `role_readwrite`.
   - `admin`, backed by TiDB Cloud built-in role `role_admin`.
-- `prepare-db-query-access` must be idempotent and re-entrant. Re-running it must not
+- `create-db-sql-users` must be idempotent and re-entrant. Re-running it must not
   create a new group of users when the expected tdc-managed users already exist.
 - Use stable user suffixes per cluster, initially `tdc_ro`, `tdc_rw`, and
   `tdc_admin`. TiDB Cloud may add the cluster user prefix through the SQL user
   API; store the full returned username.
 - If a tdc-managed user exists remotely but the local password is missing,
-  `prepare-db-query-access` updates that user's password and writes the new
+  `create-db-sql-users` updates that user's password and writes the new
   password to local credentials instead of creating a duplicate user. This is
   backed by the confirmed SQL user PATCH API.
 - SQL user GET/List responses do not expose passwords. Lost local passwords
-  cannot be recovered from TiDB Cloud; `prepare-db-query-access` can only
+  cannot be recovered from TiDB Cloud; `create-db-sql-users` can only
   rotate/reset the password for a verified tdc-managed SQL user.
 - A remote user is considered tdc-managed only when the stable username suffix
   matches, the auth method is `mysql_native_password`, and `builtinRole` is
   either the expected role or TiDB Cloud's auto-prefixed form ending in
   `.<expected-role>`. If a matching suffix exists with a different role or auth
   method, fail with a conflict error instead of changing it.
-- `create-db-connection-string` and `execute-sql-statement` use the
+- `format-db-connection-string` and `execute-sql-statement` use the
   `read_write` user by default.
-- `create-db-connection-string --read-write` and
+- `format-db-connection-string --read-write` and
   `execute-sql-statement --read-write` explicitly use the `read_write` user.
-- `create-db-connection-string --read-only` and
+- `format-db-connection-string --read-only` and
   `execute-sql-statement --read-only` use the `read_only` user.
-- `create-db-connection-string --admin` and `execute-sql-statement --admin`
+- `format-db-connection-string --admin` and `execute-sql-statement --admin`
   use the `admin` user and must be explicitly specified.
 - For both commands, `--read-only`, `--read-write`, and `--admin` are mutually
   exclusive.
 - Do not infer access mode from SQL text. There is no `auto` mode.
-- `create-db-connection-string` emits credential-bearing output. This is
+- `format-db-connection-string` emits credential-bearing output. This is
   intentional when the user asks for a connection string, but the command must
   never send usernames, passwords, or full connection strings to telemetry.
-- `create-db-connection-string` must support common connection string formats:
+- `format-db-connection-string` must support common connection string formats:
   - `mysql-uri`: `mysql://<user>:<password>@<host>:<port>/<database>?ssl-mode=VERIFY_IDENTITY`
   - `jdbc`: `jdbc:mysql://<host>:<port>/<database>?user=<user>&password=<password>&sslMode=VERIFY_IDENTITY`
   - `go-sql-driver`: `<user>:<password>@tcp(<host>:<port>)/<database>?tls=true&parseTime=true`
   - `sqlalchemy`: `mysql+pymysql://<user>:<password>@<host>:<port>/<database>?ssl_verify_identity=true`
   - `env`: dotenv-compatible key-value lines with connection components so
     agents can assemble the exact framework-specific value they need.
-- `create-db-connection-string` defaults to `mysql-uri` unless `--format` is
+- `format-db-connection-string` defaults to `mysql-uri` unless `--format` is
   provided.
 - `execute-sql-statement` executes exactly one SQL statement per invocation.
-- HTTP SQL execution is the default transport.
+- HTTPS SQL API execution is the default transport.
 - MySQL transport is supported as an explicit fallback path through a flag such
   as `--transport mysql`; it opens one connection, executes once, and closes the
   connection.
-- Do not automatically retry write-capable queries on MySQL after an HTTP
-  failure, because the HTTP request may already have been executed remotely.
+- Do not automatically retry write-capable queries on MySQL after an HTTPS SQL
+  API failure, because the request may already have been executed remotely.
 
 ## Inputs And Config
 
@@ -92,9 +92,10 @@ Common flags:
   the target format supports it.
 - `--sql <statement>` is required for `tdc db execute-sql-statement`.
 - `--read-only`, `--read-write`, and `--admin` select SQL user credentials.
-- `--transport http|mysql` selects the execution transport. Default is `http`.
+- `--transport https|mysql` selects the execution transport. Default is
+  `https`.
 - `--format mysql-uri|jdbc|go-sql-driver|sqlalchemy|env` is valid for
-  `tdc db create-db-connection-string`. Default is `mysql-uri`.
+  `tdc db format-db-connection-string`. Default is `mysql-uri`.
 - `--env-prefix <prefix>` is valid only with `--format env`. Default is
   `TIDB_`.
 - `--env-include-database-url` is valid only with `--format env`; when set,
@@ -103,7 +104,7 @@ Common flags:
   from parts.
 - `--env-database-url-name <name>` is valid only with
   `--env-include-database-url`; default is `DATABASE_URL`.
-- `--dry-run` is valid for `prepare-db-query-access` only.
+- `--dry-run` is valid for `create-db-sql-users` only.
 
 Store generated database SQL credentials outside the main profile credentials
 file:
@@ -146,14 +147,14 @@ Do not store SQL text in config, credentials, telemetry, or logs.
 
 ## Output And Errors
 
-- `prepare-db-query-access` returns JSON by default with user status per role:
+- `create-db-sql-users` returns JSON by default with user status per role:
   `created`, `exists`, `updated_password`, or `skipped_by_dry_run`.
-- `create-db-connection-string` returns JSON by default with cluster ID, access
+- `format-db-connection-string` returns JSON by default with cluster ID, access
   mode, username, host, port, database, TLS mode, selected format, and the
   generated connection string. The password is included only inside the
   connection string field in JSON output, because the command exists to produce
   a usable secret-bearing connection value.
-- `create-db-connection-string --format env` prints dotenv-compatible lines by
+- `format-db-connection-string --format env` prints dotenv-compatible lines by
   default instead of JSON, because the output is intended to be redirected into
   an `.env` file or read by an agent. It must include component variables:
   `TIDB_HOST`, `TIDB_PORT`, `TIDB_USER`, `TIDB_PASSWORD`, `TIDB_DATABASE`,
@@ -162,10 +163,10 @@ Do not store SQL text in config, credentials, telemetry, or logs.
   prioritizes components so agents can compose framework-specific values.
 - `execute-sql-statement` returns JSON by default with fields, rows, row count,
   rows affected, last insert ID, transport, access mode, and cluster ID.
-- `execute-sql-statement --output human` may print a compact table for row
+- `execute-sql-statement --output text` may print a compact table for row
   results.
 - Missing prepared credentials must suggest running
-  `tdc db prepare-db-query-access`.
+  `tdc db create-db-sql-users`.
 - Read-only user write failures should be reported as database permission
   errors, not as CLI validation errors.
 - SQL text must not appear in telemetry. It may appear in command output only
@@ -178,9 +179,9 @@ Users can prepare a cluster once and then run SQL without passing usernames or
 passwords on every command:
 
 ```bash
-tdc db prepare-db-query-access --db-cluster-id <cluster-id>
-tdc db create-db-connection-string --db-cluster-id <cluster-id> --read-write --format mysql-uri
-tdc db create-db-connection-string --db-cluster-id <cluster-id> --read-only --format env
+tdc db create-db-sql-users --db-cluster-id <cluster-id>
+tdc db format-db-connection-string --db-cluster-id <cluster-id> --read-write --format mysql-uri
+tdc db format-db-connection-string --db-cluster-id <cluster-id> --read-only --format env
 tdc db execute-sql-statement --db-cluster-id <cluster-id> --sql "select current_date()"
 tdc db execute-sql-statement --db-cluster-id <cluster-id> --read-write --sql "insert into audit_log values (1)"
 tdc db execute-sql-statement --db-cluster-id <cluster-id> --read-only --sql "select * from audit_log"
@@ -193,8 +194,8 @@ explicit flags, and tdc never guesses from SQL content.
 
 ## Implementation Design
 
-- `internal/cli` registers `prepare-db-query-access`,
-  `create-db-connection-string`, and `execute-sql-statement`.
+- `internal/cli` registers `create-db-sql-users`,
+  `format-db-connection-string`, and `execute-sql-statement`.
 - `internal/db/sqlaccess` owns idempotent SQL user preparation, stable username
   planning, password generation, local credential persistence, and repair of
   missing local passwords.
@@ -204,7 +205,7 @@ explicit flags, and tdc never guesses from SQL content.
   `~/.tdc/credentials` profile file.
 - `internal/api/starter` adds SQL user list/get/create/update calls and cluster
   or branch endpoint retrieval needed for query execution.
-- `internal/db/sqlhttp` implements the HTTP SQL transport based on the
+- `internal/db/sqlhttp` implements the HTTPS SQL API transport based on the
   serverless driver shape: `POST https://http-<host>/v1beta/sql`, Basic Auth,
   `TiDB-Database`, and JSON body `{"query":"..."}`.
 - `internal/db/sqlmysql` implements the explicit MySQL one-shot transport using
@@ -233,7 +234,7 @@ fallbacks unless product explicitly accepts the security and privilege tradeoff.
 - `PATCH /v1beta1/clusters/{clusterId}/sqlUsers/{userName}`
 - `DELETE /v1beta1/clusters/{clusterId}/sqlUsers/{userName}`
 
-`prepare-db-query-access` call chain:
+`create-db-sql-users` call chain:
 
 1. Load profile, TiDB Cloud API credentials, and existing local DB credentials.
 2. Call `GET /v1beta1/clusters/{clusterId}` to verify the cluster exists and to
@@ -280,7 +281,7 @@ HTTP query call chain:
    - `TiDB-Session: ""` for one-shot stateless execution
    - `X-Debug-Trace-Id: <generated-request-id>` when debug tracing is enabled
 6. Send body `{"query":"<sql>"}`.
-7. Decode response fields equivalent to the serverless HTTP SQL result:
+7. Decode response fields equivalent to the serverless HTTPS SQL API result:
    `types`, `rows`, `rowsAffected`, `sLastInsertID`, and response
    `TiDB-Session`. tdc does not persist the session for one-shot queries.
 
@@ -313,7 +314,7 @@ MySQL fallback call chain:
 ## Dependencies And Platform
 
 - Add `github.com/go-sql-driver/mysql` for explicit MySQL fallback transport.
-- HTTP transport uses Go standard library `net/http`.
+- HTTPS SQL transport uses Go standard library `net/http`.
 - Result decoding uses Go standard library `encoding/json`.
 - No cgo is required.
 - MySQL fallback is cross-platform but should stay optional at runtime.
@@ -327,12 +328,12 @@ MySQL fallback call chain:
 
 ## Acceptance Criteria
 
-- `prepare-db-query-access` creates read-only, read-write, and admin users when none
+- `create-db-sql-users` creates read-only, read-write, and admin users when none
   exist.
-- Re-running `prepare-db-query-access` with existing users does not create duplicate
+- Re-running `create-db-sql-users` with existing users does not create duplicate
   users.
 - If local credentials are missing but remote tdc-managed users exist,
-  `prepare-db-query-access` updates passwords and stores them locally.
+  `create-db-sql-users` updates passwords and stores them locally.
 - Prepared DB SQL credentials are stored in
   `~/.tdc/db_users/<cluster-id>/credentials`, not in the main
   `~/.tdc/credentials` file.
@@ -353,12 +354,12 @@ MySQL fallback call chain:
 - Tests reject combined access-mode flags.
 - Tests verify no SQL text, usernames, passwords, or connection strings are sent
   to telemetry.
-- HTTP transport tests verify URL, Basic Auth, headers, body, success response,
-  and error response handling.
+- HTTPS SQL API transport tests verify URL, Basic Auth, headers, body, success
+  response, and error response handling.
 - MySQL transport tests verify one connection is opened and closed per query.
 - `make live-e2e` prepares SQL users on the temporary `tdc-e2e-*` Starter
   cluster, verifies idempotent re-run, creates connection strings, executes
-  HTTP SQL with read-write/read-only/admin modes, and removes the local
+  HTTPS SQL API with read-write/read-only/admin modes, and removes the local
   `~/.tdc/db_users/<cluster-id>` test credentials after the run.
 
 ## Out Of Scope

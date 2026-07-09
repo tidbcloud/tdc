@@ -72,7 +72,7 @@ func TestListClusters(t *testing.T) {
 		t.Fatalf("unexpected clusters: %#v", result.Clusters)
 	}
 	if human := result.Human(); !strings.Contains(human, "demo-cluster") || !strings.Contains(human, "token-2") {
-		t.Fatalf("unexpected human output:\n%s", human)
+		t.Fatalf("unexpected text output:\n%s", human)
 	}
 }
 
@@ -133,26 +133,33 @@ func TestUpdateCluster(t *testing.T) {
 	}
 }
 
-func TestDeleteClusterRequiresMatchingConfirmation(t *testing.T) {
-	deleteCalled := false
+func TestDeleteClusterReadsBeforeDelete(t *testing.T) {
+	requests := make([]string, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodDelete {
-			deleteCalled = true
+		requests = append(requests, r.Method)
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(`{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER"}`))
+		case http.MethodDelete:
+			_, _ = w.Write([]byte(`{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER","state":"DELETED"}`))
+		default:
+			t.Fatalf("unexpected method %s", r.Method)
 		}
-		_, _ = w.Write([]byte(`{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER"}`))
 	}))
 	defer server.Close()
 
-	_, err := testService(server.URL).DeleteCluster(context.Background(), DeleteClusterOptions{
-		Profile:              testProfile(),
-		ClusterID:            "cluster-1",
-		ConfirmDBClusterName: "wrong-name",
+	result, err := testService(server.URL).DeleteCluster(context.Background(), DeleteClusterOptions{
+		Profile:   testProfile(),
+		ClusterID: "cluster-1",
 	})
-	if err == nil {
-		t.Fatal("expected confirmation mismatch to fail")
+	if err != nil {
+		t.Fatalf("DeleteCluster failed: %v", err)
 	}
-	if deleteCalled {
-		t.Fatal("delete should not be called when confirmation mismatches")
+	if result.ID != "cluster-1" {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if strings.Join(requests, ",") != "GET,DELETE" {
+		t.Fatalf("unexpected requests: %#v", requests)
 	}
 }
 

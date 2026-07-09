@@ -55,7 +55,7 @@ func TestListProjects(t *testing.T) {
 		t.Fatalf("unexpected next page token %q", result.NextPageToken)
 	}
 	if human := result.Human(); !strings.Contains(human, "Project 1") || !strings.Contains(human, "next_page_token") {
-		t.Fatalf("unexpected human output:\n%s", human)
+		t.Fatalf("unexpected text output:\n%s", human)
 	}
 }
 

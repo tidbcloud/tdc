@@ -60,7 +60,7 @@ func TestExecuteHTTP(t *testing.T) {
 	if gotDatabase != "test" || gotBody["query"] != "select 1" {
 		t.Fatalf("unexpected request database=%q body=%#v", gotDatabase, gotBody)
 	}
-	if result.Transport != "http" || result.AccessMode != sqlcred.ReadWrite || result.Session != "session-1" {
+	if result.Transport != "https" || result.AccessMode != sqlcred.ReadWrite || result.Session != "session-1" {
 		t.Fatalf("unexpected result metadata: %#v", result)
 	}
 	if result.RowCount != 1 || result.Rows[0]["n"] != int64(1) {

@@ -34,7 +34,7 @@ Check for updates:
 
 ```bash
 tdc cli check-update
-tdc cli check-update --output human
+tdc cli check-update --output text
 ```
 
 Update an official archive/script install:
@@ -104,7 +104,7 @@ bin/tdc configure --profile live-e2e --non-interactive
 make live-e2e
 ```
 
-At the current implementation stage, `make live-e2e` validates the real binary, the `live-e2e` profile, real TiDB Cloud Digest-auth read-only API probes, `tdc organization list-projects`, the current command surface, mutating command dry-runs, read-only dry-run rejection, a full tdc fs data-plane lifecycle, and the full Starter DB cluster, SQL access, and branch lifecycles. The live tdc fs lifecycle writes only under a unique `/tdc-e2e-*` path, uploads local files, verifies multipart upload, efficient append, upload resume, range reads, lists/describes/reads/searches/finds files, performs remote copy/move, verifies stdin/stdout copy, tags/descriptions, chmod, symlink, hardlink, pack/unpack, low-level Git workspace APIs, creates and commits a real tdc fs layer, creates/reads/replaces/deletes a real tdc vault secret, verifies delegated grant/token reads, mounts the vault and reads a field through the mounted filesystem on macOS/Linux, lists vault audit events, creates/appends/reads/searches/verifies a real tdc journal, downloads content back, and deletes the test path recursively. On macOS or Linux with FUSE available, live e2e also mounts a unique remote path through the default FUSE driver, reads and writes through the local mount, drains it, unmounts it, and cleans up the remote path. On macOS with `mount_webdav` available, live e2e also verifies the explicit `--driver webdav` fallback path. The live DB lifecycle creates one uniquely named `tdc-e2e-*` Starter cluster without a spending limit, prepares tdc-managed read-only/read-write/admin SQL users, creates connection strings, executes HTTP SQL with all three access modes, creates one `tdc-e2e-branch-*` branch on that cluster, lists/describes/deletes the branch, updates the cluster, reads it again, deletes it, and verifies deletion. As TiDB Cloud API commands are implemented, their real live tests must be added to this same target.
+At the current implementation stage, `make live-e2e` validates the real binary, the `live-e2e` profile, real TiDB Cloud Digest-auth read-only API probes, `tdc organization list-projects`, the current command surface, mutating command dry-runs, read-only dry-run rejection, a full tdc fs data-plane lifecycle, and the full Starter DB cluster, SQL access, and branch lifecycles. If the `live-e2e` profile has no `fs_api_key`, the live suite creates a temporary tdc fs resource named by `TDC_LIVE_FS_NAME` or `workspace`, stores the generated flat `fs_*` metadata and `fs_api_key`, and deletes that auto-created resource when the test process exits. The live tdc fs lifecycle writes only under a unique `/tdc-e2e-*` path, uploads local files, verifies multipart upload, efficient append, upload resume, range reads, lists/describes/reads/searches/finds files, performs remote copy/move, verifies stdin/stdout copy, tags/descriptions, chmod, symlink, hardlink, pack/unpack, low-level Git workspace APIs, creates and commits a real tdc fs layer, creates/reads/replaces/deletes a real tdc vault secret, verifies delegated grant/token reads, mounts the vault and reads a field through the mounted filesystem on macOS/Linux, lists vault audit events, creates/appends/reads/searches/verifies a real tdc journal, downloads content back, and deletes the test path recursively. On macOS or Linux with FUSE available, live e2e also mounts a unique remote path through the default FUSE driver, reads and writes through the local mount, drains it, unmounts it, and cleans up the remote path. On macOS with `mount_webdav` available, live e2e also verifies the explicit `--driver webdav` fallback path. The live DB lifecycle creates one uniquely named `tdc-e2e-*` Starter cluster without a spending limit, prepares tdc-managed read-only/read-write/admin SQL users, creates connection strings, executes the HTTPS SQL API with all three access modes, creates one `tdc-e2e-branch-*` branch on that cluster, lists/describes/deletes the branch, updates the cluster, reads it again, deletes it, and verifies deletion. As TiDB Cloud API commands are implemented, their real live tests must be added to this same target.
 
 ## GitHub Actions
 
@@ -205,7 +205,7 @@ The private key is not printed after entry. When stdin is a terminal, private ke
 - Use long flags only. Short flags such as `-h` are rejected.
 - Help is available as an explicit command, for example `tdc db help`.
 - Successful structured command results render as JSON by default.
-- `--output json` and `--output human` are supported output modes.
+- `--output json` and `--output text` are supported output modes.
 - `--query <jmespath-expression>` is applied after command execution and before rendering.
 - Mutating control-plane commands support `--dry-run`.
 - `--dry-run` loads the active profile and validates local config, credentials, provider, and region before reporting the planned mutation.
@@ -221,7 +221,7 @@ Global flags:
 
 - `--profile <name>`
 - `--debug`
-- `--output <json|human>`
+- `--output <json|text>`
 - `--query <jmespath-expression>`
 - `--help`
 - `--version`
@@ -257,7 +257,7 @@ tdc cli update --yes
 tdc cli update --target-version v0.1.0 --yes
 ```
 
-`check-update` calls the GitHub Releases API for `github.com/tidbcloud/tdc`, matches the release artifact for the current OS/arch, and reports whether a newer release is available. It supports `--output json|human` and `--query`.
+`check-update` calls the GitHub Releases API for `github.com/tidbcloud/tdc`, matches the release artifact for the current OS/arch, and reports whether a newer release is available. It supports `--output json|text` and `--query`.
 
 `update` only mutates official archive/script installs. It refuses local builds, unknown installs, and future package-manager installs with actionable errors. Use `--dry-run` to preview the selected artifact, checksum, and target path. Use `--yes` to replace the current binary on Unix-like platforms. On Windows, rerun `install.ps1` for the target version.
 
@@ -268,7 +268,7 @@ tdc organization list-projects
 tdc organization list-projects --page-size 10
 tdc organization list-projects --page-token <next-page-token>
 tdc organization list-projects --query 'projects[0].id'
-tdc organization list-projects --output human
+tdc organization list-projects --output text
 ```
 
 This command calls the TiDB Cloud IAM/account API with the active profile's Digest-auth API key pair and returns the projects visible to that profile.
@@ -286,13 +286,13 @@ tdc db describe-db-cluster --db-cluster-id <cluster-id>
 tdc db describe-db-cluster --db-cluster-id <cluster-id> --view FULL
 tdc db update-db-cluster --db-cluster-id <cluster-id> --db-cluster-name new-name
 tdc db update-db-cluster --db-cluster-id <cluster-id> --monthly-spending-limit-usd-cents 1000 --dry-run
-tdc db delete-db-cluster --db-cluster-id <cluster-id> --confirm-db-cluster-name <current-name>
-tdc db delete-db-cluster --db-cluster-id <cluster-id> --confirm-db-cluster-name <current-name> --dry-run
+tdc db delete-db-cluster --db-cluster-id <cluster-id>
+tdc db delete-db-cluster --db-cluster-id <cluster-id> --dry-run
 ```
 
 These commands call the TiDB Cloud Starter API with the active profile's Digest-auth API key pair. Create requires `--db-cluster-type starter` and a `--project-id`; discover project ids with `tdc organization list-projects`. Cluster JSON output uses stable snake_case fields such as `id`, `display_name`, and `next_page_token`.
 
-Delete is non-interactive. Normal execution reads the remote cluster first and requires `--confirm-db-cluster-name` to exactly match the current remote display name before sending the delete request.
+Delete is non-interactive. Normal execution reads the remote cluster first, verifies it is a Starter cluster when the API returns plan metadata, and then deletes by cluster ID.
 
 ### DB Branch
 
@@ -302,34 +302,35 @@ tdc db create-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch
 tdc db list-db-cluster-branches --db-cluster-id <cluster-id>
 tdc db list-db-cluster-branches --db-cluster-id <cluster-id> --page-size 10
 tdc db list-db-cluster-branches --db-cluster-id <cluster-id> --query 'branches[].id'
-tdc db list-db-cluster-branches --db-cluster-id <cluster-id> --output human
+tdc db list-db-cluster-branches --db-cluster-id <cluster-id> --output text
 tdc db describe-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id>
 tdc db describe-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id> --view FULL
-tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id> --confirm-db-cluster-branch-name dev
-tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id> --confirm-db-cluster-branch-name dev --dry-run
+tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id>
+tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id> --dry-run
 ```
 
 These commands call the TiDB Cloud Starter branch API with the active profile's Digest-auth API key pair. Create currently sends the API-backed `displayName` field through `--db-cluster-branch-name`.
 
-Delete is non-interactive. Normal execution reads the remote branch first and requires `--confirm-db-cluster-branch-name` to exactly match the current remote display name before sending the delete request.
+Delete is non-interactive. Normal execution reads the remote branch first and then deletes by branch ID.
 
 ### DB SQL
 
 ```bash
-tdc db prepare-db-query-access --db-cluster-id <cluster-id>
-tdc db prepare-db-query-access --db-cluster-id <cluster-id> --dry-run
-tdc db create-db-connection-string --db-cluster-id <cluster-id>
-tdc db create-db-connection-string --db-cluster-id <cluster-id> --read-write --format mysql-uri
-tdc db create-db-connection-string --db-cluster-id <cluster-id> --read-only --format env
-tdc db create-db-connection-string --db-cluster-id <cluster-id> --admin --format jdbc
+tdc db create-db-sql-users --db-cluster-id <cluster-id>
+tdc db create-db-sql-users --db-cluster-id <cluster-id> --dry-run
+tdc db format-db-connection-string --db-cluster-id <cluster-id>
+tdc db format-db-connection-string --db-cluster-id <cluster-id> --read-write --format mysql-uri
+tdc db format-db-connection-string --db-cluster-id <cluster-id> --read-only --format env
+tdc db format-db-connection-string --db-cluster-id <cluster-id> --admin --format jdbc
 tdc db execute-sql-statement --db-cluster-id <cluster-id> --sql "select 1"
 tdc db execute-sql-statement --db-cluster-id <cluster-id> --read-write --sql "insert into t values (1)"
 tdc db execute-sql-statement --db-cluster-id <cluster-id> --read-only --sql "select * from t"
 tdc db execute-sql-statement --db-cluster-id <cluster-id> --admin --sql "show grants"
+tdc db execute-sql-statement --db-cluster-id <cluster-id> --transport https --sql "select 1"
 tdc db execute-sql-statement --db-cluster-id <cluster-id> --transport mysql --sql "select 1"
 ```
 
-`prepare-db-query-access` creates or repairs three stable tdc-managed SQL users for the cluster:
+`create-db-sql-users` creates or repairs three stable tdc-managed SQL users for the cluster:
 
 - `read_only`, backed by TiDB Cloud role `role_readonly`
 - `read_write`, backed by TiDB Cloud role `role_readwrite`
@@ -341,9 +342,9 @@ Generated DB SQL usernames and passwords are stored under:
 ~/.tdc/db_users/<cluster-id>/credentials
 ```
 
-Re-running `prepare-db-query-access` is idempotent. It does not create a new user group when the tdc-managed users already exist. If local passwords are missing for verified tdc-managed remote users, it rotates those passwords through the SQL user API and writes the new local credentials.
+Re-running `create-db-sql-users` is idempotent. It does not create a new user group when the tdc-managed users already exist. If local passwords are missing for verified tdc-managed remote users, it rotates those passwords through the SQL user API and writes the new local credentials.
 
-`create-db-connection-string` and `execute-sql-statement` use read-write credentials by default. `--read-write`, `--read-only`, and `--admin` are mutually exclusive explicit selections. tdc never infers access mode from SQL text.
+`format-db-connection-string` and `execute-sql-statement` use read-write credentials by default. `--read-write`, `--read-only`, and `--admin` are mutually exclusive explicit selections. tdc never infers access mode from SQL text.
 
 Connection string formats:
 
@@ -355,7 +356,7 @@ Connection string formats:
 
 `--format env` emits dotenv-compatible component variables directly, not JSON, so agents can compose framework-specific values without parsing URLs. Use `--env-include-database-url` to include a `DATABASE_URL`-style value.
 
-`execute-sql-statement` executes exactly one SQL statement per invocation. HTTP SQL is the default transport and uses `POST https://http-<cluster-host>/v1beta/sql` with Basic Auth from the prepared SQL credentials. `--transport mysql` is an explicit fallback that opens one MySQL connection, executes once, and closes it. Use `--output human` to render result sets as a terminal table. JSON remains the default output for agents and automation.
+`execute-sql-statement` executes exactly one SQL statement per invocation. HTTPS SQL is the default transport and uses `POST https://http-<cluster-host>/v1beta/sql` with Basic Auth from the prepared SQL credentials. `--transport mysql` is an explicit fallback that opens one MySQL connection, executes once, and closes it. Use `--output text` to render result sets as a terminal table. JSON remains the default output for agents and automation.
 
 ### tdc fs Control Plane
 
@@ -393,7 +394,7 @@ tdc fs copy-file --from-local ./README.md --to-remote /workspace/layered.md --la
 printf 'hello\n' | tdc fs copy-file --from-stdin --to-remote /workspace/stdin.txt --tag source=stdin --description "stdin upload"
 tdc fs copy-file --from-remote /workspace/stdin.txt --to-stdout
 tdc fs list-files --path /workspace
-tdc fs list-files --path /workspace --output human
+tdc fs list-files --path /workspace --output text
 tdc fs describe-file --path /workspace/README.md
 tdc fs move-file --from-remote /workspace/README.copy.md --to-remote /workspace/archive/README.md
 tdc fs delete-file --path /workspace/archive/README.md
@@ -430,7 +431,7 @@ Examples:
 ```bash
 tdc fs cp --from-local ./README.md --to-remote /workspace/README.md
 tdc fs cat --path /workspace/README.md
-tdc fs ls --path /workspace --output human
+tdc fs ls --path /workspace --output text
 tdc fs rm --path /workspace/archive --recursive
 tdc fs grep --path /workspace --pattern "hello"
 tdc fs find --path /workspace --file-name-pattern "*.md"
@@ -438,7 +439,7 @@ tdc fs find --path /workspace --file-name-pattern "*.md"
 
 These commands use the active profile's stored `fs_api_key` as Bearer auth and call the tdc fs data-plane endpoint selected from the hosted region manifest. Run `tdc fs create-file-system` before using them, or configure the flat `fs_api_key` credential manually if the resource already exists.
 
-`read-file` writes raw file bytes to stdout and does not wrap the response in JSON. Do not combine `read-file` with `--query`; queries require structured output. `--offset` and `--length` perform a byte-range read and must be provided together. Metadata and search commands return structured JSON by default and support `--output human` for terminal tables.
+`read-file` writes raw file bytes to stdout and does not wrap the response in JSON. Do not combine `read-file` with `--query`; queries require structured output. `--offset` and `--length` perform a byte-range read and must be provided together. Metadata and search commands return structured JSON by default and support `--output text` for terminal tables.
 
 `copy-file` supports exactly one explicit source/target pair: `--from-local` with `--to-remote`, `--from-remote` with `--to-local`, or `--from-remote` with `--to-remote`. Remote and local targets are not overwritten unless `--overwrite` is provided. `--create-parents` only applies when copying from tdc fs to a local path. Large local-to-remote copies use multipart upload, preferring the Drive9-compatible V2 presign-batch protocol and falling back to V1 when the backend does not expose V2. Multipart uploads use bounded concurrency, retry once with a fresh presigned URL after an expired V2 part URL, and return `upload_mode` such as `multipart_v2`, `multipart_v1`, or `resume_v1` when that path is used. `--append` appends a local file to a remote file by using the tdc fs append plan when the backend supports it, then falls back to conditional rewrite for compatible non-S3-backed files. `--resume` resumes either an active local-to-remote multipart upload or a partial remote-to-local download. Local-to-remote resume requires an existing active upload for the same remote path; omit `--resume` for a fresh upload. `--recursive` copies directory contents into the target for local-to-remote, remote-to-local, and remote-to-remote copies. Local recursive copy rejects symlinks instead of silently following them. `--from-stdin` and `--to-stdout` provide raw stream copy paths for agents. Local-to-remote writes accept repeatable `--tag key=value` and `--description`; tags and descriptions are sent to the backend when the selected upload path supports them.
 
@@ -449,7 +450,7 @@ These commands use the active profile's stored `fs_api_key` as Bearer auth and c
 ```bash
 tdc fs create-layer --layer-id layer-1 --base-root-path /workspace --layer-name task --durability-mode restore-safe --tag task=auth
 tdc fs list-layers
-tdc fs list-layers --output human
+tdc fs list-layers --output text
 tdc fs describe-layer --layer-id layer-1
 tdc fs diff-layer --layer-id layer-1
 tdc fs replay-layer --layer-id layer-1
@@ -555,7 +556,7 @@ tdc journal append-journal-entries --journal-id jrn-demo --entry-json '{"type":"
 printf '%s\n' '{"type":"task.completed"}' | tdc journal append-journal-entries --journal-id jrn-demo
 tdc journal read-journal-entries --journal-id jrn-demo --after-seq 0 --limit 100
 tdc journal search-journal-entries --entry-type task.started --label env=dev --include-entries
-tdc journal verify-journal --journal-id jrn-demo --output human
+tdc journal verify-journal --journal-id jrn-demo --output text
 ```
 
 Journal commands use the active profile's tdc fs endpoint and stored `fs_api_key`. Users do not configure a journal server URL. Mutating journal commands support `--dry-run`; read-only journal commands reject `--dry-run`.
@@ -622,8 +623,8 @@ tdc db create-db-cluster-branch
 tdc db list-db-cluster-branches
 tdc db describe-db-cluster-branch
 tdc db delete-db-cluster-branch
-tdc db prepare-db-query-access
-tdc db create-db-connection-string
+tdc db create-db-sql-users
+tdc db format-db-connection-string
 tdc db execute-sql-statement
 tdc fs check-file-system
 tdc fs create-file-system
@@ -817,7 +818,7 @@ Do not configure TiDB Cloud API URLs, filesystem server URLs, metadata database 
 
 TiDB Cloud control-plane requests use HTTP Digest authentication with `tdc_public_key` as the digest username and `tdc_private_key` as the digest password. The private key is not sent as Basic Auth.
 
-SQL HTTP execution uses the prepared DB SQL username and password as HTTP Basic Auth against `https://http-<cluster-host>/v1beta/sql`. Do not confuse these DB credentials with TiDB Cloud API keys.
+SQL HTTPS API execution uses the prepared DB SQL username and password as HTTP Basic Auth against `https://http-<cluster-host>/v1beta/sql`. Do not confuse these DB credentials with TiDB Cloud API keys.
 
 Endpoint routing is internal:
 

@@ -164,8 +164,8 @@ CLI v2 for TiDB Cloud \| Init Date: 2026\-05\-18 \|@Todd Bao
 ### Open Issues
 
 - ~~How get cluster connection string easily for stage 0?~~ Decided:
-  `tdc db create-db-connection-string` after
-  `tdc db prepare-db-query-access`\.
+  `tdc db format-db-connection-string` after
+  `tdc db create-db-sql-users`\.
 
 - ~~What are the ~~~~`tdc db`~~~~ subcommands and TiDB Cloud Starter API stage 0 relies on?~~
 
@@ -287,7 +287,7 @@ logic and must not require user-supplied server URLs.
 
 - **Prepare DB SQL query users**
 
-    - Run `tdc db prepare-db-query-access --db-cluster-id <cluster_id> [--profile <profile_name>]`
+    - Run `tdc db create-db-sql-users --db-cluster-id <cluster_id> [--profile <profile_name>]`
 
         - Purpose: Create and persist tdc-managed SQL credentials for later
           `tdc db execute-sql-statement` commands\.
@@ -313,11 +313,11 @@ logic and must not require user-supplied server URLs.
 
 - **Create DB connection string**
 
-    - Run `tdc db create-db-connection-string --db-cluster-id <cluster_id> [--read-write | --read-only | --admin] [--format mysql-uri|jdbc|go-sql-driver|sqlalchemy|env] [--profile <profile_name>]`
+    - Run `tdc db format-db-connection-string --db-cluster-id <cluster_id> [--read-write | --read-only | --admin] [--format mysql-uri|jdbc|go-sql-driver|sqlalchemy|env] [--profile <profile_name>]`
 
         - Purpose: Print a connection string or dotenv component variables
           from tdc-managed SQL credentials prepared by
-          `tdc db prepare-db-query-access`\.
+          `tdc db create-db-sql-users`\.
 
         - Access mode:
 
@@ -355,7 +355,7 @@ logic and must not require user-supplied server URLs.
 
         - Prerequisites:
 
-            - `tdc db prepare-db-query-access` has prepared local SQL credentials for the
+            - `tdc db create-db-sql-users` has prepared local SQL credentials for the
               target cluster\.
 
         - Access mode:
@@ -372,8 +372,8 @@ logic and must not require user-supplied server URLs.
 
         - Transport:
 
-            - HTTP SQL execution is preferred and uses the TiDB Cloud
-              Serverless HTTP SQL API shape\.
+            - HTTPS SQL API execution is preferred and uses the TiDB Cloud
+              Serverless SQL API shape\.
 
             - MySQL one-shot execution is an explicit fallback transport, not a
               hidden automatic retry for write-capable statements\.

@@ -65,7 +65,7 @@ func TestListBranches(t *testing.T) {
 		t.Fatalf("unexpected branches: %#v", result.Branches)
 	}
 	if human := result.Human(); !strings.Contains(human, "dev") || !strings.Contains(human, "token-2") {
-		t.Fatalf("unexpected human output:\n%s", human)
+		t.Fatalf("unexpected text output:\n%s", human)
 	}
 }
 
@@ -95,30 +95,6 @@ func TestDescribeBranch(t *testing.T) {
 	}
 }
 
-func TestDeleteBranchRequiresMatchingConfirmation(t *testing.T) {
-	deleteCalled := false
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodDelete {
-			deleteCalled = true
-		}
-		_, _ = w.Write([]byte(`{"branchId":"branch-1","displayName":"dev","clusterId":"cluster-1","state":"ACTIVE"}`))
-	}))
-	defer server.Close()
-
-	_, err := testService(server.URL).DeleteBranch(context.Background(), DeleteBranchOptions{
-		Profile:                    testProfile(),
-		ClusterID:                  "cluster-1",
-		BranchID:                   "branch-1",
-		ConfirmDBClusterBranchName: "wrong-name",
-	})
-	if err == nil {
-		t.Fatal("expected confirmation mismatch to fail")
-	}
-	if deleteCalled {
-		t.Fatal("delete should not be called when confirmation mismatches")
-	}
-}
-
 func TestDeleteBranch(t *testing.T) {
 	requests := make([]string, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -135,10 +111,9 @@ func TestDeleteBranch(t *testing.T) {
 	defer server.Close()
 
 	result, err := testService(server.URL).DeleteBranch(context.Background(), DeleteBranchOptions{
-		Profile:                    testProfile(),
-		ClusterID:                  "cluster-1",
-		BranchID:                   "branch-1",
-		ConfirmDBClusterBranchName: "dev",
+		Profile:   testProfile(),
+		ClusterID: "cluster-1",
+		BranchID:  "branch-1",
 	})
 	if err != nil {
 		t.Fatalf("DeleteBranch failed: %v", err)
@@ -182,10 +157,9 @@ func TestDryRunDeleteBranchDoesNotSendRequest(t *testing.T) {
 	defer server.Close()
 
 	result, err := testService(server.URL).DryRunDeleteBranch(context.Background(), "tdc db delete-db-cluster-branch", DeleteBranchOptions{
-		Profile:                    testProfile(),
-		ClusterID:                  "cluster-1",
-		BranchID:                   "branch-1",
-		ConfirmDBClusterBranchName: "dev",
+		Profile:   testProfile(),
+		ClusterID: "cluster-1",
+		BranchID:  "branch-1",
 	})
 	if err != nil {
 		t.Fatalf("DryRunDeleteBranch failed: %v", err)

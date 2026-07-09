@@ -44,8 +44,12 @@ No new product command is introduced by this spec.
   not require a GitHub Environment in the MVP workflow.
 - Live e2e must generate unique test resource names and must attempt cleanup
   even when test assertions fail.
-- Live e2e creates a temporary tdc fs resource before running `make live-e2e`
-  and deletes that resource in an `always()` cleanup step.
+- `make live-e2e` creates a temporary tdc fs resource itself when the
+  `live-e2e` profile has no `fs_api_key`, and deletes that auto-created
+  resource when the test process exits.
+- The GitHub Actions live workflow may still create a temporary tdc fs resource
+  before running `make live-e2e` and delete it in an `always()` cleanup step as
+  an additional CI cleanup guard.
 - CI logs must not print public/private key values, generated DB passwords,
   connection strings with passwords, SQL results containing user data, or tdc fs
   file contents.
@@ -178,8 +182,10 @@ compiled `tdc` binary:
   profile.
 - Live e2e configures tdc through `bin/tdc configure --profile live-e2e
   --non-interactive`.
-- Live e2e creates one temporary `tdc-live-e2e-*` tdc fs resource before the
-  suite and attempts to delete it after the suite with `if: always()`.
+- Live e2e can self-create one temporary `tdc-live-e2e-*` tdc fs resource when
+  the profile has no `fs_api_key`.
+- The workflow also attempts to delete the temporary fs resource after the
+  suite with `if: always()` when it created or configured one.
 - Live e2e invokes `make live-e2e`.
 - Workflow logs do not expose TiDB Cloud keys, generated DB credentials, or
   connection strings with passwords.

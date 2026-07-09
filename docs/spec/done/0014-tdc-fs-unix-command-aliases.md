@@ -58,7 +58,7 @@ Example alias usage:
 tdc fs cp --from-local ./notes.md --to-remote /notes.md --overwrite
 tdc fs cat --path /notes.md
 tdc fs ls --path /
-tdc fs stat --path /notes.md --output human
+tdc fs stat --path /notes.md --output text
 tdc fs mv --from-remote /notes.md --to-remote /archive/notes.md
 tdc fs rm --path /archive/notes.md --recursive
 tdc fs mkdir --path /team/docs

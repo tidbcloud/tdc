@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	FormatJSON  = "json"
-	FormatHuman = "human"
+	FormatJSON = "json"
+	FormatText = "text"
 )
 
 type Options struct {
@@ -34,12 +34,12 @@ func Render(w io.Writer, value any, opts Options) error {
 	if format == "" {
 		format = FormatJSON
 	}
-	if format != FormatJSON && format != FormatHuman {
+	if format != FormatJSON && format != FormatText {
 		return apperr.New(
 			"output.invalid_format",
 			"usage",
 			2,
-			fmt.Sprintf("unsupported --output %q; supported values: json, human", format),
+			fmt.Sprintf("unsupported --output %q; supported values: json, text", format),
 		)
 	}
 
@@ -73,7 +73,7 @@ func Render(w io.Writer, value any, opts Options) error {
 	switch format {
 	case FormatJSON:
 		return renderJSON(w, value)
-	case FormatHuman:
+	case FormatText:
 		return renderHuman(w, value)
 	default:
 		panic("unreachable output format")

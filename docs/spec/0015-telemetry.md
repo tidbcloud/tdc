@@ -111,7 +111,7 @@ profile names. Re-enabling telemetry after disabling creates a new identifier.
 - Telemetry does not produce normal command output.
 - Telemetry delivery failures are debug-only diagnostics and must be redacted.
 - `tdc cli describe-telemetry` returns structured JSON by default and supports
-  `--output human`.
+  `--output text`.
 - `tdc cli enable-telemetry` and `tdc cli disable-telemetry` return structured
   status and must not call the remote telemetry backend.
 

@@ -51,7 +51,7 @@ The installer scripts use `--version` because they are not Cobra commands. The `
 
 `tdc cli check-update` flags:
 
-- `--output json|human`
+- `--output json|text`
 - `--query <jmespath-expression>`
 - `--fail-if-update-available`
 
@@ -60,7 +60,7 @@ The installer scripts use `--version` because they are not Cobra commands. The `
 - `--target-version <latest|vX.Y.Z>`, default `latest`
 - `--dry-run`
 - `--yes`
-- `--output json|human`
+- `--output json|text`
 - `--query <jmespath-expression>`
 
 Build metadata exposed through `internal/version`:
@@ -185,7 +185,7 @@ This spec adds no TiDB Cloud product API calls.
 2. `GET https://api.github.com/repos/tidbcloud/tdc/releases/latest`.
 3. Select the release asset matching current OS/arch.
 4. Compare local version and latest release tag.
-5. Render JSON or human output.
+5. Render JSON or text output.
 
 `tdc cli update --dry-run`:
 

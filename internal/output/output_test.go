@@ -27,9 +27,9 @@ func TestRenderJSONByDefault(t *testing.T) {
 	}
 }
 
-func TestRenderHuman(t *testing.T) {
+func TestRenderText(t *testing.T) {
 	var out bytes.Buffer
-	err := Render(&out, testHuman{ID: "cluster-1"}, Options{Format: FormatHuman})
+	err := Render(&out, testHuman{ID: "cluster-1"}, Options{Format: FormatText})
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}

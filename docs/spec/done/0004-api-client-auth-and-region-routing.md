@@ -63,7 +63,7 @@ No standalone command is required. This spec supports:
   password. The private key must not be sent as Basic Auth for these APIs.
 - SQL execution in `0008-starter-db-sql-access-and-query.md` is separate: it
   uses Basic Auth with generated database SQL usernames and passwords against
-  the HTTP SQL endpoint.
+  the HTTPS SQL API endpoint.
 - tdc fs data-plane and mount calls are also separate: after a resource is
   created, they use the stored `tdc fs` resource API key as
   `Authorization: Bearer <api-key>`.

@@ -50,8 +50,8 @@ func NewRootCommand(info version.Info) *cobra.Command {
 	flags := root.PersistentFlags()
 	flags.StringVar(&opts.Profile, "profile", "default", "profile name")
 	flags.BoolVar(&opts.Debug, "debug", false, "enable debug output")
-	flags.StringVar(&opts.Output, "output", "json", "output format")
-	flags.StringVar(&opts.Query, "query", "", "JMESPath query applied to JSON output")
+	flags.StringVar(&opts.Output, "output", "json", "output format: json or text")
+	flags.StringVar(&opts.Query, "query", "", "JMESPath query applied before rendering")
 
 	root.AddCommand(newConfigureCommand(info))
 	root.AddCommand(newCLICommand(info))

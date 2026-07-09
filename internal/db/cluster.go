@@ -64,9 +64,8 @@ type UpdateClusterOptions struct {
 }
 
 type DeleteClusterOptions struct {
-	Profile              *config.Profile
-	ClusterID            string
-	ConfirmDBClusterName string
+	Profile   *config.Profile
+	ClusterID string
 }
 
 type ListClustersResult struct {
@@ -176,9 +175,6 @@ func (s Service) DeleteCluster(ctx context.Context, opts DeleteClusterOptions) (
 	if err != nil {
 		return ClusterResult{}, err
 	}
-	if err := validate.Required("--confirm-db-cluster-name", opts.ConfirmDBClusterName); err != nil {
-		return ClusterResult{}, err
-	}
 	client, err := s.starterClient(opts.Profile, authz.StarterClusterDelete, "delete Starter DB cluster")
 	if err != nil {
 		return ClusterResult{}, err
@@ -189,14 +185,6 @@ func (s Service) DeleteCluster(ctx context.Context, opts DeleteClusterOptions) (
 	}
 	if err := ensureStarterCluster(cluster); err != nil {
 		return ClusterResult{}, err
-	}
-	if cluster.DisplayName != opts.ConfirmDBClusterName {
-		return ClusterResult{}, apperr.New(
-			"db.delete_confirmation_mismatch",
-			"usage",
-			2,
-			fmt.Sprintf("--confirm-db-cluster-name must match the remote cluster name %q", cluster.DisplayName),
-		)
 	}
 	cluster, err = client.DeleteCluster(ctx, clusterID)
 	if err != nil {
@@ -275,12 +263,11 @@ func (s Service) DryRunDeleteCluster(ctx context.Context, commandPath string, op
 		dryrun.RequestSummary{
 			Method:      "DELETE",
 			Path:        "/v1beta1/clusters/" + clusterID,
-			Description: "normal execution first reads the cluster and verifies --confirm-db-cluster-name before deleting",
+			Description: "normal execution first reads the cluster and verifies it is a Starter cluster before deleting",
 		},
 		dryrun.Check{Name: "config_and_credentials", Status: "passed", Message: fmt.Sprintf("profile %q loaded", profileName(opts.Profile))},
 		dryrun.Check{Name: "endpoint_selection", Status: "passed", Message: fmt.Sprintf("%s %s", endpoint.Provider, endpoint.RegionCode)},
 		dryrun.Check{Name: "permission_requirement", Status: "passed", Message: string(authz.StarterClusterDelete)},
-		dryrun.Check{Name: "delete_confirmation", Status: "passed", Message: opts.ConfirmDBClusterName},
 	), nil
 }
 
@@ -367,9 +354,6 @@ func (s Service) deleteRequestAndEndpoint(opts DeleteClusterOptions) (string, en
 	}
 	clusterID, err := validate.ClusterID(opts.ClusterID)
 	if err != nil {
-		return "", endpoints.Endpoint{}, err
-	}
-	if err := validate.Required("--confirm-db-cluster-name", opts.ConfirmDBClusterName); err != nil {
 		return "", endpoints.Endpoint{}, err
 	}
 	endpoint, err := s.resolveStarter(opts.Profile)

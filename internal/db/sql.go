@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	transportHTTP  = "http"
+	transportHTTPS = "https"
 	transportMySQL = "mysql"
 )
 
@@ -70,14 +70,14 @@ func (s Service) PrepareQueryAccess(ctx context.Context, opts PrepareQueryAccess
 	if _, err := sqlcred.SafeClusterID(clusterID); err != nil {
 		return PrepareQueryAccessResult{}, err
 	}
-	starterClient, err := s.starterClient(opts.Profile, authz.StarterSQLUserCreate, "prepare Starter DB query access")
+	starterClient, err := s.starterClient(opts.Profile, authz.StarterSQLUserCreate, "create Starter DB SQL users")
 	if err != nil {
 		return PrepareQueryAccessResult{}, err
 	}
 	if _, err := starterClient.GetCluster(ctx, clusterID, apistarter.GetClusterOptions{View: "FULL"}); err != nil {
 		return PrepareQueryAccessResult{}, err
 	}
-	iamClient, err := s.iamClient(opts.Profile, authz.StarterSQLUserCreate, "prepare Starter DB query access")
+	iamClient, err := s.iamClient(opts.Profile, authz.StarterSQLUserCreate, "create Starter DB SQL users")
 	if err != nil {
 		return PrepareQueryAccessResult{}, err
 	}
@@ -126,11 +126,11 @@ func (s Service) DryRunPrepareQueryAccess(ctx context.Context, commandPath strin
 	}
 	return dryrun.New(
 		commandPath,
-		"prepare_db_query_access",
+		"create_db_sql_users",
 		dryrun.RequestSummary{
 			Method:      "GET/POST/PATCH",
 			Path:        "/v1beta1/clusters/" + clusterID + "/sqlUsers",
-			Description: "normal execution verifies the cluster, lists SQL users, creates missing tdc-managed users, and rotates passwords for missing local credentials",
+			Description: "normal execution verifies the cluster, lists SQL users, creates missing tdc-managed read_only/read_write/admin users, and rotates passwords for missing local credentials",
 			Body:        prepareResult,
 		},
 		dryrun.Check{Name: "config_and_credentials", Status: "passed", Message: fmt.Sprintf("profile %q loaded", profileName(opts.Profile))},
@@ -181,7 +181,7 @@ func (s Service) ExecuteSQL(ctx context.Context, opts ExecuteSQLOptions) (sqlres
 		return sqlresult.Result{}, err
 	}
 	switch transport {
-	case transportHTTP:
+	case transportHTTPS:
 		return sqlhttp.Execute(ctx, sqlhttp.Options{
 			ClusterID:   clusterID,
 			AccessMode:  mode,
@@ -242,7 +242,7 @@ func (s Service) sqlConnectionInputs(ctx context.Context, profile *config.Profil
 			"db.sql_credentials_missing",
 			"config",
 			2,
-			fmt.Sprintf("missing prepared %s DB SQL credentials for cluster %s; run tdc db prepare-db-query-access --db-cluster-id %s", mode, clusterID, clusterID),
+			fmt.Sprintf("missing prepared %s DB SQL credentials for cluster %s; run tdc db create-db-sql-users --db-cluster-id %s", mode, clusterID, clusterID),
 		)
 	}
 	starterClient, err := s.starterClient(profile, permission, action)
@@ -281,13 +281,13 @@ func accessMode(readOnly, readWrite, admin bool) (sqlcred.AccessMode, error) {
 
 func validateTransport(value string) (string, error) {
 	if value == "" {
-		return transportHTTP, nil
+		return transportHTTPS, nil
 	}
 	switch value {
-	case transportHTTP, transportMySQL:
+	case transportHTTPS, transportMySQL:
 		return value, nil
 	default:
-		return "", apperr.New("db.invalid_sql_transport", "usage", 2, "--transport must be http or mysql")
+		return "", apperr.New("db.invalid_sql_transport", "usage", 2, "--transport must be https or mysql")
 	}
 }
 

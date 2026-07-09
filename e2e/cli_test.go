@@ -25,8 +25,8 @@ func TestHelpAndVersion(t *testing.T) {
 	db := runTDC(t, bin, "db", "help")
 	db.wantExitCode(0)
 	db.wantStdoutContains("create-db-cluster")
-	db.wantStdoutContains("prepare-db-query-access")
-	db.wantStdoutContains("create-db-connection-string")
+	db.wantStdoutContains("create-db-sql-users")
+	db.wantStdoutContains("format-db-connection-string")
 
 	subcommand := runTDC(t, bin, "fs", "mount-file-system", "help")
 	subcommand.wantExitCode(0)
@@ -155,9 +155,9 @@ func TestOutputQueryAndDryRun(t *testing.T) {
 	dryRun.wantStdoutContains(`"dry_run": true`)
 	dryRun.wantStdoutContains(`"would_send_request": true`)
 
-	human := runTDCWithInput(t, bin, "", env, append(createClusterDryRunArgs(), "--output", "human")...)
-	human.wantExitCode(0)
-	human.wantStdoutContains("Dry run: tdc db create-db-cluster")
+	text := runTDCWithInput(t, bin, "", env, append(createClusterDryRunArgs(), "--output", "text")...)
+	text.wantExitCode(0)
+	text.wantStdoutContains("Dry run: tdc db create-db-cluster")
 
 	query := runTDCWithInput(t, bin, "", env, append(createClusterDryRunArgs(), "--query", "command")...)
 	query.wantExitCode(0)

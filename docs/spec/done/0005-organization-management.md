@@ -48,7 +48,7 @@ tdc organization list-projects
 tdc organization list-projects --page-size 10
 tdc organization list-projects --page-token <next-page-token>
 tdc organization list-projects --query 'projects[0].id'
-tdc organization list-projects --output human
+tdc organization list-projects --output text
 ```
 
 This is the first practical authentication and authorization validation path for
@@ -99,7 +99,7 @@ The confirmed project object fields are `id`, `name`, `org_id`,
 - Tests cover permission-denied and unauthenticated errors.
 - Tests cover `--query` extracting a single project field.
 - `make live-e2e` covers the real `tdc organization list-projects` command
-  through JSON, query, and human output.
+  through JSON, query, and text output.
 
 ## Out Of Scope
 

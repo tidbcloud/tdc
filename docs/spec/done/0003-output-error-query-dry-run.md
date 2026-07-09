@@ -16,7 +16,7 @@ Applies globally to:
 ## Behavior
 
 - Successful control-plane commands output JSON by default.
-- Support `--output json` and `--output human`.
+- Support `--output json` and `--output text`.
 - Support `--query <jmespath-expression>` on structured command results.
 - Apply `--query` after command execution and before rendering.
 - Mutating control-plane commands support `--dry-run`.
@@ -58,7 +58,7 @@ controls:
 tdc db list-db-clusters
 tdc db list-db-clusters --query 'clusters[0].id'
 tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --dry-run
-tdc organization list-projects --output human
+tdc organization list-projects --output text
 ```
 
 This step adds shared rendering and validation behavior. It does not create any
@@ -66,7 +66,7 @@ service-specific API response shapes.
 
 ## Implementation Design
 
-- `internal/output` renders JSON, human output adapters, and raw stream
+- `internal/output` renders JSON, text output adapters, and raw stream
   pass-through for data-plane commands.
 - `internal/query` applies JMESPath expressions to structured Go values before
   rendering.
@@ -100,7 +100,7 @@ constructed and reported.
 ## Acceptance Criteria
 
 - Tests cover JSON default rendering.
-- Tests cover `--output human`.
+- Tests cover `--output text`.
 - Tests cover `--query` success and invalid query failure.
 - Tests cover `--dry-run` on mutating commands.
 - Tests cover rejection of `--dry-run` on read-only commands.
@@ -109,4 +109,4 @@ constructed and reported.
 ## Out Of Scope
 
 - Defining every service-specific response field.
-- Supporting output formats beyond JSON and human.
+- Supporting output formats beyond JSON and text.

@@ -9,7 +9,6 @@ import (
 
 	"github.com/tidbcloud/tdc/internal/api/endpoints"
 	apistarter "github.com/tidbcloud/tdc/internal/api/starter"
-	"github.com/tidbcloud/tdc/internal/apperr"
 	"github.com/tidbcloud/tdc/internal/authz"
 	"github.com/tidbcloud/tdc/internal/config"
 	"github.com/tidbcloud/tdc/internal/db/validate"
@@ -37,10 +36,9 @@ type DescribeBranchOptions struct {
 }
 
 type DeleteBranchOptions struct {
-	Profile                    *config.Profile
-	ClusterID                  string
-	BranchID                   string
-	ConfirmDBClusterBranchName string
+	Profile   *config.Profile
+	ClusterID string
+	BranchID  string
 }
 
 type ListBranchesResult struct {
@@ -116,9 +114,6 @@ func (s Service) DeleteBranch(ctx context.Context, opts DeleteBranchOptions) (Br
 	if err != nil {
 		return BranchResult{}, err
 	}
-	if err := validate.Required("--confirm-db-cluster-branch-name", opts.ConfirmDBClusterBranchName); err != nil {
-		return BranchResult{}, err
-	}
 	client, err := s.starterClient(opts.Profile, authz.StarterBranchDelete, "delete Starter DB cluster branch")
 	if err != nil {
 		return BranchResult{}, err
@@ -126,14 +121,6 @@ func (s Service) DeleteBranch(ctx context.Context, opts DeleteBranchOptions) (Br
 	branch, err := client.GetBranch(ctx, clusterID, branchID, apistarter.GetBranchOptions{})
 	if err != nil {
 		return BranchResult{}, err
-	}
-	if branch.DisplayName != opts.ConfirmDBClusterBranchName {
-		return BranchResult{}, apperr.New(
-			"db.branch_delete_confirmation_mismatch",
-			"usage",
-			2,
-			fmt.Sprintf("--confirm-db-cluster-branch-name must match the remote branch name %q", branch.DisplayName),
-		)
 	}
 	branch, err = client.DeleteBranch(ctx, clusterID, branchID)
 	if err != nil {
@@ -175,14 +162,13 @@ func (s Service) DryRunDeleteBranch(ctx context.Context, commandPath string, opt
 		dryrun.RequestSummary{
 			Method:      http.MethodDelete,
 			Path:        "/v1beta1/clusters/" + clusterID + "/branches/" + branchID,
-			Description: "normal execution first reads the branch and verifies --confirm-db-cluster-branch-name before deleting",
+			Description: "normal execution first reads the branch before deleting",
 		},
 		dryrun.Check{Name: "config_and_credentials", Status: "passed", Message: fmt.Sprintf("profile %q loaded", profileName(opts.Profile))},
 		dryrun.Check{Name: "endpoint_selection", Status: "passed", Message: fmt.Sprintf("%s %s", endpoint.Provider, endpoint.RegionCode)},
 		dryrun.Check{Name: "permission_requirement", Status: "passed", Message: string(authz.StarterBranchDelete)},
 		dryrun.Check{Name: "cluster_id", Status: "passed", Message: clusterID},
 		dryrun.Check{Name: "branch_id", Status: "passed", Message: branchID},
-		dryrun.Check{Name: "delete_confirmation", Status: "passed", Message: opts.ConfirmDBClusterBranchName},
 	), nil
 }
 
@@ -215,9 +201,6 @@ func (s Service) deleteBranchRequestAndEndpoint(opts DeleteBranchOptions) (strin
 	}
 	clusterID, branchID, err := validateBranchIdentity(opts.ClusterID, opts.BranchID)
 	if err != nil {
-		return "", "", endpoints.Endpoint{}, err
-	}
-	if err := validate.Required("--confirm-db-cluster-branch-name", opts.ConfirmDBClusterBranchName); err != nil {
 		return "", "", endpoints.Endpoint{}, err
 	}
 	endpoint, err := s.resolveStarter(opts.Profile)

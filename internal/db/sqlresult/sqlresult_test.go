@@ -21,7 +21,7 @@ func TestHumanRendersTable(t *testing.T) {
 +-----+------------+
 1 row in set`
 	if got := result.Human(); got != want {
-		t.Fatalf("unexpected human output:\n%s", got)
+		t.Fatalf("unexpected text output:\n%s", got)
 	}
 }
 
@@ -44,7 +44,7 @@ func TestHumanRendersNullsAndEscapesControlCharacters(t *testing.T) {
 +------+---------------------+
 1 row in set`
 	if got := result.Human(); got != want {
-		t.Fatalf("unexpected human output:\n%s", got)
+		t.Fatalf("unexpected text output:\n%s", got)
 	}
 }
 

@@ -58,8 +58,8 @@ Implemented:
 - `tdc db list-db-cluster-branches`
 - `tdc db describe-db-cluster-branch`
 - `tdc db delete-db-cluster-branch`
-- `tdc db prepare-db-query-access`
-- `tdc db create-db-connection-string`
+- `tdc db create-db-sql-users`
+- `tdc db format-db-connection-string`
 - `tdc db execute-sql-statement`
 - `tdc fs create-file-system`
 - `tdc fs delete-file-system`
@@ -115,7 +115,7 @@ Implemented:
 - `tdc journal search-journal-entries`
 - `tdc journal verify-journal`
 - help and version behavior at every command level
-- structured JSON/human rendering and JMESPath `--query`
+- structured JSON/text rendering and JMESPath `--query`
 - `--dry-run` on mutating control-plane commands
 - TiDB Cloud Digest-auth API client foundation and auth/authz error mapping
 - flat `fs_*` config/credential storage for tdc fs control-plane resources
@@ -156,7 +156,7 @@ dry-run support.
 - `ref/drive9/` is the filesystem reference implementation. Use it as context
   for filesystem commands, mount behavior, and data-plane semantics. In tdc
   user-facing output, this domain is always called `tdc fs`.
-- `ref/serverless-js/` is a reference for the HTTP SQL call shape.
+- `ref/serverless-js/` is a reference for the HTTPS SQL API call shape.
 
 Reference directories are not product source for tdc. They exist only to give
 agents context and implementation examples. In main project code, behave as if
@@ -201,7 +201,8 @@ that cluster. For Starter DB branches, the live suite creates, reads, lists,
 and deletes only a `tdc-e2e-branch-*` branch on the cluster created by the same
 test run. For Starter DB SQL access, the live suite prepares tdc-managed
 read-only, read-write, and admin SQL users on the temporary cluster, verifies
-connection string output, and executes HTTP SQL with all three access modes.
+connection string output, and executes the HTTPS SQL API with all three access
+modes.
 For tdc fs data-plane and mount runtime, the live suite creates uniquely named
 remote paths, exercises real file create/read/list/copy/move/delete flows,
 range reads, V2-first multipart upload, efficient append, upload resume,
@@ -214,6 +215,10 @@ low-level Git workspace API CRUD, mounts with the default FUSE driver when
 platform prerequisites exist, verifies `tdc fs drain-file-system` against the
 mounted runtime control socket, and also verifies explicit WebDAV fallback on
 macOS when `mount_webdav` is available.
+If the live profile has no `fs_api_key`, the suite creates a temporary tdc fs
+resource named by `TDC_LIVE_FS_NAME` or `workspace`, stores the generated flat
+`fs_*` metadata and `fs_api_key`, and deletes that auto-created resource when
+the test process exits.
 When a service command is implemented, add its real live verification to
 `make live-e2e`; do not leave the target at profile, smoke-test-only, or
 mock-only coverage.
@@ -254,14 +259,14 @@ internal/db/                Starter DB cluster, branch, and SQL use cases
 internal/db/connectionstring/ DB connection string formatters
 internal/db/sqlaccess/      DB SQL user preparation logic
 internal/db/sqlcred/        cluster-scoped DB SQL credential store
-internal/db/sqlhttp/        HTTP SQL transport
+internal/db/sqlhttp/        HTTPS SQL API transport
 internal/db/sqlmysql/       explicit MySQL fallback transport
 internal/db/sqlresult/      SQL result model and decoding
 internal/db/sqlsingle/      one-statement validation
 internal/db/validate/       DB flag and request validation helpers
 internal/dryrun/            shared dry-run result envelope
 internal/fs/                tdc fs control-plane, data-plane, and mount use cases
-internal/output/            structured JSON/human/raw rendering
+internal/output/            structured JSON/text/raw rendering
 internal/organization/      organization project command use cases
 internal/query/             JMESPath query application
 internal/secretinput/       no-echo secret input helper
@@ -348,7 +353,7 @@ Implemented command behavior:
 - `tdc cli update --target-version v0.1.0 --yes`
 - `tdc organization list-projects`
 - `tdc organization list-projects --query 'projects[0].id'`
-- `tdc organization list-projects --output human`
+- `tdc organization list-projects --output text`
 - `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id>`
 - `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id> --dry-run`
 - `tdc db list-db-clusters`
@@ -356,26 +361,27 @@ Implemented command behavior:
 - `tdc db describe-db-cluster --db-cluster-id <cluster-id>`
 - `tdc db update-db-cluster --db-cluster-id <cluster-id> --db-cluster-name new-name`
 - `tdc db update-db-cluster --db-cluster-id <cluster-id> --monthly-spending-limit-usd-cents 1000 --dry-run`
-- `tdc db delete-db-cluster --db-cluster-id <cluster-id> --confirm-db-cluster-name <current-name>`
-- `tdc db delete-db-cluster --db-cluster-id <cluster-id> --confirm-db-cluster-name <current-name> --dry-run`
+- `tdc db delete-db-cluster --db-cluster-id <cluster-id>`
+- `tdc db delete-db-cluster --db-cluster-id <cluster-id> --dry-run`
 - `tdc db create-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-name dev`
 - `tdc db create-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-name dev --dry-run`
 - `tdc db list-db-cluster-branches --db-cluster-id <cluster-id>`
 - `tdc db list-db-cluster-branches --db-cluster-id <cluster-id> --query 'branches[].id'`
-- `tdc db list-db-cluster-branches --db-cluster-id <cluster-id> --output human`
+- `tdc db list-db-cluster-branches --db-cluster-id <cluster-id> --output text`
 - `tdc db describe-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id>`
-- `tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id> --confirm-db-cluster-branch-name <current-name>`
-- `tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id> --confirm-db-cluster-branch-name <current-name> --dry-run`
-- `tdc db prepare-db-query-access --db-cluster-id <cluster-id>`
-- `tdc db prepare-db-query-access --db-cluster-id <cluster-id> --dry-run`
-- `tdc db create-db-connection-string --db-cluster-id <cluster-id>`
-- `tdc db create-db-connection-string --db-cluster-id <cluster-id> --read-write --format mysql-uri`
-- `tdc db create-db-connection-string --db-cluster-id <cluster-id> --read-only --format env`
-- `tdc db create-db-connection-string --db-cluster-id <cluster-id> --admin --format jdbc`
+- `tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id>`
+- `tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id> --dry-run`
+- `tdc db create-db-sql-users --db-cluster-id <cluster-id>`
+- `tdc db create-db-sql-users --db-cluster-id <cluster-id> --dry-run`
+- `tdc db format-db-connection-string --db-cluster-id <cluster-id>`
+- `tdc db format-db-connection-string --db-cluster-id <cluster-id> --read-write --format mysql-uri`
+- `tdc db format-db-connection-string --db-cluster-id <cluster-id> --read-only --format env`
+- `tdc db format-db-connection-string --db-cluster-id <cluster-id> --admin --format jdbc`
 - `tdc db execute-sql-statement --db-cluster-id <cluster-id> --sql "select 1"`
 - `tdc db execute-sql-statement --db-cluster-id <cluster-id> --read-write --sql "select 1"`
 - `tdc db execute-sql-statement --db-cluster-id <cluster-id> --read-only --sql "select 1"`
 - `tdc db execute-sql-statement --db-cluster-id <cluster-id> --admin --sql "select 1"`
+- `tdc db execute-sql-statement --db-cluster-id <cluster-id> --transport https --sql "select 1"`
 - `tdc db execute-sql-statement --db-cluster-id <cluster-id> --transport mysql --sql "select 1"`
 - `tdc fs create-file-system --file-system-name workspace`
 - `tdc fs create-file-system --file-system-name workspace --dry-run`
@@ -396,7 +402,7 @@ Implemented command behavior:
 - `tdc fs copy-file --from-stdin --to-remote /workspace/stdin.txt --tag source=stdin --description "stdin upload"`
 - `tdc fs copy-file --from-remote /workspace/stdin.txt --to-stdout`
 - `tdc fs list-files --path /workspace`
-- `tdc fs list-files --path /workspace --output human`
+- `tdc fs list-files --path /workspace --output text`
 - `tdc fs describe-file --path /workspace/README.md`
 - `tdc fs move-file --from-remote /workspace/README.copy.md --to-remote /workspace/archive/README.md`
 - `tdc fs delete-file --path /workspace/archive/README.md`
@@ -411,7 +417,7 @@ Implemented command behavior:
 - `tdc fs find-files --path /workspace --file-name-pattern "*.md" --layer-id layer-1`
 - `tdc fs create-layer --layer-id layer-1 --base-root-path /workspace --layer-name task --durability-mode restore-safe --tag task=auth`
 - `tdc fs list-layers`
-- `tdc fs list-layers --output human`
+- `tdc fs list-layers --output text`
 - `tdc fs describe-layer --layer-id layer-1`
 - `tdc fs diff-layer --layer-id layer-1`
 - `tdc fs replay-layer --layer-id layer-1`
@@ -459,7 +465,7 @@ Implemented command behavior:
 - `tdc journal append-journal-entries --journal-id jrn-demo --entry-json '{"type":"task.started"}'`
 - `tdc journal read-journal-entries --journal-id jrn-demo --after-seq 0 --limit 100`
 - `tdc journal search-journal-entries --entry-type task.started --label env=dev --include-entries`
-- `tdc journal verify-journal --journal-id jrn-demo --output human`
+- `tdc journal verify-journal --journal-id jrn-demo --output text`
 - `tdc git clone-git-workspace --repo-url https://github.com/pingcap/tidb.git --target-path ./workspace/tidb`
 - `tdc git clone-git-workspace --repo-url https://github.com/pingcap/tidb.git --target-path ./workspace/tidb --blobless --hydrate sync`
 - `tdc git hydrate-git-workspace --target-path ./workspace/tidb --timeout 30m`
@@ -489,8 +495,8 @@ Registered command surface:
 - `tdc db list-db-cluster-branches`
 - `tdc db describe-db-cluster-branch`
 - `tdc db delete-db-cluster-branch`
-- `tdc db prepare-db-query-access`
-- `tdc db create-db-connection-string`
+- `tdc db create-db-sql-users`
+- `tdc db format-db-connection-string`
 - `tdc db execute-sql-statement`
 - `tdc fs create-file-system`
 - `tdc fs delete-file-system`
@@ -666,10 +672,11 @@ not be required by MVP usage.
 
 TiDB Cloud control-plane API calls use HTTP Digest auth through
 `internal/api/transport`; never send `tdc_private_key` as Basic Auth for those
-APIs. SQL HTTP execution and tdc fs data-plane auth are separate authentication
-schemes. SQL HTTP uses the prepared DB SQL username/password as Basic Auth
-against `https://http-<cluster-host>/v1beta/sql`; TiDB Cloud API keys must not
-be used for SQL HTTP Basic Auth.
+APIs. SQL HTTPS API execution and tdc fs data-plane auth are separate
+authentication schemes. SQL HTTPS API execution uses the prepared DB SQL
+username/password as Basic Auth against
+`https://http-<cluster-host>/v1beta/sql`; TiDB Cloud API keys must not be used
+for SQL execution Basic Auth.
 
 Use `internal/api/endpoints` for Starter, IAM/account, and fs endpoint
 selection. Do not add service URLs to user config. The default Starter host is
@@ -711,7 +718,7 @@ Generated DB SQL usernames and passwords live in
 `[profile.db_users."<cluster-id>".role]` TOML sections to
 `~/.tdc/credentials`. TiDB Cloud cluster IDs are globally unique, so DB SQL
 credentials are cluster-scoped rather than profile-scoped. `tdc db
-prepare-db-query-access` owns those credentials and must be idempotent: it
+create-db-sql-users` owns those credentials and must be idempotent: it
 creates or repairs the stable tdc-managed read-only, read-write, and admin
 users for a cluster instead of creating a new group every time.
 
@@ -827,7 +834,7 @@ missing local Git state when possible, and persist dirty Git workspace changes
 through `/v1/git-workspaces/<id>/overlay` rather than ordinary `/v1/fs` file
 rows.
 
-`tdc db create-db-connection-string` and `tdc db execute-sql-statement` use
+`tdc db format-db-connection-string` and `tdc db execute-sql-statement` use
 read-write credentials by default. `--read-write`, `--read-only`, and `--admin`
 must be mutually exclusive explicit selections. Do not add SQL-text
 classification or an automatic access mode.
@@ -839,7 +846,7 @@ Use structured output contracts from the start.
 - JSON is the default for successful structured control-plane commands.
 - Data-plane commands may stream bytes or plain file listings when JSON would
   break expected filesystem usage.
-- `--output json` and `--output human` are the initial output modes.
+- `--output json` and `--output text` are the initial output modes.
 - `--query` uses JMESPath semantics and is applied after command execution to
   the structured result.
 - Raw output commands must reject `--query`.

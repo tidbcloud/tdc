@@ -28,8 +28,9 @@ tdc db create-db-cluster --db-cluster-name <name> --db-cluster-type starter --pr
 - Use long flags only.
 - Mutating commands support `--dry-run`.
 - Commands must not prompt.
-- Delete must require an explicit long flag confirmation pattern or another
-  non-interactive safety mechanism; it must never prompt.
+- Delete must be non-interactive. It reads the remote cluster first, validates
+  Starter-only behavior when plan metadata is available, and then deletes by
+  cluster ID; it must never prompt.
 
 ## Inputs And Config
 
@@ -64,7 +65,7 @@ tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --proj
 tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id>
 tdc db list-db-clusters --query 'clusters[].id'
 tdc db describe-db-cluster --db-cluster-id <id>
-tdc db delete-db-cluster --db-cluster-id <id> --confirm-db-cluster-name demo
+tdc db delete-db-cluster --db-cluster-id <id>
 ```
 
 No command asks for a server URL. The active profile's `cloud_provider` and
@@ -81,8 +82,9 @@ No command asks for a server URL. The active profile's `cloud_provider` and
   and optional API-backed create parameters.
 - `internal/dryrun` is used by create/update/delete to return validated request
   summaries without sending mutating HTTP requests.
-- Delete safety is implemented as an explicit flag, initially
-  `--confirm-db-cluster-name <name>`, so it remains non-interactive.
+- Delete safety is implemented by requiring an explicit cluster ID and reading
+  the remote cluster before deletion, without prompting or requiring a display
+  name confirmation flag.
 
 ## API Call Chain
 
@@ -114,10 +116,9 @@ Command mapping:
      supported cluster fields being updated. MVP update fields are
      `displayName` and `spendingLimit`.
 - `tdc db delete-db-cluster`
-  1. Validate `--confirm-db-cluster-name`.
+  1. Validate `--db-cluster-id`.
   2. Call `GET /v1beta1/clusters/{clusterId}`.
-  3. Verify `--confirm-db-cluster-name` exactly matches the remote
-     `displayName`.
+  3. If `clusterPlan` is present, verify it is `STARTER`.
   4. Call `DELETE /v1beta1/clusters/{clusterId}`.
 
 Available but not part of this lifecycle MVP:

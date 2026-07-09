@@ -121,7 +121,7 @@ func TestExecuteSQLHTTP(t *testing.T) {
 	if sqlBody["query"] != "select 1" {
 		t.Fatalf("unexpected SQL body: %#v", sqlBody)
 	}
-	if result.Transport != "http" || result.AccessMode != sqlcred.ReadWrite || result.RowCount != 1 {
+	if result.Transport != "https" || result.AccessMode != sqlcred.ReadWrite || result.RowCount != 1 {
 		t.Fatalf("unexpected result: %#v", result)
 	}
 }
@@ -136,7 +136,7 @@ func TestConnectionRequiresPreparedCredentials(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected missing credentials")
 	}
-	if got := apperr.MessageFor(err); !strings.Contains(got, "prepare-db-query-access") {
+	if got := apperr.MessageFor(err); !strings.Contains(got, "create-db-sql-users") {
 		t.Fatalf("unexpected error: %q", got)
 	}
 }
