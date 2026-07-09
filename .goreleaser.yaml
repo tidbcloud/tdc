@@ -24,11 +24,11 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X github.com/Icemap/tdc/internal/version.version={{ .Version }}
-      - -X github.com/Icemap/tdc/internal/version.commit={{ .Commit }}
-      - -X github.com/Icemap/tdc/internal/version.date={{ .Date }}
-      - -X github.com/Icemap/tdc/internal/version.installSource=archive
-      - -X github.com/Icemap/tdc/internal/version.releaseChannel=stable
+      - -X github.com/tidbcloud/tdc/internal/version.version={{ .Version }}
+      - -X github.com/tidbcloud/tdc/internal/version.commit={{ .Commit }}
+      - -X github.com/tidbcloud/tdc/internal/version.date={{ .Date }}
+      - -X github.com/tidbcloud/tdc/internal/version.installSource=archive
+      - -X github.com/tidbcloud/tdc/internal/version.releaseChannel=stable
 
 archives:
   - id: tdc
@@ -52,7 +52,7 @@ snapshot:
 
 release:
   github:
-    owner: Icemap
+    owner: tidbcloud
     name: tdc
   prerelease: auto
   make_latest: true
