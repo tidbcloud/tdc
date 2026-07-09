@@ -2,115 +2,7 @@
 
 `tdc` is an agent-friendly command-line interface for TiDB Cloud Starter.
 
-The project is in early MVP implementation. The CLI foundation, local configuration/credentials flow, structured output, JMESPath query, shared dry-run behavior, API client/auth foundation, GitHub Releases install/update, organization project listing, Starter DB lifecycle, SQL access, tdc fs control-plane, tdc fs data-plane, and the tdc fs FUSE/WebDAV mount runtime are implemented. The tdc fs data plane includes range reads, multipart upload, upload resume, efficient append with fallback, recursive copy, and remote-to-local download resume, stdin/stdout copy, tags/descriptions, chmod, symlink, hardlink, and pack/unpack workflows. tdc fs layer workflows are implemented for create/list/describe/diff/replay/entry/object/checkpoint/events/rollback/commit. Common tdc fs file and mount commands also have Unix-style command aliases, while all flags remain long-only. tdc vault workflows are implemented for secret create/read/replace/delete, delegated grants/tokens, audit listing, command environment injection, and a read-only vault mount filesystem view. The tdc journal workflow is implemented for create/append/read/search/verify. The FUSE runtime exposes a local control socket for `tdc fs drain-file-system`, local overlay mount profiles, auto pack/unpack for portable profiles, and Drive9-style Git workspace synthetic tree and restore handling.
-
-## Current Status
-
-Implemented:
-
-- `tdc help`
-- `tdc --version`
-- `tdc <command> help`
-- `tdc <command> <subcommand> help`
-- `tdc <command> --version`
-- `tdc <command> <subcommand> --version`
-- `tdc configure`
-- `tdc cli check-update`
-- `tdc cli update`
-- local TOML config and credentials under `~/.tdc/`
-- JSON and human output rendering for structured command results
-- JMESPath `--query` on structured command results
-- `--dry-run` on mutating control-plane commands
-- TiDB Cloud Digest-auth API client foundation
-- provider/region endpoint resolver for Starter and IAM APIs
-- permission declarations and auth/authz error categories
-- `tdc organization list-projects`
-- `tdc db create-db-cluster`
-- `tdc db list-db-clusters`
-- `tdc db describe-db-cluster`
-- `tdc db update-db-cluster`
-- `tdc db delete-db-cluster`
-- `tdc db create-db-cluster-branch`
-- `tdc db list-db-cluster-branches`
-- `tdc db describe-db-cluster-branch`
-- `tdc db delete-db-cluster-branch`
-- `tdc db prepare-db-query-access`
-- `tdc db create-db-connection-string`
-- `tdc db execute-sql-statement`
-- `tdc fs create-file-system`
-- `tdc fs delete-file-system`
-- `tdc fs check-file-system`
-- `tdc fs copy-file`
-- `tdc fs read-file`
-- `tdc fs list-files`
-- `tdc fs describe-file`
-- `tdc fs move-file`
-- `tdc fs delete-file`
-- `tdc fs create-directory`
-- `tdc fs chmod-file`
-- `tdc fs create-symlink`
-- `tdc fs create-hardlink`
-- `tdc fs search-file-content`
-- `tdc fs find-files`
-- `tdc fs create-layer`
-- `tdc fs list-layers`
-- `tdc fs describe-layer`
-- `tdc fs diff-layer`
-- `tdc fs replay-layer`
-- `tdc fs create-layer-entry`
-- `tdc fs upload-layer-file`
-- `tdc fs read-layer-file`
-- `tdc fs describe-layer-entry`
-- `tdc fs create-layer-checkpoint`
-- `tdc fs describe-layer-checkpoint`
-- `tdc fs list-layer-events`
-- `tdc fs rollback-layer`
-- `tdc fs commit-layer`
-- `tdc fs pack-file-system`
-- `tdc fs unpack-file-system`
-- `tdc fs mount-file-system`
-- `tdc fs drain-file-system`
-- `tdc fs unmount-file-system`
-- Unix-style `tdc fs` command aliases: `cp`, `cat`, `ls`, `stat`, `mv`, `rm`, `mkdir`, `chmod`, `symlink`, `hardlink`, `grep`, `find`, `mount`, `drain`, and `umount`
-- `tdc vault create-secret`
-- `tdc vault replace-secret`
-- `tdc vault read-secret`
-- `tdc vault list-secrets`
-- `tdc vault delete-secret`
-- `tdc vault create-token`
-- `tdc vault delete-token`
-- `tdc vault create-grant`
-- `tdc vault delete-grant`
-- `tdc vault list-audit-events`
-- `tdc vault run-with-secret`
-- `tdc vault mount-vault`
-- `tdc vault unmount-vault`
-- `tdc journal create-journal`
-- `tdc journal append-journal-entries`
-- `tdc journal read-journal-entries`
-- `tdc journal search-journal-entries`
-- `tdc journal verify-journal`
-- `tdc git clone-git-workspace`
-- `tdc git hydrate-git-workspace`
-- `tdc git restore-git-workspace`
-- `tdc git add-git-worktree`
-- `tdc git remove-git-worktree`
-- `tdc git create-git-workspace`
-- `tdc git list-git-workspaces`
-- `tdc git describe-git-workspace`
-- `tdc git delete-git-workspace`
-- `tdc git replace-git-tree`
-- `tdc git list-git-tree`
-- `tdc git upsert-git-state`
-- `tdc git describe-git-state`
-- `tdc git put-git-object-pack`
-- `tdc git list-git-object-packs`
-- `tdc git describe-git-object-pack`
-- `tdc git put-git-overlay-entry`
-- `tdc git describe-git-overlay-entry`
-- `tdc git list-git-overlay-entries`
-
-There are no registered placeholder commands at the current stage.
+The initial MVP command surface is implemented. It covers local configuration and credentials, structured output, JMESPath query, shared dry-run behavior, TiDB Cloud auth and region routing, organization project listing, Starter DB lifecycle, SQL access, tdc fs control/data plane, FUSE/WebDAV mount runtime, layer workflows, vault workflows, journal workflows, Drive9-style Git workspace workflows, installer/update flows, and CI/live-e2e release automation.
 
 ## Install
 
@@ -707,6 +599,130 @@ The FUSE driver uses `github.com/hanwen/go-fuse/v2` and the existing tdc fs data
 FUSE reads use `revision` and `resource_id` from the tdc fs stat API when those fields are available, so cached file bytes are reused only for the same known remote object version. Open writable file handles keep their base version and return a stale-file error if tdc can verify that the remote object changed or was deleted before flush. Rename retargets open handles, and deleting an open file marks the handle deleted so a later close does not recreate it. Git workspace paths add a synthetic tree layer backed by `/v1/git-workspaces` and local `.git` objects, with dirty changes persisted through Git overlay endpoints. On macOS FUSE requires macFUSE; on Linux it requires `/dev/fuse` plus `fusermount3` or `fusermount`.
 
 The WebDAV driver starts a local loopback WebDAV bridge, supports WebDAV dead properties for client compatibility, and uses macOS `mount_webdav`/`umount`; Linux and Windows WebDAV mounts still return explicit unsupported-prerequisite errors. The CLI build remains cgo-free.
+
+### All Commands
+
+<details>
+<summary>Show all commands</summary>
+
+```text
+tdc help
+tdc --version
+tdc configure
+tdc configure --non-interactive
+tdc cli check-update
+tdc cli update
+tdc organization list-projects
+tdc db create-db-cluster
+tdc db list-db-clusters
+tdc db describe-db-cluster
+tdc db update-db-cluster
+tdc db delete-db-cluster
+tdc db create-db-cluster-branch
+tdc db list-db-cluster-branches
+tdc db describe-db-cluster-branch
+tdc db delete-db-cluster-branch
+tdc db prepare-db-query-access
+tdc db create-db-connection-string
+tdc db execute-sql-statement
+tdc fs check-file-system
+tdc fs create-file-system
+tdc fs delete-file-system
+tdc fs copy-file
+tdc fs read-file
+tdc fs list-files
+tdc fs describe-file
+tdc fs move-file
+tdc fs delete-file
+tdc fs create-directory
+tdc fs chmod-file
+tdc fs create-symlink
+tdc fs create-hardlink
+tdc fs search-file-content
+tdc fs find-files
+tdc fs create-layer
+tdc fs list-layers
+tdc fs describe-layer
+tdc fs diff-layer
+tdc fs replay-layer
+tdc fs create-layer-entry
+tdc fs upload-layer-file
+tdc fs read-layer-file
+tdc fs describe-layer-entry
+tdc fs create-layer-checkpoint
+tdc fs describe-layer-checkpoint
+tdc fs list-layer-events
+tdc fs rollback-layer
+tdc fs commit-layer
+tdc fs pack-file-system
+tdc fs unpack-file-system
+tdc fs mount-file-system
+tdc fs drain-file-system
+tdc fs unmount-file-system
+tdc fs cp
+tdc fs cat
+tdc fs ls
+tdc fs stat
+tdc fs mv
+tdc fs rm
+tdc fs mkdir
+tdc fs chmod
+tdc fs symlink
+tdc fs hardlink
+tdc fs grep
+tdc fs find
+tdc fs mount
+tdc fs drain
+tdc fs umount
+tdc vault create-secret
+tdc vault replace-secret
+tdc vault read-secret
+tdc vault list-secrets
+tdc vault delete-secret
+tdc vault create-token
+tdc vault delete-token
+tdc vault create-grant
+tdc vault delete-grant
+tdc vault list-audit-events
+tdc vault run-with-secret
+tdc vault mount-vault
+tdc vault unmount-vault
+tdc journal create-journal
+tdc journal append-journal-entries
+tdc journal read-journal-entries
+tdc journal search-journal-entries
+tdc journal verify-journal
+tdc git clone-git-workspace
+tdc git hydrate-git-workspace
+tdc git restore-git-workspace
+tdc git add-git-worktree
+tdc git remove-git-worktree
+tdc git create-git-workspace
+tdc git list-git-workspaces
+tdc git describe-git-workspace
+tdc git delete-git-workspace
+tdc git replace-git-tree
+tdc git list-git-tree
+tdc git upsert-git-state
+tdc git describe-git-state
+tdc git put-git-object-pack
+tdc git list-git-object-packs
+tdc git describe-git-object-pack
+tdc git put-git-overlay-entry
+tdc git describe-git-overlay-entry
+tdc git list-git-overlay-entries
+```
+
+Help and version forms are also available at every command level:
+
+```text
+tdc <command> help
+tdc <command> <subcommand> help
+tdc <command> --version
+tdc <command> <subcommand> --version
+```
+
+</details>
 
 ## Configuration
 
