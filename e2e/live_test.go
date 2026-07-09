@@ -63,6 +63,7 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 
 	bin := tdcBinary(t)
 	profileName := liveProfileName(t)
+	fileSystemName := liveFileSystemName(t)
 
 	helpCommands := [][]string{
 		{"help"},
@@ -160,8 +161,8 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"db", "create-db-cluster-branch", "--db-cluster-id", "cluster-1", "--db-cluster-branch-name", "dev"},
 		{"db", "delete-db-cluster-branch", "--db-cluster-id", "cluster-1", "--db-cluster-branch-id", "branch-1", "--confirm-db-cluster-branch-name", "dev"},
 		{"db", "prepare-db-query-access", "--db-cluster-id", "cluster-1"},
-		{"fs", "create-file-system", "--file-system-name", "workspace"},
-		{"fs", "delete-file-system", "--file-system-name", "workspace", "--confirm-file-system-name", "workspace"},
+		{"fs", "create-file-system", "--file-system-name", fileSystemName},
+		{"fs", "delete-file-system", "--file-system-name", fileSystemName, "--confirm-file-system-name", fileSystemName},
 		{"fs", "create-layer", "--layer-id", "layer-1", "--base-root-path", "/workspace", "--layer-name", "dev"},
 		{"fs", "create-layer-entry", "--layer-id", "layer-1", "--path", "/workspace/a.txt", "--content", "hello"},
 		{"fs", "upload-layer-file", "--layer-id", "layer-1", "--from-local", "/tmp/tdc-e2e-local.txt", "--to-layer-path", "/workspace/a.txt"},
@@ -1751,6 +1752,15 @@ func liveProfileName(t *testing.T) string {
 		t.Fatalf("live e2e must use profile %q, got %q", defaultLiveProfile, profileName)
 	}
 	return profileName
+}
+
+func liveFileSystemName(t *testing.T) string {
+	t.Helper()
+	name := strings.TrimSpace(os.Getenv("TDC_LIVE_FS_NAME"))
+	if name == "" {
+		name = "workspace"
+	}
+	return name
 }
 
 func liveProfile(t *testing.T) *config.Profile {
