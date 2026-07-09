@@ -1,4 +1,4 @@
-module github.com/Icemap/tdc
+module github.com/tidbcloud/tdc
 
 go 1.26.1
 

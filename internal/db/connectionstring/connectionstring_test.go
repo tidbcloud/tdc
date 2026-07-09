@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Icemap/tdc/internal/db/sqlcred"
+	"github.com/tidbcloud/tdc/internal/db/sqlcred"
 )
 
 func TestBuildFormats(t *testing.T) {

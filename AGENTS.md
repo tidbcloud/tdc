@@ -7,7 +7,7 @@ title: AGENTS.md - tdc development guide for AI coding agents
 tdc is a Go command-line product for TiDB Cloud Starter. It is designed to be
 agent-friendly, predictable, scriptable, and safe for automation.
 
-Module: `github.com/Icemap/tdc`
+Module: `github.com/tidbcloud/tdc`
 Go version: 1.26.1 (see `go.mod`)
 
 The most important product document is `docs/priciples.md`. Treat that file as

@@ -5,7 +5,7 @@ package fs
 import (
 	"context"
 
-	"github.com/Icemap/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/apperr"
 )
 
 func (s Service) mountVaultForeground(ctx context.Context, inputs vaultMountInputs, checks []MountRuntimeCheck) (MountResult, error) {

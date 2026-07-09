@@ -21,12 +21,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/version"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/version"
 )
 
 const (
-	DefaultReleaseAPIBaseURL = "https://api.github.com/repos/Icemap/tdc"
+	DefaultReleaseAPIBaseURL = "https://api.github.com/repos/tidbcloud/tdc"
 	checksumAssetName        = "tdc_checksums.txt"
 )
 
@@ -656,9 +656,9 @@ func normalizedInstallSource(source string) string {
 
 func managedInstallError(source string) error {
 	command := map[string]string{
-		"homebrew": "brew upgrade Icemap/tap/tdc",
+		"homebrew": "brew upgrade tidbcloud/tap/tdc",
 		"scoop":    "scoop update tdc",
-		"winget":   "winget upgrade Icemap.tdc",
+		"winget":   "winget upgrade tidbcloud.tdc",
 	}[source]
 	if command == "" {
 		command = "use the package manager that installed tdc"

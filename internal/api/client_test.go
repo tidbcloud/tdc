@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Icemap/tdc/internal/api/endpoints"
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/authz"
+	"github.com/tidbcloud/tdc/internal/api/endpoints"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/authz"
 )
 
 func TestClientDoJSON(t *testing.T) {

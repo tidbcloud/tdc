@@ -10,15 +10,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/auth"
-	"github.com/Icemap/tdc/internal/authz"
-	"github.com/Icemap/tdc/internal/config"
-	"github.com/Icemap/tdc/internal/dryrun"
-	"github.com/Icemap/tdc/internal/output"
-	"github.com/Icemap/tdc/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/auth"
+	"github.com/tidbcloud/tdc/internal/authz"
+	"github.com/tidbcloud/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/dryrun"
+	"github.com/tidbcloud/tdc/internal/output"
+	"github.com/tidbcloud/tdc/internal/version"
 )
 
 type Options struct {

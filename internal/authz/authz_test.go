@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Icemap/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/apperr"
 )
 
 func TestForCommand(t *testing.T) {

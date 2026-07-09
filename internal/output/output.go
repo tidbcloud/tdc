@@ -6,8 +6,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/query"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/query"
 )
 
 const (

@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Repo = "Icemap/tdc"
+$Repo = "tidbcloud/tdc"
 $DefaultInstallDir = Join-Path $HOME "bin"
 
 function Fail($Message) {
@@ -112,7 +112,7 @@ function Print-NextSteps {
     Write-Output "    4. Mount tdc fs when FUSE is available"
     Write-Output "       tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace"
     Write-Output ""
-    Write-Output "  Docs: https://github.com/Icemap/tdc"
+    Write-Output "  Docs: https://github.com/tidbcloud/tdc"
 }
 
 $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture

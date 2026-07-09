@@ -22,7 +22,7 @@ The installer scripts use `--version` because they are not Cobra commands. The `
 
 ## Behavior
 
-- Releases are published by GoReleaser to GitHub Releases in `github.com/Icemap/tdc`.
+- Releases are published by GoReleaser to GitHub Releases in `github.com/tidbcloud/tdc`.
 - Release assets use stable names scoped by GitHub tag:
   - `tdc_darwin_arm64.tar.gz`
   - `tdc_darwin_amd64.tar.gz`
@@ -33,13 +33,13 @@ The installer scripts use `--version` because they are not Cobra commands. The `
   - `install.sh`
   - `install.ps1`
 - `scripts/install.sh` and `scripts/install.ps1` download archives from GitHub Releases, verify `tdc_checksums.txt`, extract `tdc`, install it into the selected directory, and run `tdc --version`.
-- Install scripts support pinned versions and `latest`. For `latest`, they use `https://github.com/Icemap/tdc/releases/latest/download/<asset>`. For pinned versions, they use `https://github.com/Icemap/tdc/releases/download/<tag>/<asset>`.
+- Install scripts support pinned versions and `latest`. For `latest`, they use `https://github.com/tidbcloud/tdc/releases/latest/download/<asset>`. For pinned versions, they use `https://github.com/tidbcloud/tdc/releases/download/<tag>/<asset>`.
 - Install scripts prefer upgrading the active `tdc`/`tdc.exe` binary found on `PATH` unless `--install-dir` or `TDC_INSTALL_DIR` is set.
 - On macOS/Linux, if no active binary exists and no install directory is supplied, `scripts/install.sh` installs to `/usr/local/bin`. It creates the directory or moves the binary with `sudo` when the current user cannot write there.
 - Install scripts detect PATH shadowing after installation and report both the installed path and the path currently resolved by `PATH`.
 - Install scripts bootstrap `~/.tdc/config` only when it is missing, writing a default `[default]` profile with `cloud_provider = 'aws'` and `region_code = 'us-east-1'`. They do not write `~/.tdc/credentials`.
 - Install scripts print DB config regions, fetch and print tdc fs regions from `https://drive9.ai/manifest/regions/drive9-regions.json` when available, and finish with clear next-step commands.
-- `tdc cli check-update` calls the GitHub Releases API `GET /repos/Icemap/tdc/releases/latest`, matches the current OS/arch release asset, compares the local version with the latest tag, and prints structured output.
+- `tdc cli check-update` calls the GitHub Releases API `GET /repos/tidbcloud/tdc/releases/latest`, matches the current OS/arch release asset, compares the local version with the latest tag, and prints structured output.
 - `tdc cli update` updates only binaries built with `install_source=archive` or `install_source=script`. Local builds and unknown installs are refused. Package-manager installs are refused with package-manager-specific guidance.
 - `tdc cli update --dry-run` resolves the target release, artifact, checksum, and target path, but does not download or replace the binary.
 - `tdc cli update --yes` downloads the target archive and `tdc_checksums.txt`, verifies SHA-256, extracts the binary, atomically replaces the current binary on Unix-like platforms, and validates the new binary by running `tdc --version`.
@@ -95,9 +95,9 @@ Install source values:
   "install_source": "archive",
   "release_channel": "stable",
   "artifact_name": "tdc_darwin_arm64.tar.gz",
-  "download_url": "https://github.com/Icemap/tdc/releases/download/v0.1.1/tdc_darwin_arm64.tar.gz",
-  "release_url": "https://github.com/Icemap/tdc/releases/tag/v0.1.1",
-  "release_notes_url": "https://github.com/Icemap/tdc/releases/tag/v0.1.1"
+  "download_url": "https://github.com/tidbcloud/tdc/releases/download/v0.1.1/tdc_darwin_arm64.tar.gz",
+  "release_url": "https://github.com/tidbcloud/tdc/releases/tag/v0.1.1",
+  "release_notes_url": "https://github.com/tidbcloud/tdc/releases/tag/v0.1.1"
 }
 ```
 
@@ -112,11 +112,11 @@ Install source values:
   "install_source": "archive",
   "release_channel": "stable",
   "artifact_name": "tdc_darwin_arm64.tar.gz",
-  "download_url": "https://github.com/Icemap/tdc/releases/download/v0.1.1/tdc_darwin_arm64.tar.gz",
+  "download_url": "https://github.com/tidbcloud/tdc/releases/download/v0.1.1/tdc_darwin_arm64.tar.gz",
   "checksum_sha256": "<hex-sha256>",
   "target_path": "/Users/me/.local/bin/tdc",
-  "release_url": "https://github.com/Icemap/tdc/releases/tag/v0.1.1",
-  "release_notes_url": "https://github.com/Icemap/tdc/releases/tag/v0.1.1"
+  "release_url": "https://github.com/tidbcloud/tdc/releases/tag/v0.1.1",
+  "release_notes_url": "https://github.com/tidbcloud/tdc/releases/tag/v0.1.1"
 }
 ```
 
@@ -142,7 +142,7 @@ Stable error codes:
 Users and agents can install from GitHub Releases:
 
 ```bash
-curl -fsSL https://github.com/Icemap/tdc/releases/latest/download/install.sh | sh -s -- --yes
+curl -fsSL https://github.com/tidbcloud/tdc/releases/latest/download/install.sh | sh -s -- --yes
 tdc --version
 tdc cli check-update --output json
 tdc cli update --dry-run
@@ -152,14 +152,14 @@ tdc cli update --yes
 Pinned install:
 
 ```bash
-curl -fsSL https://github.com/Icemap/tdc/releases/download/v0.1.0/install.sh | sh -s -- --version v0.1.0 --yes
+curl -fsSL https://github.com/tidbcloud/tdc/releases/download/v0.1.0/install.sh | sh -s -- --version v0.1.0 --yes
 ```
 
 Windows users can run the PowerShell installer:
 
 ```powershell
 $script = "$env:TEMP\install-tdc.ps1"
-iwr https://github.com/Icemap/tdc/releases/latest/download/install.ps1 -OutFile $script
+iwr https://github.com/tidbcloud/tdc/releases/latest/download/install.ps1 -OutFile $script
 powershell -ExecutionPolicy Bypass -File $script -InstallDir "$HOME\bin" -Yes
 tdc --version
 ```
@@ -182,7 +182,7 @@ This spec adds no TiDB Cloud product API calls.
 `tdc cli check-update`:
 
 1. Read local version metadata.
-2. `GET https://api.github.com/repos/Icemap/tdc/releases/latest`.
+2. `GET https://api.github.com/repos/tidbcloud/tdc/releases/latest`.
 3. Select the release asset matching current OS/arch.
 4. Compare local version and latest release tag.
 5. Render JSON or human output.
@@ -191,7 +191,7 @@ This spec adds no TiDB Cloud product API calls.
 
 1. Resolve current executable path and install source.
 2. Refuse package-managed or unknown installs.
-3. `GET https://api.github.com/repos/Icemap/tdc/releases/latest` or `GET https://api.github.com/repos/Icemap/tdc/releases/tags/<tag>`.
+3. `GET https://api.github.com/repos/tidbcloud/tdc/releases/latest` or `GET https://api.github.com/repos/tidbcloud/tdc/releases/tags/<tag>`.
 4. Select the matching archive and `tdc_checksums.txt`.
 5. Download only `tdc_checksums.txt`.
 6. Render the planned artifact, checksum, and target path.

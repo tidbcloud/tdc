@@ -10,9 +10,9 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/Icemap/tdc/internal/authz"
 	gofs "github.com/hanwen/go-fuse/v2/fs"
 	gofuse "github.com/hanwen/go-fuse/v2/fuse"
+	"github.com/tidbcloud/tdc/internal/authz"
 )
 
 func TestVaultFuseOwnerViewExposesSecretsFieldsAndContent(t *testing.T) {

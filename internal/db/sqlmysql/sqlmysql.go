@@ -7,10 +7,10 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/db/sqlcred"
-	"github.com/Icemap/tdc/internal/db/sqlresult"
 	"github.com/go-sql-driver/mysql"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/db/sqlcred"
+	"github.com/tidbcloud/tdc/internal/db/sqlresult"
 )
 
 type Options struct {

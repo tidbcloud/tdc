@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/config"
 )
 
 type fsMetadataStore struct {

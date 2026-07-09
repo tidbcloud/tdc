@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	apifs "github.com/Icemap/tdc/internal/api/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
+	apifs "github.com/tidbcloud/tdc/internal/api/fs"
 )
 
 const fuseGitCacheTTL = 2 * time.Second

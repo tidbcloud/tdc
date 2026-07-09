@@ -104,7 +104,7 @@ rendering are local-only.
 
 ## Dependencies
 
-- `go.mod` with module `github.com/Icemap/tdc`.
+- `go.mod` with module `github.com/tidbcloud/tdc`.
 - `docs/priciples.md` for product rules.
 
 ## Acceptance Criteria

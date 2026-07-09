@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Icemap/tdc/internal/api"
-	"github.com/Icemap/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/api"
+	"github.com/tidbcloud/tdc/internal/apperr"
 )
 
 var ErrLayerCommitConflict = errors.New("fs layer commit conflict")

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	apifs "github.com/Icemap/tdc/internal/api/fs"
-	"github.com/Icemap/tdc/internal/fs/mountstate"
+	apifs "github.com/tidbcloud/tdc/internal/api/fs"
+	"github.com/tidbcloud/tdc/internal/fs/mountstate"
 )
 
 func TestCreateGitWorkspaceSendsRequest(t *testing.T) {

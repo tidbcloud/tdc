@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Icemap/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/apperr"
 )
 
 type VaultSecret struct {

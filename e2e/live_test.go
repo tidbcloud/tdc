@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Icemap/tdc/internal/api"
-	"github.com/Icemap/tdc/internal/api/endpoints"
-	apifs "github.com/Icemap/tdc/internal/api/fs"
-	"github.com/Icemap/tdc/internal/auth"
-	"github.com/Icemap/tdc/internal/authz"
-	"github.com/Icemap/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/api"
+	"github.com/tidbcloud/tdc/internal/api/endpoints"
+	apifs "github.com/tidbcloud/tdc/internal/api/fs"
+	"github.com/tidbcloud/tdc/internal/auth"
+	"github.com/tidbcloud/tdc/internal/authz"
+	"github.com/tidbcloud/tdc/internal/config"
 )
 
 const defaultLiveProfile = "live-e2e"

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Icemap/tdc/internal/api/endpoints"
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/api/endpoints"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/config"
 )
 
 func TestCreateCluster(t *testing.T) {

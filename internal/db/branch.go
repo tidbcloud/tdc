@@ -7,13 +7,13 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/Icemap/tdc/internal/api/endpoints"
-	apistarter "github.com/Icemap/tdc/internal/api/starter"
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/authz"
-	"github.com/Icemap/tdc/internal/config"
-	"github.com/Icemap/tdc/internal/db/validate"
-	"github.com/Icemap/tdc/internal/dryrun"
+	"github.com/tidbcloud/tdc/internal/api/endpoints"
+	apistarter "github.com/tidbcloud/tdc/internal/api/starter"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/authz"
+	"github.com/tidbcloud/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/db/validate"
+	"github.com/tidbcloud/tdc/internal/dryrun"
 )
 
 type ListBranchesOptions struct {

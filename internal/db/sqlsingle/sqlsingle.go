@@ -3,7 +3,7 @@ package sqlsingle
 import (
 	"strings"
 
-	"github.com/Icemap/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/apperr"
 )
 
 func Validate(statement string) error {

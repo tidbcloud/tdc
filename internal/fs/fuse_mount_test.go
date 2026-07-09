@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	apifs "github.com/Icemap/tdc/internal/api/fs"
-	"github.com/Icemap/tdc/internal/authz"
-	"github.com/Icemap/tdc/internal/fs/mountcontrol"
 	gofs "github.com/hanwen/go-fuse/v2/fs"
 	gofuse "github.com/hanwen/go-fuse/v2/fuse"
+	apifs "github.com/tidbcloud/tdc/internal/api/fs"
+	"github.com/tidbcloud/tdc/internal/authz"
+	"github.com/tidbcloud/tdc/internal/fs/mountcontrol"
 )
 
 func TestRemoteFuseRuntimeRetargetsOpenHandles(t *testing.T) {

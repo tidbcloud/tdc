@@ -1,6 +1,6 @@
 GO ?= go
 GORELEASER ?= goreleaser
-MODULE := github.com/Icemap/tdc
+MODULE := github.com/tidbcloud/tdc
 BINARY_NAME := tdc
 BIN_DIR := bin
 TDC_BIN := $(BIN_DIR)/$(BINARY_NAME)

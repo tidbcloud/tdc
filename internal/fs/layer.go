@@ -10,12 +10,12 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	apifs "github.com/Icemap/tdc/internal/api/fs"
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/authz"
-	"github.com/Icemap/tdc/internal/config"
-	"github.com/Icemap/tdc/internal/dryrun"
-	"github.com/Icemap/tdc/internal/fs/fscred"
+	apifs "github.com/tidbcloud/tdc/internal/api/fs"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/authz"
+	"github.com/tidbcloud/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/dryrun"
+	"github.com/tidbcloud/tdc/internal/fs/fscred"
 )
 
 type CreateLayerOptions struct {

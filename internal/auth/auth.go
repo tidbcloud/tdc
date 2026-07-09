@@ -8,9 +8,9 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Icemap/tdc/internal/api/transport"
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/api/transport"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/config"
 )
 
 type Credentials struct {

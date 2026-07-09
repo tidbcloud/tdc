@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/Icemap/tdc/internal/api"
+	"github.com/tidbcloud/tdc/internal/api"
 )
 
 type Client struct {

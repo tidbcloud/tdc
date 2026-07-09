@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	apiiam "github.com/Icemap/tdc/internal/api/iam"
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/db/sqlcred"
+	apiiam "github.com/tidbcloud/tdc/internal/api/iam"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/db/sqlcred"
 )
 
 func TestPrepareCreatesMissingUsers(t *testing.T) {

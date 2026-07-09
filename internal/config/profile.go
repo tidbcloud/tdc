@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/config/region"
-	"github.com/Icemap/tdc/internal/config/store"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/config/region"
+	"github.com/tidbcloud/tdc/internal/config/store"
 )
 
 const DefaultProfile = "default"

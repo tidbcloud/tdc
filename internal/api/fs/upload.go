@@ -20,8 +20,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	tdcapi "github.com/Icemap/tdc/internal/api"
-	"github.com/Icemap/tdc/internal/apperr"
+	tdcapi "github.com/tidbcloud/tdc/internal/api"
+	"github.com/tidbcloud/tdc/internal/apperr"
 )
 
 const (

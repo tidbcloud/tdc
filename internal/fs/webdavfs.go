@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Icemap/tdc/internal/api"
-	apifs "github.com/Icemap/tdc/internal/api/fs"
+	"github.com/tidbcloud/tdc/internal/api"
+	apifs "github.com/tidbcloud/tdc/internal/api/fs"
 	"golang.org/x/net/webdav"
 )
 

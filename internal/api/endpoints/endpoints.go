@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/config/region"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/config/region"
 )
 
 type Service string

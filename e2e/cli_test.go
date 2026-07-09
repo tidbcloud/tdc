@@ -122,11 +122,11 @@ func TestErrorsAreRenderedAtCLIBoundary(t *testing.T) {
 		artifact := artifactNameForRuntime(t)
 		fmt.Fprintf(w, `{
 			"tag_name": "v99.0.0",
-			"html_url": "https://github.com/Icemap/tdc/releases/tag/v99.0.0",
+			"html_url": "https://github.com/tidbcloud/tdc/releases/tag/v99.0.0",
 			"assets": [
 				{
 					"name": %q,
-					"browser_download_url": "https://github.com/Icemap/tdc/releases/download/v99.0.0/%s"
+					"browser_download_url": "https://github.com/tidbcloud/tdc/releases/download/v99.0.0/%s"
 				}
 			]
 		}`, artifact, artifact)

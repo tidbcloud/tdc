@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Icemap/tdc/internal/api"
+	"github.com/tidbcloud/tdc/internal/api"
 )
 
 const ProjectLabelKey = "tidb.cloud/project"

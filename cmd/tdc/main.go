@@ -6,9 +6,9 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/cli"
-	"github.com/Icemap/tdc/internal/version"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/cli"
+	"github.com/tidbcloud/tdc/internal/version"
 )
 
 func main() {

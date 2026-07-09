@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/db/sqlcred"
-	"github.com/Icemap/tdc/internal/db/sqlresult"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/db/sqlcred"
+	"github.com/tidbcloud/tdc/internal/db/sqlresult"
 )
 
 type Options struct {

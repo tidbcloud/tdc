@@ -15,11 +15,11 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/Icemap/tdc/internal/api"
-	apifs "github.com/Icemap/tdc/internal/api/fs"
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/authz"
-	"github.com/Icemap/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/api"
+	apifs "github.com/tidbcloud/tdc/internal/api/fs"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/authz"
+	"github.com/tidbcloud/tdc/internal/config"
 )
 
 type CopyFileOptions struct {

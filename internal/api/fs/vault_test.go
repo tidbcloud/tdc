@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Icemap/tdc/internal/api"
+	"github.com/tidbcloud/tdc/internal/api"
 )
 
 func TestIssueVaultTokenUsesBearerAuthAndPayload(t *testing.T) {

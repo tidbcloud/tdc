@@ -15,9 +15,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Icemap/tdc/internal/fs/mountcontrol"
-	"github.com/Icemap/tdc/internal/fs/mountstate"
 	gofs "github.com/hanwen/go-fuse/v2/fs"
+	"github.com/tidbcloud/tdc/internal/fs/mountcontrol"
+	"github.com/tidbcloud/tdc/internal/fs/mountstate"
 )
 
 const drainPendingWorkKind = "pending_work_remaining"

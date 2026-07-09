@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-REPO="Icemap/tdc"
+REPO="tidbcloud/tdc"
 DEFAULT_INSTALL_DIR="/usr/local/bin"
 VERSION="latest"
 INSTALL_DIR=""
@@ -302,7 +302,7 @@ print_next_steps() {
   printf "    ${BOLD}4.${RESET} Mount tdc fs when FUSE is available\n"
   printf "       ${DIM}\$${RESET} tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace\n"
   printf "\n"
-  printf "  Docs: ${DIM}https://github.com/Icemap/tdc${RESET}\n"
+  printf "  Docs: ${DIM}https://github.com/tidbcloud/tdc${RESET}\n"
 }
 
 TMP_DIR="$(mktemp -d)"

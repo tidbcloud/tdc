@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Icemap/tdc/internal/api/endpoints"
-	apitransport "github.com/Icemap/tdc/internal/api/transport"
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/auth"
-	"github.com/Icemap/tdc/internal/authz"
-	"github.com/Icemap/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/api/endpoints"
+	apitransport "github.com/tidbcloud/tdc/internal/api/transport"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/auth"
+	"github.com/tidbcloud/tdc/internal/authz"
+	"github.com/tidbcloud/tdc/internal/config"
 )
 
 const defaultUserAgent = "tdc"

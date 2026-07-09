@@ -117,20 +117,20 @@ There are no registered placeholder commands at the current stage.
 GitHub Releases are the MVP distribution channel. macOS and Linux users can install the latest release with:
 
 ```bash
-curl -fsSL https://github.com/Icemap/tdc/releases/latest/download/install.sh | sh -s -- --yes
+curl -fsSL https://github.com/tidbcloud/tdc/releases/latest/download/install.sh | sh -s -- --yes
 ```
 
 Install a pinned release:
 
 ```bash
-curl -fsSL https://github.com/Icemap/tdc/releases/download/v0.1.0/install.sh | sh -s -- --version v0.1.0 --yes
+curl -fsSL https://github.com/tidbcloud/tdc/releases/download/v0.1.0/install.sh | sh -s -- --version v0.1.0 --yes
 ```
 
 Windows users can use the PowerShell installer:
 
 ```powershell
 $script = "$env:TEMP\install-tdc.ps1"
-iwr https://github.com/Icemap/tdc/releases/latest/download/install.ps1 -OutFile $script
+iwr https://github.com/tidbcloud/tdc/releases/latest/download/install.ps1 -OutFile $script
 powershell -ExecutionPolicy Bypass -File $script -InstallDir "$HOME\bin" -Yes
 ```
 
@@ -365,7 +365,7 @@ tdc cli update --yes
 tdc cli update --target-version v0.1.0 --yes
 ```
 
-`check-update` calls the GitHub Releases API for `github.com/Icemap/tdc`, matches the release artifact for the current OS/arch, and reports whether a newer release is available. It supports `--output json|human` and `--query`.
+`check-update` calls the GitHub Releases API for `github.com/tidbcloud/tdc`, matches the release artifact for the current OS/arch, and reports whether a newer release is available. It supports `--output json|human` and `--query`.
 
 `update` only mutates official archive/script installs. It refuses local builds, unknown installs, and future package-manager installs with actionable errors. Use `--dry-run` to preview the selected artifact, checksum, and target path. Use `--yes` to replace the current binary on Unix-like platforms. On Windows, rerun `install.ps1` for the target version.
 

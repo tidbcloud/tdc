@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/Icemap/tdc/internal/db/sqlcred"
+	"github.com/tidbcloud/tdc/internal/db/sqlcred"
 )
 
 func TestExecuteOpensAndClosesOneConnection(t *testing.T) {

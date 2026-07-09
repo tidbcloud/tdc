@@ -18,12 +18,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Icemap/tdc/internal/api"
-	apifs "github.com/Icemap/tdc/internal/api/fs"
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/fs/mountstate"
 	gofs "github.com/hanwen/go-fuse/v2/fs"
 	gofuse "github.com/hanwen/go-fuse/v2/fuse"
+	"github.com/tidbcloud/tdc/internal/api"
+	apifs "github.com/tidbcloud/tdc/internal/api/fs"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/fs/mountstate"
 )
 
 var errFuseWriteConflict = errors.New("remote file changed since it was opened")

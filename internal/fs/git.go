@@ -21,11 +21,11 @@ import (
 	"strings"
 	"time"
 
-	apifs "github.com/Icemap/tdc/internal/api/fs"
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/authz"
-	"github.com/Icemap/tdc/internal/config"
-	"github.com/Icemap/tdc/internal/fs/mountstate"
+	apifs "github.com/tidbcloud/tdc/internal/api/fs"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/authz"
+	"github.com/tidbcloud/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/fs/mountstate"
 )
 
 const (

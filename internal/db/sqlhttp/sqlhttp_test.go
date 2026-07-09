@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/db/sqlcred"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/db/sqlcred"
 )
 
 func TestExecuteHTTP(t *testing.T) {

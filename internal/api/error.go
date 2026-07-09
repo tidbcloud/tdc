@@ -3,7 +3,7 @@ package api
 import (
 	"fmt"
 
-	"github.com/Icemap/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/apperr"
 )
 
 type Error struct {

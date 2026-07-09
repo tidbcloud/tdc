@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Icemap/tdc/internal/api"
-	"github.com/Icemap/tdc/internal/api/endpoints"
-	"github.com/Icemap/tdc/internal/authz"
+	"github.com/tidbcloud/tdc/internal/api"
+	"github.com/tidbcloud/tdc/internal/api/endpoints"
+	"github.com/tidbcloud/tdc/internal/authz"
 )
 
 func TestProvisionAndDeleteTenant(t *testing.T) {

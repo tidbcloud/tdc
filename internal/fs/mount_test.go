@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Icemap/tdc/internal/fs/mountcontrol"
-	"github.com/Icemap/tdc/internal/fs/mountstate"
+	"github.com/tidbcloud/tdc/internal/fs/mountcontrol"
+	"github.com/tidbcloud/tdc/internal/fs/mountstate"
 )
 
 func TestMountCacheDirUsesMountIdentity(t *testing.T) {

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/config"
-	"github.com/Icemap/tdc/internal/config/store"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/config/store"
 )
 
 type Resource struct {

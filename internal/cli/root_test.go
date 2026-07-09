@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/authz"
-	"github.com/Icemap/tdc/internal/config/store"
-	"github.com/Icemap/tdc/internal/dryrun"
-	"github.com/Icemap/tdc/internal/version"
 	"github.com/spf13/cobra"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/authz"
+	"github.com/tidbcloud/tdc/internal/config/store"
+	"github.com/tidbcloud/tdc/internal/dryrun"
+	"github.com/tidbcloud/tdc/internal/version"
 )
 
 func TestHelpCommands(t *testing.T) {
@@ -228,11 +228,11 @@ func TestCLICheckUpdateUsesReleaseMetadata(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(`{
 			"tag_name": "v0.1.0",
-			"html_url": "https://github.com/Icemap/tdc/releases/tag/v0.1.0",
+			"html_url": "https://github.com/tidbcloud/tdc/releases/tag/v0.1.0",
 			"assets": [
 				{
 					"name": "tdc_linux_amd64.tar.gz",
-					"browser_download_url": "https://github.com/Icemap/tdc/releases/download/v0.1.0/tdc_linux_amd64.tar.gz"
+					"browser_download_url": "https://github.com/tidbcloud/tdc/releases/download/v0.1.0/tdc_linux_amd64.tar.gz"
 				}
 			]
 		}`))

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	apifs "github.com/Icemap/tdc/internal/api/fs"
+	apifs "github.com/tidbcloud/tdc/internal/api/fs"
 )
 
 func TestCreateLayerRejectsDuplicateTag(t *testing.T) {

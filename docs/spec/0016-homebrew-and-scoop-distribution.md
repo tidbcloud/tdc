@@ -9,14 +9,14 @@ Add optional package-manager distribution after the GitHub Releases installer wo
 Homebrew:
 
 ```bash
-brew install Icemap/tap/tdc
-brew upgrade Icemap/tap/tdc
+brew install tidbcloud/tap/tdc
+brew upgrade tidbcloud/tap/tdc
 ```
 
 Scoop:
 
 ```powershell
-scoop bucket add icemap https://github.com/Icemap/scoop-bucket
+scoop bucket add icemap https://github.com/tidbcloud/scoop-bucket
 scoop install tdc
 scoop update tdc
 ```
@@ -33,9 +33,9 @@ For Homebrew and Scoop installs, `tdc cli update` must not replace the binary. I
 
 ## Behavior
 
-- Homebrew distribution uses a separate tap repository, expected name `github.com/Icemap/homebrew-tap`.
-- Scoop distribution uses a separate bucket repository, expected name `github.com/Icemap/scoop-bucket`.
-- The main `github.com/Icemap/tdc` release remains the source of binary artifacts and checksums.
+- Homebrew distribution uses a separate tap repository, expected name `github.com/tidbcloud/homebrew-tap`.
+- Scoop distribution uses a separate bucket repository, expected name `github.com/tidbcloud/scoop-bucket`.
+- The main `github.com/tidbcloud/tdc` release remains the source of binary artifacts and checksums.
 - GoReleaser updates the Homebrew formula and Scoop manifest as part of release publishing after this spec is implemented.
 - The Homebrew formula and Scoop manifest consume GitHub Releases assets produced by `0012-install-and-update-distribution.md`.
 - Package-manager installs embed `install_source=homebrew` or `install_source=scoop` through package build/wrapper metadata when practical.
@@ -46,12 +46,12 @@ For Homebrew and Scoop installs, `tdc cli update` must not replace the binary. I
 
 Repository secrets needed in the main repo:
 
-- `GH_PAT` or a similarly named GitHub token with write access to `Icemap/homebrew-tap` and `Icemap/scoop-bucket`, if those repositories are separate from the main repo.
+- `GH_PAT` or a similarly named GitHub token with write access to `tidbcloud/homebrew-tap` and `tidbcloud/scoop-bucket`, if those repositories are separate from the main repo.
 
 GoReleaser config additions:
 
-- Homebrew publisher pointing at `Icemap/homebrew-tap`.
-- Scoop publisher pointing at `Icemap/scoop-bucket`.
+- Homebrew publisher pointing at `tidbcloud/homebrew-tap`.
+- Scoop publisher pointing at `tidbcloud/scoop-bucket`.
 - Formula/manifest URLs pointing to GitHub Releases assets.
 - SHA-256 values generated from the release artifacts.
 
@@ -62,7 +62,7 @@ No user `~/.tdc/` config or credentials are required for package-manager install
 `tdc cli update --yes` from a Homebrew install:
 
 ```text
-tdc [ERROR]: tdc is managed by homebrew; update it with `brew upgrade Icemap/tap/tdc`
+tdc [ERROR]: tdc is managed by homebrew; update it with `brew upgrade tidbcloud/tap/tdc`
 ```
 
 `tdc cli update --yes` from a Scoop install:
@@ -78,16 +78,16 @@ The structured error code remains `update.managed_install`.
 Users can choose between direct GitHub Releases installers and package-manager installs:
 
 ```bash
-curl -fsSL https://github.com/Icemap/tdc/releases/latest/download/install.sh | sh -s -- --install-dir "$HOME/.local/bin" --yes
-brew install Icemap/tap/tdc
+curl -fsSL https://github.com/tidbcloud/tdc/releases/latest/download/install.sh | sh -s -- --install-dir "$HOME/.local/bin" --yes
+brew install tidbcloud/tap/tdc
 ```
 
 Windows users can choose between the PowerShell installer and Scoop:
 
 ```powershell
-iwr https://github.com/Icemap/tdc/releases/latest/download/install.ps1 -OutFile $env:TEMP\install-tdc.ps1
+iwr https://github.com/tidbcloud/tdc/releases/latest/download/install.ps1 -OutFile $env:TEMP\install-tdc.ps1
 powershell -ExecutionPolicy Bypass -File $env:TEMP\install-tdc.ps1 -InstallDir "$HOME\bin" -Yes
-scoop bucket add icemap https://github.com/Icemap/scoop-bucket
+scoop bucket add icemap https://github.com/tidbcloud/scoop-bucket
 scoop install tdc
 ```
 
@@ -104,14 +104,14 @@ Package-manager users update through the package manager, not `tdc cli update`.
 
 Homebrew tap repository work:
 
-- Create `github.com/Icemap/homebrew-tap`.
+- Create `github.com/tidbcloud/homebrew-tap`.
 - Let GoReleaser write a formula such as `Formula/tdc.rb`.
 - Formula installs `tdc` from GitHub Releases.
 - Formula test should run `tdc --version`.
 
 Scoop bucket repository work:
 
-- Create `github.com/Icemap/scoop-bucket`.
+- Create `github.com/tidbcloud/scoop-bucket`.
 - Let GoReleaser write `bucket/tdc.json`.
 - Manifest installs `tdc.exe` from GitHub Releases.
 - Manifest checkver/autoupdate should track GitHub Releases tags.
@@ -124,8 +124,8 @@ Release publishing call chain:
 
 1. GoReleaser builds the same archives and checksum file defined in `0012`.
 2. GoReleaser publishes GitHub Releases assets.
-3. GoReleaser commits or updates the Homebrew formula in `Icemap/homebrew-tap`.
-4. GoReleaser commits or updates the Scoop manifest in `Icemap/scoop-bucket`.
+3. GoReleaser commits or updates the Homebrew formula in `tidbcloud/homebrew-tap`.
+4. GoReleaser commits or updates the Scoop manifest in `tidbcloud/scoop-bucket`.
 
 Runtime update call chain from package-managed installs:
 
@@ -148,9 +148,9 @@ Runtime update call chain from package-managed installs:
 
 ## Acceptance Criteria
 
-- `brew install Icemap/tap/tdc` installs a released `tdc` binary on macOS.
-- `brew upgrade Icemap/tap/tdc` upgrades to a newer release.
-- `scoop bucket add icemap https://github.com/Icemap/scoop-bucket` and `scoop install tdc` install `tdc.exe` on Windows.
+- `brew install tidbcloud/tap/tdc` installs a released `tdc` binary on macOS.
+- `brew upgrade tidbcloud/tap/tdc` upgrades to a newer release.
+- `scoop bucket add icemap https://github.com/tidbcloud/scoop-bucket` and `scoop install tdc` install `tdc.exe` on Windows.
 - `scoop update tdc` upgrades to a newer release.
 - `tdc cli check-update` works from Homebrew and Scoop installs.
 - `tdc cli update --yes` refuses Homebrew and Scoop installs with `update.managed_install`.

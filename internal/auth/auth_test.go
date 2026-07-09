@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/config"
-	"github.com/Icemap/tdc/internal/config/store"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/config/store"
 )
 
 func TestValidateProfileMissingCredentials(t *testing.T) {

@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Icemap/tdc/internal/api/endpoints"
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/config"
-	"github.com/Icemap/tdc/internal/config/store"
-	"github.com/Icemap/tdc/internal/dryrun"
+	"github.com/tidbcloud/tdc/internal/api/endpoints"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/config/store"
+	"github.com/tidbcloud/tdc/internal/dryrun"
 )
 
 func TestCreateFileSystemStoresFlatCredentialsAndRedactsOutput(t *testing.T) {

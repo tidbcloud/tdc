@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Icemap/tdc/internal/api/endpoints"
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/db/connectionstring"
-	"github.com/Icemap/tdc/internal/db/sqlcred"
+	"github.com/tidbcloud/tdc/internal/api/endpoints"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/db/connectionstring"
+	"github.com/tidbcloud/tdc/internal/db/sqlcred"
 )
 
 func TestPrepareQueryAccessCreatesAndStoresCredentials(t *testing.T) {

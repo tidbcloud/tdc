@@ -10,8 +10,8 @@ import (
 	"os"
 	"testing"
 
-	apifs "github.com/Icemap/tdc/internal/api/fs"
-	"github.com/Icemap/tdc/internal/authz"
+	apifs "github.com/tidbcloud/tdc/internal/api/fs"
+	"github.com/tidbcloud/tdc/internal/authz"
 	"golang.org/x/net/webdav"
 )
 

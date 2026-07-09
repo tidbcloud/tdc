@@ -12,14 +12,14 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/Icemap/tdc/internal/api"
-	apifs "github.com/Icemap/tdc/internal/api/fs"
-	"github.com/Icemap/tdc/internal/apperr"
-	"github.com/Icemap/tdc/internal/authz"
-	"github.com/Icemap/tdc/internal/config"
-	"github.com/Icemap/tdc/internal/dryrun"
-	"github.com/Icemap/tdc/internal/fs/mountdriver"
-	"github.com/Icemap/tdc/internal/fs/mountstate"
+	"github.com/tidbcloud/tdc/internal/api"
+	apifs "github.com/tidbcloud/tdc/internal/api/fs"
+	"github.com/tidbcloud/tdc/internal/apperr"
+	"github.com/tidbcloud/tdc/internal/authz"
+	"github.com/tidbcloud/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/dryrun"
+	"github.com/tidbcloud/tdc/internal/fs/mountdriver"
+	"github.com/tidbcloud/tdc/internal/fs/mountstate"
 )
 
 const (
