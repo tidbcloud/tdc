@@ -80,6 +80,8 @@ Build local release artifacts without publishing:
 make release-snapshot
 ```
 
+Release publishing uses GoReleaser and GitHub Releases. Before pushing a `v*` tag, write a summary-style release note at `docs/release-notes/<tag>.md`, for example `docs/release-notes/v0.1.0.md`. The release workflow passes that file to GoReleaser with `--release-notes`, and fails when the tag-specific file is missing so GitHub Releases do not fall back to a commit-list changelog.
+
 Run the live TiDB Cloud e2e entrypoint:
 
 ```bash
