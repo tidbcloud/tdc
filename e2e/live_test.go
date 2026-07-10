@@ -85,9 +85,9 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"cli", "help"},
 		{"db", "help"},
 		{"fs", "help"},
-		{"git", "help"},
-		{"journal", "help"},
-		{"vault", "help"},
+		{"fs-git", "help"},
+		{"fs-journal", "help"},
+		{"fs-vault", "help"},
 		{"organization", "help"},
 		{"db", "create-db-cluster", "help"},
 		{"db", "list-db-clusters", "help"},
@@ -129,42 +129,42 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"fs", "mount", "help"},
 		{"fs", "drain", "help"},
 		{"fs", "umount", "help"},
-		{"vault", "create-secret", "help"},
-		{"vault", "replace-secret", "help"},
-		{"vault", "read-secret", "help"},
-		{"vault", "list-secrets", "help"},
-		{"vault", "delete-secret", "help"},
-		{"vault", "create-token", "help"},
-		{"vault", "delete-token", "help"},
-		{"vault", "create-grant", "help"},
-		{"vault", "delete-grant", "help"},
-		{"vault", "list-audit-events", "help"},
-		{"vault", "run-with-secret", "help"},
-		{"vault", "mount-vault", "help"},
-		{"vault", "unmount-vault", "help"},
-		{"journal", "create-journal", "help"},
-		{"journal", "append-journal-entries", "help"},
-		{"journal", "read-journal-entries", "help"},
-		{"journal", "search-journal-entries", "help"},
-		{"journal", "verify-journal", "help"},
-		{"git", "clone-git-workspace", "help"},
-		{"git", "hydrate-git-workspace", "help"},
-		{"git", "add-git-worktree", "help"},
-		{"git", "remove-git-worktree", "help"},
-		{"git", "create-git-workspace", "help"},
-		{"git", "list-git-workspaces", "help"},
-		{"git", "describe-git-workspace", "help"},
-		{"git", "delete-git-workspace", "help"},
-		{"git", "replace-git-tree", "help"},
-		{"git", "list-git-tree", "help"},
-		{"git", "upsert-git-state", "help"},
-		{"git", "describe-git-state", "help"},
-		{"git", "put-git-object-pack", "help"},
-		{"git", "list-git-object-packs", "help"},
-		{"git", "describe-git-object-pack", "help"},
-		{"git", "put-git-overlay-entry", "help"},
-		{"git", "describe-git-overlay-entry", "help"},
-		{"git", "list-git-overlay-entries", "help"},
+		{"fs-vault", "create-secret", "help"},
+		{"fs-vault", "replace-secret", "help"},
+		{"fs-vault", "read-secret", "help"},
+		{"fs-vault", "list-secrets", "help"},
+		{"fs-vault", "delete-secret", "help"},
+		{"fs-vault", "create-token", "help"},
+		{"fs-vault", "delete-token", "help"},
+		{"fs-vault", "create-grant", "help"},
+		{"fs-vault", "delete-grant", "help"},
+		{"fs-vault", "list-audit-events", "help"},
+		{"fs-vault", "run-with-secret", "help"},
+		{"fs-vault", "mount-vault", "help"},
+		{"fs-vault", "unmount-vault", "help"},
+		{"fs-journal", "create-journal", "help"},
+		{"fs-journal", "append-journal-entries", "help"},
+		{"fs-journal", "read-journal-entries", "help"},
+		{"fs-journal", "search-journal-entries", "help"},
+		{"fs-journal", "verify-journal", "help"},
+		{"fs-git", "clone-git-workspace", "help"},
+		{"fs-git", "hydrate-git-workspace", "help"},
+		{"fs-git", "add-git-worktree", "help"},
+		{"fs-git", "remove-git-worktree", "help"},
+		{"fs-git", "create-git-workspace", "help"},
+		{"fs-git", "list-git-workspaces", "help"},
+		{"fs-git", "describe-git-workspace", "help"},
+		{"fs-git", "delete-git-workspace", "help"},
+		{"fs-git", "replace-git-tree", "help"},
+		{"fs-git", "list-git-tree", "help"},
+		{"fs-git", "upsert-git-state", "help"},
+		{"fs-git", "describe-git-state", "help"},
+		{"fs-git", "put-git-object-pack", "help"},
+		{"fs-git", "list-git-object-packs", "help"},
+		{"fs-git", "describe-git-object-pack", "help"},
+		{"fs-git", "put-git-overlay-entry", "help"},
+		{"fs-git", "describe-git-overlay-entry", "help"},
+		{"fs-git", "list-git-overlay-entries", "help"},
 	}
 	for _, args := range helpCommands {
 		result := runTDC(t, bin, args...)
@@ -188,23 +188,23 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"fs", "unpack-file-system", "--local-root", "/tmp/tdc-e2e-pack", "--remote-root", "/workspace", "--mount-profile", "portable"},
 		{"fs", "mount-file-system", "--mount-path", "/tmp/tdc-e2e-mount", "--driver", "webdav"},
 		{"fs", "unmount-file-system", "--mount-path", "/tmp/tdc-e2e-mount"},
-		{"vault", "create-secret", "--secret-name", "tdc-e2e-secret", "--field", "DB_URL=mysql://example"},
-		{"vault", "replace-secret", "--secret-path", "/n/vault/tdc-e2e-secret", "--from-directory", "/tmp"},
-		{"vault", "delete-secret", "--secret-name", "tdc-e2e-secret"},
-		{"vault", "create-token", "--agent-id", "tdc-live-e2e", "--task-id", "task-1", "--scope", "tdc-e2e-secret", "--ttl", "10m"},
-		{"vault", "delete-token", "--token-id", "token-1"},
-		{"vault", "create-grant", "--agent-id", "tdc-live-e2e", "--scope", "tdc-e2e-secret/DB_URL", "--permission", "read", "--ttl", "10m"},
-		{"vault", "delete-grant", "--grant-id", "grant-1"},
-		{"vault", "mount-vault", "--mount-path", "/tmp/tdc-e2e-vault"},
-		{"vault", "unmount-vault", "--mount-path", "/tmp/tdc-e2e-vault"},
-		{"journal", "create-journal", "--journal-id", "jrn-tdc-e2e", "--journal-kind", "agent"},
-		{"journal", "append-journal-entries", "--journal-id", "jrn-tdc-e2e", "--entry-json", `{"type":"task.started"}`},
-		{"git", "create-git-workspace", "--root-path", "/repo", "--repo-url", "https://example.test/repo.git"},
-		{"git", "delete-git-workspace", "--workspace-id", "gw-1"},
-		{"git", "replace-git-tree", "--workspace-id", "gw-1", "--commit-sha", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "--node-json", `{"path":"README.md","name":"README.md","kind":"file"}`},
-		{"git", "upsert-git-state", "--workspace-id", "gw-1", "--checkpoint-commit", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-		{"git", "put-git-object-pack", "--workspace-id", "gw-1", "--content", "pack"},
-		{"git", "put-git-overlay-entry", "--workspace-id", "gw-1", "--path", "README.md", "--operation", "upsert"},
+		{"fs-vault", "create-secret", "--secret-name", "tdc-e2e-secret", "--field", "DB_URL=mysql://example"},
+		{"fs-vault", "replace-secret", "--secret-path", "/n/vault/tdc-e2e-secret", "--from-directory", "/tmp"},
+		{"fs-vault", "delete-secret", "--secret-name", "tdc-e2e-secret"},
+		{"fs-vault", "create-token", "--agent-id", "tdc-live-e2e", "--task-id", "task-1", "--scope", "tdc-e2e-secret", "--ttl", "10m"},
+		{"fs-vault", "delete-token", "--token-id", "token-1"},
+		{"fs-vault", "create-grant", "--agent-id", "tdc-live-e2e", "--scope", "tdc-e2e-secret/DB_URL", "--permission", "read", "--ttl", "10m"},
+		{"fs-vault", "delete-grant", "--grant-id", "grant-1"},
+		{"fs-vault", "mount-vault", "--mount-path", "/tmp/tdc-e2e-vault"},
+		{"fs-vault", "unmount-vault", "--mount-path", "/tmp/tdc-e2e-vault"},
+		{"fs-journal", "create-journal", "--journal-id", "jrn-tdc-e2e", "--journal-kind", "agent"},
+		{"fs-journal", "append-journal-entries", "--journal-id", "jrn-tdc-e2e", "--entry-json", `{"type":"task.started"}`},
+		{"fs-git", "create-git-workspace", "--root-path", "/repo", "--repo-url", "https://example.test/repo.git"},
+		{"fs-git", "delete-git-workspace", "--workspace-id", "gw-1"},
+		{"fs-git", "replace-git-tree", "--workspace-id", "gw-1", "--commit-sha", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "--node-json", `{"path":"README.md","name":"README.md","kind":"file"}`},
+		{"fs-git", "upsert-git-state", "--workspace-id", "gw-1", "--checkpoint-commit", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		{"fs-git", "put-git-object-pack", "--workspace-id", "gw-1", "--content", "pack"},
+		{"fs-git", "put-git-overlay-entry", "--workspace-id", "gw-1", "--path", "README.md", "--operation", "upsert"},
 	}
 	for _, args := range mutatingDryRunCommands {
 		fullArgs := append([]string{"--profile", profileName}, args...)
@@ -259,21 +259,21 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"fs", "describe-layer-entry"},
 		{"fs", "describe-layer-checkpoint"},
 		{"fs", "list-layer-events"},
-		{"vault", "read-secret"},
-		{"vault", "list-secrets"},
-		{"vault", "list-audit-events"},
-		{"vault", "run-with-secret"},
-		{"journal", "read-journal-entries"},
-		{"journal", "search-journal-entries"},
-		{"journal", "verify-journal"},
-		{"git", "list-git-workspaces"},
-		{"git", "describe-git-workspace"},
-		{"git", "list-git-tree"},
-		{"git", "describe-git-state"},
-		{"git", "list-git-object-packs"},
-		{"git", "describe-git-object-pack"},
-		{"git", "describe-git-overlay-entry"},
-		{"git", "list-git-overlay-entries"},
+		{"fs-vault", "read-secret"},
+		{"fs-vault", "list-secrets"},
+		{"fs-vault", "list-audit-events"},
+		{"fs-vault", "run-with-secret"},
+		{"fs-journal", "read-journal-entries"},
+		{"fs-journal", "search-journal-entries"},
+		{"fs-journal", "verify-journal"},
+		{"fs-git", "list-git-workspaces"},
+		{"fs-git", "describe-git-workspace"},
+		{"fs-git", "list-git-tree"},
+		{"fs-git", "describe-git-state"},
+		{"fs-git", "list-git-object-packs"},
+		{"fs-git", "describe-git-object-pack"},
+		{"fs-git", "describe-git-overlay-entry"},
+		{"fs-git", "list-git-overlay-entries"},
 	}
 	for _, args := range readOnlyCommands {
 		fullArgs := append([]string{"--profile", profileName}, args...)
@@ -711,7 +711,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 		if vaultDeleted {
 			return
 		}
-		cleanup := runTDC(t, bin, "--profile", profileName, "vault", "delete-secret", "--secret-name", vaultSecretName)
+		cleanup := runTDC(t, bin, "--profile", profileName, "fs-vault", "delete-secret", "--secret-name", vaultSecretName)
 		if cleanup.exitCode != 0 && cleanup.exitCode != 5 {
 			t.Logf("cleanup vault secret failed for %s: exit=%d stdout=%s stderr=%s", vaultSecretName, cleanup.exitCode, cleanup.stdout, cleanup.stderr)
 		}
@@ -720,7 +720,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 		t,
 		bin,
 		"--profile", profileName,
-		"vault", "create-secret",
+		"fs-vault", "create-secret",
 		"--secret-name", vaultSecretName,
 		"--field", "DB_URL=mysql://"+suffix,
 		"--field", "PASSWORD=secret-"+suffix,
@@ -728,17 +728,17 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	createVaultSecret.wantExitCode(0)
 	createVaultSecret.wantStdoutContains(vaultSecretName)
 
-	listVaultSecrets := runTDC(t, bin, "--profile", profileName, "vault", "list-secrets")
+	listVaultSecrets := runTDC(t, bin, "--profile", profileName, "fs-vault", "list-secrets")
 	listVaultSecrets.wantExitCode(0)
 	listVaultSecrets.wantStdoutContains(vaultSecretName)
 
-	readVaultSecret := runTDC(t, bin, "--profile", profileName, "vault", "read-secret", "--secret-name", vaultSecretName, "--field", "PASSWORD", "--format", "raw")
+	readVaultSecret := runTDC(t, bin, "--profile", profileName, "fs-vault", "read-secret", "--secret-name", vaultSecretName, "--field", "PASSWORD", "--format", "raw")
 	readVaultSecret.wantExitCode(0)
 	if readVaultSecret.stdout != "secret-"+suffix {
 		readVaultSecret.fail("vault read-secret --format raw should return exact field bytes")
 	}
 
-	readVaultEnv := runTDC(t, bin, "--profile", profileName, "vault", "read-secret", "--secret-name", vaultSecretName, "--format", "env")
+	readVaultEnv := runTDC(t, bin, "--profile", profileName, "fs-vault", "read-secret", "--secret-name", vaultSecretName, "--format", "env")
 	readVaultEnv.wantExitCode(0)
 	readVaultEnv.wantStdoutContains("DB_URL=mysql://" + suffix)
 	readVaultEnv.wantStdoutContains("PASSWORD=secret-" + suffix)
@@ -753,11 +753,11 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(replaceVaultDir, "PASSWORD"), []byte("replaced-"+suffix), 0o600); err != nil {
 		t.Fatalf("write replacement PASSWORD: %v", err)
 	}
-	replaceVaultSecret := runTDC(t, bin, "--profile", profileName, "vault", "replace-secret", "--secret-path", "/n/vault/"+vaultSecretName, "--from-directory", replaceVaultDir)
+	replaceVaultSecret := runTDC(t, bin, "--profile", profileName, "fs-vault", "replace-secret", "--secret-path", "/n/vault/"+vaultSecretName, "--from-directory", replaceVaultDir)
 	replaceVaultSecret.wantExitCode(0)
 	replaceVaultSecret.wantStdoutContains(vaultSecretName)
 
-	readReplacedVaultSecret := runTDC(t, bin, "--profile", profileName, "vault", "read-secret", "--secret-name", vaultSecretName, "--field", "PASSWORD", "--format", "raw")
+	readReplacedVaultSecret := runTDC(t, bin, "--profile", profileName, "fs-vault", "read-secret", "--secret-name", vaultSecretName, "--field", "PASSWORD", "--format", "raw")
 	readReplacedVaultSecret.wantExitCode(0)
 	if readReplacedVaultSecret.stdout != "replaced-"+suffix {
 		readReplacedVaultSecret.fail("vault replace-secret should replace stored field bytes")
@@ -773,16 +773,16 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 			if vaultUnmounted {
 				return
 			}
-			cleanupUnmount := runTDC(t, bin, "--profile", profileName, "vault", "unmount-vault", "--mount-path", vaultMountPath, "--ignore-absent", "--force")
+			cleanupUnmount := runTDC(t, bin, "--profile", profileName, "fs-vault", "unmount-vault", "--mount-path", vaultMountPath, "--ignore-absent", "--force")
 			if cleanupUnmount.exitCode != 0 {
 				t.Logf("cleanup vault unmount failed for %s: exit=%d stdout=%s stderr=%s", vaultMountPath, cleanupUnmount.exitCode, cleanupUnmount.stdout, cleanupUnmount.stderr)
 			}
 		}()
-		mountVault := runTDC(t, bin, "--profile", profileName, "vault", "mount-vault", "--mount-path", vaultMountPath, "--ready-timeout", "30s")
+		mountVault := runTDC(t, bin, "--profile", profileName, "fs-vault", "mount-vault", "--mount-path", vaultMountPath, "--ready-timeout", "30s")
 		mountVault.wantExitCode(0)
 		mountVault.wantStdoutContains(`"status": "mounted"`)
 		waitLiveLocalFile(t, filepath.Join(vaultMountPath, vaultSecretName, "PASSWORD"), "replaced-"+suffix, 30*time.Second)
-		unmountVault := runTDC(t, bin, "--profile", profileName, "vault", "unmount-vault", "--mount-path", vaultMountPath)
+		unmountVault := runTDC(t, bin, "--profile", profileName, "fs-vault", "unmount-vault", "--mount-path", vaultMountPath)
 		unmountVault.wantExitCode(0)
 		unmountVault.wantStdoutContains(`"status": "unmounted"`)
 		vaultUnmounted = true
@@ -792,7 +792,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 		t,
 		bin,
 		"--profile", profileName,
-		"vault", "create-grant",
+		"fs-vault", "create-grant",
 		"--agent-id", "tdc-live-e2e",
 		"--scope", vaultSecretName+"/DB_URL",
 		"--permission", "read",
@@ -809,17 +809,17 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 		if grantDeleted {
 			return
 		}
-		cleanup := runTDC(t, bin, "--profile", profileName, "vault", "delete-grant", "--grant-id", vaultGrant.GrantID, "--reason", "cleanup")
+		cleanup := runTDC(t, bin, "--profile", profileName, "fs-vault", "delete-grant", "--grant-id", vaultGrant.GrantID, "--reason", "cleanup")
 		if cleanup.exitCode != 0 && cleanup.exitCode != 5 {
 			t.Logf("cleanup vault grant failed for %s: exit=%d stdout=%s stderr=%s", vaultGrant.GrantID, cleanup.exitCode, cleanup.stdout, cleanup.stderr)
 		}
 	}()
-	readVaultWithGrant := runTDC(t, bin, "--profile", profileName, "vault", "read-secret", "--secret-name", vaultSecretName, "--field", "DB_URL", "--format", "raw", "--vault-token", vaultGrant.Token)
+	readVaultWithGrant := runTDC(t, bin, "--profile", profileName, "fs-vault", "read-secret", "--secret-name", vaultSecretName, "--field", "DB_URL", "--format", "raw", "--vault-token", vaultGrant.Token)
 	readVaultWithGrant.wantExitCode(0)
 	if readVaultWithGrant.stdout != "mysql://replaced-"+suffix {
 		readVaultWithGrant.fail("delegated vault grant should read scoped field")
 	}
-	deleteVaultGrant := runTDC(t, bin, "--profile", profileName, "vault", "delete-grant", "--grant-id", vaultGrant.GrantID, "--reason", "live-e2e-complete")
+	deleteVaultGrant := runTDC(t, bin, "--profile", profileName, "fs-vault", "delete-grant", "--grant-id", vaultGrant.GrantID, "--reason", "live-e2e-complete")
 	deleteVaultGrant.wantExitCode(0)
 	grantDeleted = true
 
@@ -827,7 +827,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 		t,
 		bin,
 		"--profile", profileName,
-		"vault", "create-token",
+		"fs-vault", "create-token",
 		"--agent-id", "tdc-live-e2e",
 		"--task-id", suffix,
 		"--scope", vaultSecretName,
@@ -843,23 +843,23 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 		if tokenDeleted {
 			return
 		}
-		cleanup := runTDC(t, bin, "--profile", profileName, "vault", "delete-token", "--token-id", vaultToken.TokenID)
+		cleanup := runTDC(t, bin, "--profile", profileName, "fs-vault", "delete-token", "--token-id", vaultToken.TokenID)
 		if cleanup.exitCode != 0 && cleanup.exitCode != 5 {
 			t.Logf("cleanup vault token failed for %s: exit=%d stdout=%s stderr=%s", vaultToken.TokenID, cleanup.exitCode, cleanup.stdout, cleanup.stderr)
 		}
 	}()
-	readVaultWithToken := runTDC(t, bin, "--profile", profileName, "vault", "read-secret", "--secret-name", vaultSecretName, "--field", "PASSWORD", "--format", "raw", "--vault-token", vaultToken.Token)
+	readVaultWithToken := runTDC(t, bin, "--profile", profileName, "fs-vault", "read-secret", "--secret-name", vaultSecretName, "--field", "PASSWORD", "--format", "raw", "--vault-token", vaultToken.Token)
 	readVaultWithToken.wantExitCode(0)
 	if readVaultWithToken.stdout != "replaced-"+suffix {
 		readVaultWithToken.fail("legacy vault token should read scoped field")
 	}
-	deleteVaultToken := runTDC(t, bin, "--profile", profileName, "vault", "delete-token", "--token-id", vaultToken.TokenID)
+	deleteVaultToken := runTDC(t, bin, "--profile", profileName, "fs-vault", "delete-token", "--token-id", vaultToken.TokenID)
 	deleteVaultToken.wantExitCode(0)
 	tokenDeleted = true
 
 	if runtime.GOOS != "windows" {
 		if _, err := exec.LookPath("env"); err == nil {
-			runWithVault := runTDC(t, bin, "--profile", profileName, "vault", "run-with-secret", "--secret-path", "/n/vault/"+vaultSecretName, "--", "env")
+			runWithVault := runTDC(t, bin, "--profile", profileName, "fs-vault", "run-with-secret", "--secret-path", "/n/vault/"+vaultSecretName, "--", "env")
 			runWithVault.wantExitCode(0)
 			runWithVault.wantStdoutContains("DB_URL=mysql://replaced-" + suffix)
 			runWithVault.wantStdoutContains("PASSWORD=replaced-" + suffix)
@@ -867,11 +867,11 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 		}
 	}
 
-	listVaultAuditEvents := runTDC(t, bin, "--profile", profileName, "vault", "list-audit-events", "--secret-name", vaultSecretName, "--limit", "20")
+	listVaultAuditEvents := runTDC(t, bin, "--profile", profileName, "fs-vault", "list-audit-events", "--secret-name", vaultSecretName, "--limit", "20")
 	listVaultAuditEvents.wantExitCode(0)
 	listVaultAuditEvents.wantStdoutContains(`"events"`)
 
-	deleteVaultSecret := runTDC(t, bin, "--profile", profileName, "vault", "delete-secret", "--secret-name", vaultSecretName)
+	deleteVaultSecret := runTDC(t, bin, "--profile", profileName, "fs-vault", "delete-secret", "--secret-name", vaultSecretName)
 	deleteVaultSecret.wantExitCode(0)
 	deleteVaultSecret.wantStdoutContains(`"status": "deleted"`)
 	vaultDeleted = true
@@ -882,7 +882,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 		t,
 		bin,
 		"--profile", profileName,
-		"journal", "create-journal",
+		"fs-journal", "create-journal",
 		"--journal-id", journalID,
 		"--journal-kind", "agent",
 		"--title", "tdc live e2e "+suffix,
@@ -897,7 +897,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 		t,
 		bin,
 		"--profile", profileName,
-		"journal", "append-journal-entries",
+		"fs-journal", "append-journal-entries",
 		"--journal-id", journalID,
 		"--idempotency-key", appendID,
 		"--entry-json", `{"type":"task.started","summary":{"message":"tdc live e2e `+suffix+`"}}`,
@@ -907,7 +907,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	appendJournal.wantStdoutContains(`"count": 1`)
 	appendJournal.wantStdoutContains(appendID)
 
-	readJournal := runTDC(t, bin, "--profile", profileName, "journal", "read-journal-entries", "--journal-id", journalID, "--limit", "10")
+	readJournal := runTDC(t, bin, "--profile", profileName, "fs-journal", "read-journal-entries", "--journal-id", journalID, "--limit", "10")
 	readJournal.wantExitCode(0)
 	readJournal.wantStdoutContains(journalID)
 	readJournal.wantStdoutContains("task.started")
@@ -917,7 +917,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 		bin,
 		[]string{
 			"--profile", profileName,
-			"journal", "search-journal-entries",
+			"fs-journal", "search-journal-entries",
 			"--entry-type", "task.started",
 			"--label", "test=tdc-e2e",
 			"--limit", "10",
@@ -927,7 +927,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 		"index journal entry",
 	)
 
-	verifyJournal := runTDC(t, bin, "--profile", profileName, "journal", "verify-journal", "--journal-id", journalID, "--output", "text")
+	verifyJournal := runTDC(t, bin, "--profile", profileName, "fs-journal", "verify-journal", "--journal-id", journalID, "--output", "text")
 	verifyJournal.wantExitCode(0)
 	verifyJournal.wantStdoutContains("ok journal=" + journalID)
 
@@ -938,7 +938,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 		t,
 		bin,
 		"--profile", profileName,
-		"git", "create-git-workspace",
+		"fs-git", "create-git-workspace",
 		"--root-path", gitRootPath,
 		"--repo-url", "https://example.test/tdc-e2e.git",
 		"--remote-name", "origin",
@@ -958,69 +958,69 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 		if gitWorkspaceDeleted {
 			return
 		}
-		cleanup := runTDC(t, bin, "--profile", profileName, "git", "delete-git-workspace", "--workspace-id", gitWorkspace.WorkspaceID)
+		cleanup := runTDC(t, bin, "--profile", profileName, "fs-git", "delete-git-workspace", "--workspace-id", gitWorkspace.WorkspaceID)
 		if cleanup.exitCode != 0 && cleanup.exitCode != 5 {
 			t.Logf("cleanup git workspace failed for %s: exit=%d stdout=%s stderr=%s", gitWorkspace.WorkspaceID, cleanup.exitCode, cleanup.stdout, cleanup.stderr)
 		}
 	}()
 
-	listGitWorkspaces := runTDC(t, bin, "--profile", profileName, "git", "list-git-workspaces", "--query", fmt.Sprintf("workspaces[?workspace_id=='%s'].workspace_id | [0]", gitWorkspace.WorkspaceID))
+	listGitWorkspaces := runTDC(t, bin, "--profile", profileName, "fs-git", "list-git-workspaces", "--query", fmt.Sprintf("workspaces[?workspace_id=='%s'].workspace_id | [0]", gitWorkspace.WorkspaceID))
 	listGitWorkspaces.wantExitCode(0)
 	listGitWorkspaces.wantStdoutContains(gitWorkspace.WorkspaceID)
 
-	describeGitByID := runTDC(t, bin, "--profile", profileName, "git", "describe-git-workspace", "--workspace-id", gitWorkspace.WorkspaceID)
+	describeGitByID := runTDC(t, bin, "--profile", profileName, "fs-git", "describe-git-workspace", "--workspace-id", gitWorkspace.WorkspaceID)
 	describeGitByID.wantExitCode(0)
 	describeGitByID.wantStdoutContains(gitRootPath)
 
-	describeGitByRoot := runTDC(t, bin, "--profile", profileName, "git", "describe-git-workspace", "--root-path", gitRootPath)
+	describeGitByRoot := runTDC(t, bin, "--profile", profileName, "fs-git", "describe-git-workspace", "--root-path", gitRootPath)
 	describeGitByRoot.wantExitCode(0)
 	describeGitByRoot.wantStdoutContains(gitWorkspace.WorkspaceID)
 
 	nodeJSON := fmt.Sprintf(`{"path":"README.md","parent_path":"","name":"README.md","kind":"file","mode":"100644","object_sha":"%s","size_bytes":5}`, gitObject)
-	replaceGitTree := runTDC(t, bin, "--profile", profileName, "git", "replace-git-tree", "--workspace-id", gitWorkspace.WorkspaceID, "--commit-sha", gitCommit, "--node-json", nodeJSON)
+	replaceGitTree := runTDC(t, bin, "--profile", profileName, "fs-git", "replace-git-tree", "--workspace-id", gitWorkspace.WorkspaceID, "--commit-sha", gitCommit, "--node-json", nodeJSON)
 	replaceGitTree.wantExitCode(0)
 	replaceGitTree.wantStdoutContains(`"status": "replaced"`)
 
-	listGitTree := runTDC(t, bin, "--profile", profileName, "git", "list-git-tree", "--workspace-id", gitWorkspace.WorkspaceID, "--commit-sha", gitCommit)
+	listGitTree := runTDC(t, bin, "--profile", profileName, "fs-git", "list-git-tree", "--workspace-id", gitWorkspace.WorkspaceID, "--commit-sha", gitCommit)
 	listGitTree.wantExitCode(0)
 	listGitTree.wantStdoutContains("README.md")
 
-	upsertGitState := runTDC(t, bin, "--profile", profileName, "git", "upsert-git-state", "--workspace-id", gitWorkspace.WorkspaceID, "--checkpoint-commit", gitCommit, "--storage-type", "inline", "--content", "state-"+suffix)
+	upsertGitState := runTDC(t, bin, "--profile", profileName, "fs-git", "upsert-git-state", "--workspace-id", gitWorkspace.WorkspaceID, "--checkpoint-commit", gitCommit, "--storage-type", "inline", "--content", "state-"+suffix)
 	upsertGitState.wantExitCode(0)
 	upsertGitState.wantStdoutContains(gitWorkspace.WorkspaceID)
 
-	describeGitState := runTDC(t, bin, "--profile", profileName, "git", "describe-git-state", "--workspace-id", gitWorkspace.WorkspaceID)
+	describeGitState := runTDC(t, bin, "--profile", profileName, "fs-git", "describe-git-state", "--workspace-id", gitWorkspace.WorkspaceID)
 	describeGitState.wantExitCode(0)
 	describeGitState.wantStdoutContains(gitCommit)
 
-	putGitObjectPack := runTDC(t, bin, "--profile", profileName, "git", "put-git-object-pack", "--workspace-id", gitWorkspace.WorkspaceID, "--content", "pack-"+suffix)
+	putGitObjectPack := runTDC(t, bin, "--profile", profileName, "fs-git", "put-git-object-pack", "--workspace-id", gitWorkspace.WorkspaceID, "--content", "pack-"+suffix)
 	putGitObjectPack.wantExitCode(0)
 	gitObjectPack := decodeLiveGitObjectPack(t, putGitObjectPack)
 	if gitObjectPack.PackID == "" {
 		t.Fatalf("unexpected git object pack response: %#v\n%s", gitObjectPack, putGitObjectPack.stdout)
 	}
 
-	listGitObjectPacks := runTDC(t, bin, "--profile", profileName, "git", "list-git-object-packs", "--workspace-id", gitWorkspace.WorkspaceID)
+	listGitObjectPacks := runTDC(t, bin, "--profile", profileName, "fs-git", "list-git-object-packs", "--workspace-id", gitWorkspace.WorkspaceID)
 	listGitObjectPacks.wantExitCode(0)
 	listGitObjectPacks.wantStdoutContains(gitObjectPack.PackID)
 
-	describeGitObjectPack := runTDC(t, bin, "--profile", profileName, "git", "describe-git-object-pack", "--workspace-id", gitWorkspace.WorkspaceID, "--pack-id", gitObjectPack.PackID)
+	describeGitObjectPack := runTDC(t, bin, "--profile", profileName, "fs-git", "describe-git-object-pack", "--workspace-id", gitWorkspace.WorkspaceID, "--pack-id", gitObjectPack.PackID)
 	describeGitObjectPack.wantExitCode(0)
 	describeGitObjectPack.wantStdoutContains(gitObjectPack.PackID)
 
-	putGitOverlay := runTDC(t, bin, "--profile", profileName, "git", "put-git-overlay-entry", "--workspace-id", gitWorkspace.WorkspaceID, "--path", "README.md", "--operation", "upsert", "--resource-kind", "file", "--mode", "100644", "--content", "hello "+suffix)
+	putGitOverlay := runTDC(t, bin, "--profile", profileName, "fs-git", "put-git-overlay-entry", "--workspace-id", gitWorkspace.WorkspaceID, "--path", "README.md", "--operation", "upsert", "--resource-kind", "file", "--mode", "100644", "--content", "hello "+suffix)
 	putGitOverlay.wantExitCode(0)
 	putGitOverlay.wantStdoutContains("README.md")
 
-	describeGitOverlay := runTDC(t, bin, "--profile", profileName, "git", "describe-git-overlay-entry", "--workspace-id", gitWorkspace.WorkspaceID, "--path", "README.md")
+	describeGitOverlay := runTDC(t, bin, "--profile", profileName, "fs-git", "describe-git-overlay-entry", "--workspace-id", gitWorkspace.WorkspaceID, "--path", "README.md")
 	describeGitOverlay.wantExitCode(0)
 	describeGitOverlay.wantStdoutContains("README.md")
 
-	listGitOverlay := runTDC(t, bin, "--profile", profileName, "git", "list-git-overlay-entries", "--workspace-id", gitWorkspace.WorkspaceID)
+	listGitOverlay := runTDC(t, bin, "--profile", profileName, "fs-git", "list-git-overlay-entries", "--workspace-id", gitWorkspace.WorkspaceID)
 	listGitOverlay.wantExitCode(0)
 	listGitOverlay.wantStdoutContains("README.md")
 
-	deleteGitWorkspace := runTDC(t, bin, "--profile", profileName, "git", "delete-git-workspace", "--workspace-id", gitWorkspace.WorkspaceID)
+	deleteGitWorkspace := runTDC(t, bin, "--profile", profileName, "fs-git", "delete-git-workspace", "--workspace-id", gitWorkspace.WorkspaceID)
 	deleteGitWorkspace.wantExitCode(0)
 	deleteGitWorkspace.wantStdoutContains(`"status": "deleted"`)
 	gitWorkspaceDeleted = true

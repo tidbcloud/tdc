@@ -40,7 +40,7 @@ func (s Service) mountVaultForeground(ctx context.Context, inputs vaultMountInpu
 	}
 	server, err := gofs.Mount(inputs.mountPath, root, options)
 	if err != nil {
-		return MountResult{}, apperr.Wrap("vault.mount_fuse", "runtime", 1, fmt.Sprintf("mount tdc vault with FUSE at %q", inputs.mountPath), err)
+		return MountResult{}, apperr.Wrap("vault.mount_fuse", "runtime", 1, fmt.Sprintf("mount tdc fs-vault with FUSE at %q", inputs.mountPath), err)
 	}
 
 	state, err := mountstate.New(inputs.profile.Name, "vault", inputs.mountPath, "/n/vault", "fuse", inputs.endpoint, os.Getpid(), true, time.Now().UTC())

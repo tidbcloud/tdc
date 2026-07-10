@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -28,10 +30,6 @@ func newConfigureCommand(info version.Info) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cloudProvider, err := cmd.Flags().GetString("cloud-provider")
-			if err != nil {
-				return err
-			}
 			regionCode, err := cmd.Flags().GetString("region-code")
 			if err != nil {
 				return err
@@ -50,7 +48,6 @@ func newConfigureCommand(info version.Info) *cobra.Command {
 			}
 			return cfgconfigure.Run(cmd.Context(), cfgconfigure.Options{
 				Profile:        profile,
-				CloudProvider:  cloudProvider,
 				RegionCode:     regionCode,
 				TDCPublicKey:   publicKey,
 				TDCPrivateKey:  privateKey,
@@ -60,8 +57,7 @@ func newConfigureCommand(info version.Info) *cobra.Command {
 			})
 		},
 	}, info)
-	cmd.Flags().String("cloud-provider", "", "cloud provider: aws or alibaba_cloud")
-	cmd.Flags().String("region-code", "", "cloud region code")
+	cmd.Flags().String("region-code", "", "tdc region code, for example aws-us-east-1 or ali-ap-southeast-1")
 	cmd.Flags().String("tdc-public-key", "", "TiDB Cloud public key")
 	cmd.Flags().String("tdc-private-key", "", "TiDB Cloud private key; prefer TDC_PRIVATE_KEY for automation")
 	cmd.Flags().Bool("non-interactive", false, "fail instead of prompting for missing configure values")
@@ -2564,6 +2560,48 @@ func fsServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, er
 	}, profile, nil
 }
 
+func fsAdjunctServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {
+	service, profile, err := fsServiceAndProfile(ctx)
+	if err != nil {
+		return tdcfs.Service{}, nil, err
+	}
+	if err := requireConfiguredFSResource(profile); err != nil {
+		return tdcfs.Service{}, nil, err
+	}
+	return service, profile, nil
+}
+
+func requireConfiguredFSResource(profile *config.Profile) error {
+	if profile == nil {
+		return apperr.New("fs.missing_profile", "config", 2, "active profile is required")
+	}
+	profileName := profile.Name
+	if profileName == "" {
+		profileName = config.DefaultProfile
+	}
+	hasResourceMetadata := strings.TrimSpace(profile.FSResourceName) != "" || strings.TrimSpace(profile.FSTenantID) != ""
+	hasCompleteResource := strings.TrimSpace(profile.FSResourceName) != "" &&
+		strings.TrimSpace(profile.FSTenantID) != "" &&
+		strings.TrimSpace(profile.FSAPIKey) != ""
+	if hasCompleteResource {
+		return nil
+	}
+	if hasResourceMetadata || strings.TrimSpace(profile.FSAPIKey) != "" {
+		return apperr.New(
+			"fs.resource_credentials_incomplete",
+			"authentication",
+			3,
+			fmt.Sprintf("tdc fs credentials are incomplete for profile %q; run `tdc fs check-file-system` or recreate the file system", profileName),
+		)
+	}
+	return apperr.New(
+		"fs.resource_not_configured",
+		"authentication",
+		3,
+		fmt.Sprintf("tdc fs is not configured for profile %q; run `tdc fs create-file-system --file-system-name <name>` first", profileName),
+	)
+}
+
 func fsDeleteFlags(ctx commandContext) (string, string, error) {
 	name, err := ctx.StringFlag("file-system-name")
 	if err != nil {
@@ -2576,8 +2614,8 @@ func fsDeleteFlags(ctx commandContext) (string, string, error) {
 	return name, confirmName, nil
 }
 
-func newVaultCommand(info version.Info) *cobra.Command {
-	cmd := newParentCommand("vault", "Manage tdc vault secrets and delegated access.", info)
+func newFSVaultCommand(info version.Info) *cobra.Command {
+	cmd := newParentCommand("fs-vault", "Manage tdc fs vault secrets and delegated access.", info)
 	cmd.AddCommand(
 		newVaultCreateSecretCommand(info),
 		newVaultReplaceSecretCommand(info),
@@ -2599,11 +2637,11 @@ func newVaultCommand(info version.Info) *cobra.Command {
 func newVaultCreateSecretCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-secret",
-		Short:      "Create a tdc vault secret.",
+		Short:      "Create a tdc fs-vault secret.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVaultSecretCreate,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -2631,11 +2669,11 @@ func newVaultCreateSecretCommand(info version.Info) *cobra.Command {
 func newVaultReplaceSecretCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "replace-secret",
-		Short:      "Replace all fields in a tdc vault secret from a directory.",
+		Short:      "Replace all fields in a tdc fs-vault secret from a directory.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVaultSecretUpdate,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -2662,11 +2700,11 @@ func newVaultReplaceSecretCommand(info version.Info) *cobra.Command {
 func newVaultReadSecretCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "read-secret",
-		Short:      "Read a tdc vault secret.",
+		Short:      "Read a tdc fs-vault secret.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSVaultSecretRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -2705,18 +2743,18 @@ func newVaultReadSecretCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("secret-name", "", "vault secret name")
 	cmd.Flags().String("field", "", "optional field name to read")
 	cmd.Flags().String("format", "json", "read output format: json, raw, or env")
-	cmd.Flags().String("vault-token", "", "delegated tdc vault token; prefer TDC_VAULT_TOKEN")
+	cmd.Flags().String("vault-token", "", "delegated tdc fs-vault token; prefer TDC_VAULT_TOKEN")
 	return cmd
 }
 
 func newVaultListSecretsCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "list-secrets",
-		Short:      "List tdc vault secrets visible to the active credential.",
+		Short:      "List tdc fs-vault secrets visible to the active credential.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSVaultSecretRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -2727,18 +2765,18 @@ func newVaultListSecretsCommand(info version.Info) *cobra.Command {
 			return service.ListVaultSecrets(ctx.cmd.Context(), tdcfs.VaultListSecretsOptions{Profile: profile, VaultToken: token})
 		},
 	}, info)
-	cmd.Flags().String("vault-token", "", "delegated tdc vault token; prefer TDC_VAULT_TOKEN")
+	cmd.Flags().String("vault-token", "", "delegated tdc fs-vault token; prefer TDC_VAULT_TOKEN")
 	return cmd
 }
 
 func newVaultDeleteSecretCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "delete-secret",
-		Short:      "Delete a tdc vault secret.",
+		Short:      "Delete a tdc fs-vault secret.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVaultSecretDelete,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -2756,11 +2794,11 @@ func newVaultDeleteSecretCommand(info version.Info) *cobra.Command {
 func newVaultCreateTokenCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-token",
-		Short:      "Create a legacy tdc vault scoped token.",
+		Short:      "Create a legacy tdc fs-vault scoped token.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVaultTokenCreate,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -2789,11 +2827,11 @@ func newVaultCreateTokenCommand(info version.Info) *cobra.Command {
 func newVaultDeleteTokenCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "delete-token",
-		Short:      "Delete a tdc vault scoped token.",
+		Short:      "Delete a tdc fs-vault scoped token.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVaultTokenDelete,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -2811,11 +2849,11 @@ func newVaultDeleteTokenCommand(info version.Info) *cobra.Command {
 func newVaultCreateGrantCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-grant",
-		Short:      "Create a delegated tdc vault grant.",
+		Short:      "Create a delegated tdc fs-vault grant.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVaultGrantCreate,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -2845,11 +2883,11 @@ func newVaultCreateGrantCommand(info version.Info) *cobra.Command {
 func newVaultDeleteGrantCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "delete-grant",
-		Short:      "Delete a tdc vault grant.",
+		Short:      "Delete a tdc fs-vault grant.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVaultGrantDelete,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -2877,11 +2915,11 @@ func newVaultDeleteGrantCommand(info version.Info) *cobra.Command {
 func newVaultListAuditEventsCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "list-audit-events",
-		Short:      "List tdc vault audit events.",
+		Short:      "List tdc fs-vault audit events.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSVaultAuditRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -2920,10 +2958,10 @@ func newVaultListAuditEventsCommand(info version.Info) *cobra.Command {
 func newVaultRunWithSecretCommand(info version.Info) *cobra.Command {
 	cmd := newCommand(commandSpec{
 		Use:   "run-with-secret",
-		Short: "Run a command with one tdc vault secret injected into its environment.",
+		Short: "Run a command with one tdc fs-vault secret injected into its environment.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := commandContext{cmd: cmd}
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return err
 			}
@@ -2948,18 +2986,18 @@ func newVaultRunWithSecretCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Args = cobra.ArbitraryArgs
 	cmd.Flags().String("secret-path", "", "vault path in the form /n/vault/<secret>")
-	cmd.Flags().String("vault-token", "", "delegated tdc vault token; prefer TDC_VAULT_TOKEN")
+	cmd.Flags().String("vault-token", "", "delegated tdc fs-vault token; prefer TDC_VAULT_TOKEN")
 	return cmd
 }
 
 func newVaultMountCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "mount-vault",
-		Short:      "Mount readable tdc vault secrets as a local read-only FUSE filesystem.",
+		Short:      "Mount readable tdc fs-vault secrets as a local read-only FUSE filesystem.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVaultSecretRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -2970,7 +3008,7 @@ func newVaultMountCommand(info version.Info) *cobra.Command {
 			return service.MountVault(ctx.cmd.Context(), opts)
 		},
 		DryRun: func(ctx commandContext) (dryrun.Result, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return dryrun.Result{}, err
 			}
@@ -2984,18 +3022,18 @@ func newVaultMountCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("mount-path", "", "local mount path")
 	cmd.Flags().Bool("foreground", false, "run mount runtime in the foreground until interrupted")
 	cmd.Flags().Duration("ready-timeout", 30*time.Second, "time to wait for a background mount to become ready")
-	cmd.Flags().String("vault-token", "", "delegated tdc vault token; prefer TDC_VAULT_TOKEN")
+	cmd.Flags().String("vault-token", "", "delegated tdc fs-vault token; prefer TDC_VAULT_TOKEN")
 	return cmd
 }
 
 func newVaultUnmountCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "unmount-vault",
-		Short:      "Unmount a local tdc vault filesystem.",
+		Short:      "Unmount a local tdc fs-vault filesystem.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVaultSecretRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3028,7 +3066,7 @@ func newVaultUnmountCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("mount-path", "", "local mount path")
 	cmd.Flags().Duration("timeout", 30*time.Second, "time to wait for the mount process to exit")
 	cmd.Flags().Bool("force", false, "force-kill the mount process if graceful unmount times out")
-	cmd.Flags().Bool("ignore-absent", false, "return success when no tdc vault mount state exists for the path")
+	cmd.Flags().Bool("ignore-absent", false, "return success when no tdc fs-vault mount state exists for the path")
 	return cmd
 }
 
@@ -3121,8 +3159,8 @@ func vaultToken(ctx commandContext) (string, error) {
 	return os.Getenv("TDC_VAULT_TOKEN"), nil
 }
 
-func newGitCommand(info version.Info) *cobra.Command {
-	cmd := newParentCommand("git", "Manage tdc git workspaces.", info)
+func newFSGitCommand(info version.Info) *cobra.Command {
+	cmd := newParentCommand("fs-git", "Manage tdc fs git workspaces.", info)
 	cmd.AddCommand(
 		newGitCloneWorkspaceCommand(info),
 		newGitHydrateWorkspaceCommand(info),
@@ -3154,7 +3192,7 @@ func newGitCloneWorkspaceCommand(info version.Info) *cobra.Command {
 		Mutation:   mutatingCommand,
 		Permission: authz.FSGitWorkspaceWrite,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3175,11 +3213,11 @@ func newGitCloneWorkspaceCommand(info version.Info) *cobra.Command {
 func newGitHydrateWorkspaceCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "hydrate-git-workspace",
-		Short:      "Hydrate clean git objects for a tdc git workspace.",
+		Short:      "Hydrate clean git objects for a tdc fs-git workspace.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSGitWorkspaceRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3202,11 +3240,11 @@ func newGitHydrateWorkspaceCommand(info version.Info) *cobra.Command {
 func newGitRestoreWorkspaceCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "restore-git-workspace",
-		Short:      "Restore local git state and object packs for a tdc git workspace.",
+		Short:      "Restore local git state and object packs for a tdc fs-git workspace.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSGitWorkspaceRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3228,7 +3266,7 @@ func newGitAddWorktreeCommand(info version.Info) *cobra.Command {
 		Mutation:   mutatingCommand,
 		Permission: authz.FSGitWorkspaceWrite,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3252,11 +3290,11 @@ func newGitAddWorktreeCommand(info version.Info) *cobra.Command {
 func newGitRemoveWorktreeCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "remove-git-worktree",
-		Short:      "Remove a linked tdc git worktree without recursive clean-tree deletes.",
+		Short:      "Remove a linked tdc fs-git worktree without recursive clean-tree deletes.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSGitWorkspaceWrite,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3279,11 +3317,11 @@ func newGitRemoveWorktreeCommand(info version.Info) *cobra.Command {
 func newGitCreateWorkspaceCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-git-workspace",
-		Short:      "Create or update a tdc git workspace.",
+		Short:      "Create or update a tdc fs-git workspace.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSGitWorkspaceWrite,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3311,11 +3349,11 @@ func newGitCreateWorkspaceCommand(info version.Info) *cobra.Command {
 func newGitListWorkspacesCommand(info version.Info) *cobra.Command {
 	return newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "list-git-workspaces",
-		Short:      "List tdc git workspaces.",
+		Short:      "List tdc fs-git workspaces.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSGitWorkspaceRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3327,11 +3365,11 @@ func newGitListWorkspacesCommand(info version.Info) *cobra.Command {
 func newGitDescribeWorkspaceCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "describe-git-workspace",
-		Short:      "Describe a tdc git workspace by id or root path.",
+		Short:      "Describe a tdc fs-git workspace by id or root path.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSGitWorkspaceRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3354,11 +3392,11 @@ func newGitDescribeWorkspaceCommand(info version.Info) *cobra.Command {
 func newGitDeleteWorkspaceCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "delete-git-workspace",
-		Short:      "Delete a tdc git workspace.",
+		Short:      "Delete a tdc fs-git workspace.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSGitWorkspaceWrite,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3376,11 +3414,11 @@ func newGitDeleteWorkspaceCommand(info version.Info) *cobra.Command {
 func newGitReplaceTreeCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "replace-git-tree",
-		Short:      "Replace a tdc git workspace tree manifest.",
+		Short:      "Replace a tdc fs-git workspace tree manifest.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSGitWorkspaceWrite,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3408,11 +3446,11 @@ func newGitReplaceTreeCommand(info version.Info) *cobra.Command {
 func newGitListTreeCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "list-git-tree",
-		Short:      "List a tdc git workspace tree manifest.",
+		Short:      "List a tdc fs-git workspace tree manifest.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSGitWorkspaceRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3435,11 +3473,11 @@ func newGitListTreeCommand(info version.Info) *cobra.Command {
 func newGitUpsertStateCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "upsert-git-state",
-		Short:      "Create or update tdc git state.",
+		Short:      "Create or update tdc fs-git state.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSGitWorkspaceWrite,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3462,7 +3500,7 @@ func newGitUpsertStateCommand(info version.Info) *cobra.Command {
 }
 
 func newGitDescribeStateCommand(info version.Info) *cobra.Command {
-	cmd := gitWorkspaceIDReadCommand("describe-git-state", "Describe tdc git state.", authz.FSGitWorkspaceRead, func(ctx commandContext, service tdcfs.Service, profile *config.Profile, workspaceID string) (any, error) {
+	cmd := gitWorkspaceIDReadCommand("describe-git-state", "Describe tdc fs-git state.", authz.FSGitWorkspaceRead, func(ctx commandContext, service tdcfs.Service, profile *config.Profile, workspaceID string) (any, error) {
 		return service.DescribeGitState(ctx.cmd.Context(), tdcfs.GitWorkspaceIDOptions{Profile: profile, WorkspaceID: workspaceID})
 	}, info)
 	return cmd
@@ -3471,11 +3509,11 @@ func newGitDescribeStateCommand(info version.Info) *cobra.Command {
 func newGitPutObjectPackCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "put-git-object-pack",
-		Short:      "Put a tdc git object pack.",
+		Short:      "Put a tdc fs-git object pack.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSGitWorkspaceWrite,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3496,7 +3534,7 @@ func newGitPutObjectPackCommand(info version.Info) *cobra.Command {
 }
 
 func newGitListObjectPacksCommand(info version.Info) *cobra.Command {
-	return gitWorkspaceIDReadCommand("list-git-object-packs", "List tdc git object packs.", authz.FSGitWorkspaceRead, func(ctx commandContext, service tdcfs.Service, profile *config.Profile, workspaceID string) (any, error) {
+	return gitWorkspaceIDReadCommand("list-git-object-packs", "List tdc fs-git object packs.", authz.FSGitWorkspaceRead, func(ctx commandContext, service tdcfs.Service, profile *config.Profile, workspaceID string) (any, error) {
 		return service.ListGitObjectPacks(ctx.cmd.Context(), tdcfs.GitWorkspaceIDOptions{Profile: profile, WorkspaceID: workspaceID})
 	}, info)
 }
@@ -3504,11 +3542,11 @@ func newGitListObjectPacksCommand(info version.Info) *cobra.Command {
 func newGitDescribeObjectPackCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "describe-git-object-pack",
-		Short:      "Describe a tdc git object pack.",
+		Short:      "Describe a tdc fs-git object pack.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSGitWorkspaceRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3531,11 +3569,11 @@ func newGitDescribeObjectPackCommand(info version.Info) *cobra.Command {
 func newGitPutOverlayEntryCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "put-git-overlay-entry",
-		Short:      "Put a tdc git overlay entry.",
+		Short:      "Put a tdc fs-git overlay entry.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSGitWorkspaceWrite,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3564,11 +3602,11 @@ func newGitPutOverlayEntryCommand(info version.Info) *cobra.Command {
 func newGitDescribeOverlayEntryCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "describe-git-overlay-entry",
-		Short:      "Describe a tdc git overlay entry.",
+		Short:      "Describe a tdc fs-git overlay entry.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSGitWorkspaceRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3589,7 +3627,7 @@ func newGitDescribeOverlayEntryCommand(info version.Info) *cobra.Command {
 }
 
 func newGitListOverlayEntriesCommand(info version.Info) *cobra.Command {
-	return gitWorkspaceIDReadCommand("list-git-overlay-entries", "List tdc git overlay entries.", authz.FSGitWorkspaceRead, func(ctx commandContext, service tdcfs.Service, profile *config.Profile, workspaceID string) (any, error) {
+	return gitWorkspaceIDReadCommand("list-git-overlay-entries", "List tdc fs-git overlay entries.", authz.FSGitWorkspaceRead, func(ctx commandContext, service tdcfs.Service, profile *config.Profile, workspaceID string) (any, error) {
 		return service.ListGitOverlayEntries(ctx.cmd.Context(), tdcfs.GitWorkspaceIDOptions{Profile: profile, WorkspaceID: workspaceID})
 	}, info)
 }
@@ -3605,7 +3643,7 @@ func gitWorkspaceIDReadCommand(use, short string, permission authz.Permission, r
 		Mutation:   readOnlyCommand,
 		Permission: permission,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3830,8 +3868,8 @@ func gitOverlayPutOptions(ctx commandContext, profile *config.Profile) (tdcfs.Gi
 	return tdcfs.GitOverlayPutOptions{Profile: profile, WorkspaceID: workspaceID, Path: path, Operation: operation, ResourceKind: resourceKind, Mode: mode, StorageType: storageType, StorageRef: storageRef, StorageRefHash: storageRefHash, ChecksumSHA256: checksum, SizeBytes: sizeBytes, BaseObjectSHA: baseObjectSHA, Content: content}, nil
 }
 
-func newJournalCommand(info version.Info) *cobra.Command {
-	cmd := newParentCommand("journal", "Manage tdc fs journals.", info)
+func newFSJournalCommand(info version.Info) *cobra.Command {
+	cmd := newParentCommand("fs-journal", "Manage tdc fs journals.", info)
 	cmd.AddCommand(
 		newJournalCreateCommand(info),
 		newJournalAppendEntriesCommand(info),
@@ -3845,11 +3883,11 @@ func newJournalCommand(info version.Info) *cobra.Command {
 func newJournalCreateCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-journal",
-		Short:      "Create a tdc journal.",
+		Short:      "Create a tdc fs-journal.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSJournalCreate,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3898,7 +3936,7 @@ func newJournalAppendEntriesCommand(info version.Info) *cobra.Command {
 		Mutation:   mutatingCommand,
 		Permission: authz.FSJournalAppend,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3956,11 +3994,11 @@ func newJournalAppendEntriesCommand(info version.Info) *cobra.Command {
 func newJournalReadEntriesCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "read-journal-entries",
-		Short:      "Read entries from a tdc journal.",
+		Short:      "Read entries from a tdc fs-journal.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSJournalRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -3993,11 +4031,11 @@ func newJournalReadEntriesCommand(info version.Info) *cobra.Command {
 func newJournalSearchEntriesCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "search-journal-entries",
-		Short:      "Search tdc journal entries and journals.",
+		Short:      "Search tdc fs-journal entries and journals.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSJournalSearch,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -4078,11 +4116,11 @@ func newJournalSearchEntriesCommand(info version.Info) *cobra.Command {
 func newJournalVerifyCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "verify-journal",
-		Short:      "Verify a tdc journal hash chain.",
+		Short:      "Verify a tdc fs-journal hash chain.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSJournalVerify,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsAdjunctServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}

@@ -57,10 +57,10 @@ func NewRootCommand(info version.Info) *cobra.Command {
 	root.AddCommand(newCLICommand(info))
 	root.AddCommand(newDBCommand(info))
 	root.AddCommand(newFSCommand(info))
-	root.AddCommand(newGitCommand(info))
-	root.AddCommand(newJournalCommand(info))
+	root.AddCommand(newFSGitCommand(info))
+	root.AddCommand(newFSJournalCommand(info))
 	root.AddCommand(newOrganizationCommand(info))
-	root.AddCommand(newVaultCommand(info))
+	root.AddCommand(newFSVaultCommand(info))
 
 	installHelpCommands(root, info)
 	applyCommandDefaults(root, info)

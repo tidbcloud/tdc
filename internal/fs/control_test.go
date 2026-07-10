@@ -65,7 +65,7 @@ func TestCreateFileSystemStoresFlatCredentialsAndRedactsOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadConfig failed: %v", err)
 	}
-	if got := configDoc["stage"]; got.FSResourceName != "workspace" || got.FSTenantID != "tenant-1" || got.FSCloudProvider != "aws" || got.FSRegionCode != "us-east-1" {
+	if got := configDoc["stage"]; got.FSResourceName != "workspace" || got.FSTenantID != "tenant-1" || got.FSCloudProvider != "aws" || got.FSRegionCode != "aws-us-east-1" {
 		t.Fatalf("unexpected fs config: %#v", got)
 	}
 	credentialsDoc, err := store.ReadCredentials(home)
@@ -82,16 +82,16 @@ func TestDeleteFileSystemUsesBearerAndClearsFlatCredentials(t *testing.T) {
 	profile := testProfile()
 	profile.FSResourceName = "workspace"
 	profile.FSTenantID = "tenant-1"
+	profile.FSPlacementRegionCode = "aws-us-east-1"
 	profile.FSCloudProvider = "aws"
 	profile.FSRegionCode = "us-east-1"
 	profile.FSAPIKey = "fs-secret"
 	if err := store.WriteProfile(home, profile.Name, store.ConfigProfile{
-		CloudProvider:   profile.CloudProvider,
-		RegionCode:      profile.RegionCode,
+		RegionCode:      profile.PlacementRegionCode,
 		FSResourceName:  profile.FSResourceName,
 		FSTenantID:      profile.FSTenantID,
 		FSCloudProvider: profile.FSCloudProvider,
-		FSRegionCode:    profile.FSRegionCode,
+		FSRegionCode:    profile.FSPlacementRegionCode,
 	}, store.CredentialsProfile{
 		TDCPublicKey:  profile.TDCPublicKey,
 		TDCPrivateKey: profile.TDCPrivateKey,
@@ -137,7 +137,7 @@ func TestDeleteFileSystemUsesBearerAndClearsFlatCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadConfig failed: %v", err)
 	}
-	if got := configDoc["stage"]; got.FSResourceName != "" || got.FSTenantID != "" || got.CloudProvider != "aws" {
+	if got := configDoc["stage"]; got.FSResourceName != "" || got.FSTenantID != "" || got.CloudProvider != "" || got.RegionCode != "aws-us-east-1" {
 		t.Fatalf("unexpected config after delete: %#v", got)
 	}
 	credentialsDoc, err := store.ReadCredentials(home)
@@ -259,11 +259,12 @@ func TestCreateFileSystemRequiresEndpointForRealMutation(t *testing.T) {
 
 func testProfile() *config.Profile {
 	return &config.Profile{
-		Name:          "stage",
-		CloudProvider: "aws",
-		RegionCode:    "us-east-1",
-		TDCPublicKey:  "public",
-		TDCPrivateKey: "private",
+		Name:                "stage",
+		PlacementRegionCode: "aws-us-east-1",
+		CloudProvider:       "aws",
+		RegionCode:          "us-east-1",
+		TDCPublicKey:        "public",
+		TDCPrivateKey:       "private",
 	}
 }
 

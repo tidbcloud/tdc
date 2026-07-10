@@ -37,7 +37,7 @@ The installer scripts use `--version` because they are not Cobra commands. The `
 - Install scripts prefer upgrading the active `tdc`/`tdc.exe` binary found on `PATH` unless `--install-dir` or `TDC_INSTALL_DIR` is set.
 - On macOS/Linux, if no active binary exists and no install directory is supplied, `scripts/install.sh` installs to `/usr/local/bin`. It creates the directory or moves the binary with `sudo` when the current user cannot write there.
 - Install scripts detect PATH shadowing after installation and report both the installed path and the path currently resolved by `PATH`.
-- Install scripts bootstrap `~/.tdc/config` only when it is missing, writing a default `[default]` profile with `cloud_provider = 'aws'` and `region_code = 'us-east-1'`. They do not write `~/.tdc/credentials`.
+- Install scripts bootstrap `~/.tdc/config` only when it is missing, writing a default `[default]` profile with `region_code = 'aws-us-east-1'`. They do not write `~/.tdc/credentials`.
 - Install scripts print DB config regions, fetch and print tdc fs regions from `https://drive9.ai/manifest/regions/drive9-regions.json` when available, and finish with clear next-step commands.
 - `tdc cli check-update` calls the GitHub Releases API `GET /repos/tidbcloud/tdc/releases/latest`, matches the current OS/arch release asset, compares the local version with the latest tag, and prints structured output.
 - `tdc cli update` updates only binaries built with `install_source=archive` or `install_source=script`. Local builds and unknown installs are refused. Package-manager installs are refused with package-manager-specific guidance.

@@ -12,12 +12,11 @@ func TestWriteProfileCreatesFilesAndRestrictsCredentials(t *testing.T) {
 	home := t.TempDir()
 
 	err := WriteProfile(home, "default", ConfigProfile{
-		CloudProvider:   "aws",
-		RegionCode:      "us-east-1",
+		RegionCode:      "aws-us-east-1",
 		FSResourceName:  "workspace",
 		FSTenantID:      "tenant",
 		FSCloudProvider: "aws",
-		FSRegionCode:    "us-east-1",
+		FSRegionCode:    "aws-us-east-1",
 	}, CredentialsProfile{
 		TDCPublicKey:  "public",
 		TDCPrivateKey: "private",
@@ -63,8 +62,7 @@ func TestReadConfigRejectsURLLikeKeys(t *testing.T) {
 	}
 	if err := os.WriteFile(ConfigPath(home), []byte(`
 [default]
-cloud_provider = "aws"
-region_code = "us-east-1"
+region_code = "aws-us-east-1"
 server_url = "https://example.invalid"
 `), 0o644); err != nil {
 		t.Fatal(err)
@@ -82,12 +80,11 @@ server_url = "https://example.invalid"
 func TestClearFSResourcePreservesTiDBCloudCredentials(t *testing.T) {
 	home := t.TempDir()
 	if err := WriteProfile(home, "stage", ConfigProfile{
-		CloudProvider:   "aws",
-		RegionCode:      "us-east-1",
+		RegionCode:      "aws-us-east-1",
 		FSResourceName:  "workspace",
 		FSTenantID:      "tenant-1",
 		FSCloudProvider: "aws",
-		FSRegionCode:    "us-east-1",
+		FSRegionCode:    "aws-us-east-1",
 	}, CredentialsProfile{
 		TDCPublicKey:  "public",
 		TDCPrivateKey: "private",
@@ -104,7 +101,7 @@ func TestClearFSResourcePreservesTiDBCloudCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadConfig failed: %v", err)
 	}
-	if got := configDoc["stage"]; got.FSResourceName != "" || got.FSTenantID != "" || got.CloudProvider != "aws" || got.RegionCode != "us-east-1" {
+	if got := configDoc["stage"]; got.FSResourceName != "" || got.FSTenantID != "" || got.CloudProvider != "" || got.RegionCode != "aws-us-east-1" {
 		t.Fatalf("unexpected config after clear: %#v", got)
 	}
 

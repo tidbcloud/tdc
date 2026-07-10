@@ -28,7 +28,7 @@ powershell -ExecutionPolicy Bypass -File $script -InstallDir "$HOME\bin" -Yes
 
 The installers download the matching archive, verify `tdc_checksums.txt`, install the binary, and run `tdc --version`. Without `--install-dir`, the macOS/Linux installer upgrades the active `tdc` binary found on `PATH`; when no active binary exists, it installs to `/usr/local/bin` and uses `sudo` when that directory is not writable. The Windows installer uses the active `tdc.exe` directory when one exists, otherwise `$HOME\bin`.
 
-After installation, the scripts detect PATH shadowing, bootstrap `~/.tdc/config` with `[default]` aws/us-east-1 only when that file is missing, print TiDB Cloud DB config regions, fetch and print the current tdc fs region manifest when available, and show next-step commands. Installers never write `~/.tdc/credentials`.
+After installation, the scripts detect PATH shadowing, bootstrap `~/.tdc/config` with `[default] region_code = "aws-us-east-1"` only when that file is missing, print TiDB Cloud DB config regions, fetch and print the current tdc fs region manifest when available, and show next-step commands. Installers never write `~/.tdc/credentials`.
 
 Check for updates:
 
@@ -95,8 +95,7 @@ bin/tdc configure --profile live-e2e
 For CI/CD:
 
 ```bash
-TDC_CLOUD_PROVIDER=aws \
-TDC_REGION_CODE=us-east-1 \
+TDC_REGION_CODE=aws-us-east-1 \
 TDC_PUBLIC_KEY="$TDC_PUBLIC_KEY" \
 TDC_PRIVATE_KEY="$TDC_PRIVATE_KEY" \
 bin/tdc configure --profile live-e2e --non-interactive
@@ -104,7 +103,7 @@ bin/tdc configure --profile live-e2e --non-interactive
 make live-e2e
 ```
 
-At the current implementation stage, `make live-e2e` validates the real binary, the `live-e2e` profile, real TiDB Cloud Digest-auth read-only API probes, `tdc organization list-projects`, the current command surface, mutating command dry-runs, read-only dry-run rejection, a full tdc fs data-plane lifecycle, and the full Starter DB cluster, SQL access, and branch lifecycles. If the `live-e2e` profile has no `fs_api_key`, the live suite creates a temporary tdc fs resource named by `TDC_LIVE_FS_NAME` or `workspace`, stores the generated flat `fs_*` metadata and `fs_api_key`, and deletes that auto-created resource when the test process exits. The live tdc fs lifecycle writes only under a unique `/tdc-e2e-*` path, uploads local files, verifies multipart upload, efficient append, upload resume, range reads, lists/describes/reads/searches/finds files, performs remote copy/move, verifies stdin/stdout copy, tags/descriptions, chmod, symlink, hardlink, pack/unpack, low-level Git workspace APIs, creates and commits a real tdc fs layer, creates/reads/replaces/deletes a real tdc vault secret, verifies delegated grant/token reads, mounts the vault and reads a field through the mounted filesystem on macOS/Linux, lists vault audit events, creates/appends/reads/searches/verifies a real tdc journal, downloads content back, and deletes the test path recursively. On macOS or Linux with FUSE available, live e2e also mounts a unique remote path through the default FUSE driver, reads and writes through the local mount, drains it, unmounts it, and cleans up the remote path. On macOS with `mount_webdav` available, live e2e also verifies the explicit `--driver webdav` fallback path. The live DB lifecycle creates one uniquely named `tdc-e2e-*` Starter cluster without a spending limit, prepares tdc-managed read-only/read-write/admin SQL users, creates connection strings, executes the HTTPS SQL API with all three access modes, creates one `tdc-e2e-branch-*` branch on that cluster, lists/describes/deletes the branch, updates the cluster, reads it again, deletes it, and verifies deletion. As TiDB Cloud API commands are implemented, their real live tests must be added to this same target.
+At the current implementation stage, `make live-e2e` validates the real binary, the `live-e2e` profile, real TiDB Cloud Digest-auth read-only API probes, `tdc organization list-projects`, the current command surface, mutating command dry-runs, read-only dry-run rejection, a full tdc fs data-plane lifecycle, and the full Starter DB cluster, SQL access, and branch lifecycles. If the `live-e2e` profile has no `fs_api_key`, the live suite creates a temporary tdc fs resource named by `TDC_LIVE_FS_NAME` or `workspace`, stores the generated flat `fs_*` metadata and `fs_api_key`, and deletes that auto-created resource when the test process exits. The live tdc fs lifecycle writes only under a unique `/tdc-e2e-*` path, uploads local files, verifies multipart upload, efficient append, upload resume, range reads, lists/describes/reads/searches/finds files, performs remote copy/move, verifies stdin/stdout copy, tags/descriptions, chmod, symlink, hardlink, pack/unpack, low-level Git workspace APIs, creates and commits a real tdc fs layer, creates/reads/replaces/deletes a real tdc fs-vault secret, verifies delegated grant/token reads, mounts the vault and reads a field through the mounted filesystem on macOS/Linux, lists vault audit events, creates/appends/reads/searches/verifies a real tdc fs-journal, downloads content back, and deletes the test path recursively. On macOS or Linux with FUSE available, live e2e also mounts a unique remote path through the default FUSE driver, reads and writes through the local mount, drains it, unmounts it, and cleans up the remote path. On macOS with `mount_webdav` available, live e2e also verifies the explicit `--driver webdav` fallback path. The live DB lifecycle creates one uniquely named `tdc-e2e-*` Starter cluster without a spending limit, prepares tdc-managed read-only/read-write/admin SQL users, creates connection strings, executes the HTTPS SQL API with all three access modes, creates one `tdc-e2e-branch-*` branch on that cluster, lists/describes/deletes the branch, updates the cluster, reads it again, deletes it, and verifies deletion. As TiDB Cloud API commands are implemented, their real live tests must be added to this same target.
 
 ## GitHub Actions
 
@@ -116,8 +115,7 @@ The repository has two CI workflows:
 Configure these repository variables for `live-e2e`:
 
 ```text
-TDC_CLOUD_PROVIDER=aws
-TDC_REGION_CODE=us-east-1
+TDC_REGION_CODE=aws-us-east-1
 ```
 
 Configure these repository secrets for `live-e2e`:
@@ -168,8 +166,7 @@ bin/tdc configure --profile stage
 Configure non-interactively for CI/CD:
 
 ```bash
-TDC_CLOUD_PROVIDER=aws \
-TDC_REGION_CODE=us-east-1 \
+TDC_REGION_CODE=aws-us-east-1 \
 TDC_PUBLIC_KEY="$TDC_PUBLIC_KEY" \
 TDC_PRIVATE_KEY="$TDC_PRIVATE_KEY" \
 bin/tdc configure --profile ci --non-interactive
@@ -180,8 +177,7 @@ You can also pass values as flags:
 ```bash
 bin/tdc configure \
   --profile ci \
-  --cloud-provider aws \
-  --region-code us-east-1 \
+  --region-code aws-us-east-1 \
   --tdc-public-key "$TDC_PUBLIC_KEY" \
   --tdc-private-key "$TDC_PRIVATE_KEY" \
   --non-interactive
@@ -191,7 +187,6 @@ For CI/CD, prefer environment variables for secrets so private keys do not appea
 
 `tdc configure` prompts for:
 
-- cloud provider
 - region code
 - TiDB Cloud public key
 - TiDB Cloud private key
@@ -240,8 +235,7 @@ tdc configure --profile <profile-name> --non-interactive
 
 Configure-specific flags:
 
-- `--cloud-provider <aws|alibaba_cloud>`
-- `--region-code <region-code>`
+- `--region-code <region-code>`, for example `aws-us-east-1` or `ali-ap-southeast-1`
 - `--tdc-public-key <key>`
 - `--tdc-private-key <key>`
 - `--non-interactive`
@@ -368,7 +362,7 @@ tdc fs delete-file-system --file-system-name workspace --confirm-file-system-nam
 tdc fs delete-file-system --file-system-name workspace --confirm-file-system-name workspace
 ```
 
-`create-file-system` and `delete-file-system` are wired through the tdc fs control-plane client. Endpoint routing uses the hosted tdc fs region manifest and matches the active profile's `cloud_provider + region_code` against `tidb_cloud_native` entries. Users never provide a raw server URL. If the manifest does not include the profile placement, the command returns a clear unsupported-region error.
+`create-file-system` and `delete-file-system` are wired through the tdc fs control-plane client. Endpoint routing uses the hosted tdc fs region manifest and matches the active profile's canonical `region_code` against `tidb_cloud_native` entries. Users never provide a raw server URL. If the manifest does not include the profile placement, the command returns a clear unsupported-region error.
 
 `create-file-system` provisions with the profile's TiDB Cloud API key pair in the HTTPS request body expected by the tdc fs backend. `delete-file-system` uses the stored `fs_api_key` as Bearer auth and also sends the TiDB Cloud key pair required for native tenant deletion. `--dry-run` validates config and shows a redacted request shape without printing credential values.
 
@@ -492,12 +486,12 @@ When `--archive-path` is omitted, tdc writes to `/.tdc/packs/<mount-profile>-<ha
 ### tdc Git Workspaces
 
 ```bash
-tdc git clone-git-workspace --repo-url https://github.com/pingcap/tidb.git --target-path ./workspace/tidb
-tdc git clone-git-workspace --repo-url https://github.com/pingcap/tidb.git --target-path ./workspace/tidb --blobless --hydrate sync
-tdc git hydrate-git-workspace --target-path ./workspace/tidb --timeout 30m
-tdc git restore-git-workspace --target-path ./workspace/tidb
-tdc git add-git-worktree --base-path ./workspace/tidb --worktree-path ./workspace/tidb-feature --branch-name feature-x
-tdc git remove-git-worktree --worktree-path ./workspace/tidb-feature --force
+tdc fs-git clone-git-workspace --repo-url https://github.com/pingcap/tidb.git --target-path ./workspace/tidb
+tdc fs-git clone-git-workspace --repo-url https://github.com/pingcap/tidb.git --target-path ./workspace/tidb --blobless --hydrate sync
+tdc fs-git hydrate-git-workspace --target-path ./workspace/tidb --timeout 30m
+tdc fs-git restore-git-workspace --target-path ./workspace/tidb
+tdc fs-git add-git-worktree --base-path ./workspace/tidb --worktree-path ./workspace/tidb-feature --branch-name feature-x
+tdc fs-git remove-git-worktree --worktree-path ./workspace/tidb-feature --force
 ```
 
 Git workspace commands are Drive9-style client workflows in tdc's explicit command naming. They require the target path to be inside a tdc fs mount with mount metadata. `clone-git-workspace` runs native `git clone --no-checkout`, registers a `/v1/git-workspaces` row, uploads the HEAD tree manifest with `/tree`, initializes the Git index with `git read-tree --reset`, and checkpoints lightweight `.git` state without the object database. `--blobless` adds `--filter=blob:none`; `--hydrate sync|background|off|auto` controls whether clean objects are prefetched after registration.
@@ -507,35 +501,35 @@ FUSE recognizes registered Git workspaces. Clean tracked files are served from t
 The lower-level API commands remain available for diagnostics and automation:
 
 ```bash
-tdc git create-git-workspace --root-path /workspace/repo --repo-url https://example.test/repo.git --mode fast
-tdc git list-git-workspaces
-tdc git describe-git-workspace --root-path /workspace/repo
-tdc git replace-git-tree --workspace-id <id> --commit-sha <sha> --node-json '{"path":"README.md","name":"README.md","kind":"file","mode":"100644","object_sha":"..."}'
-tdc git list-git-tree --workspace-id <id> --commit-sha <sha>
-tdc git upsert-git-state --workspace-id <id> --checkpoint-commit <sha> --storage-type inline --content state
-tdc git put-git-overlay-entry --workspace-id <id> --path README.md --operation upsert --resource-kind file --mode 100644 --content hello
-tdc git delete-git-workspace --workspace-id <id>
+tdc fs-git create-git-workspace --root-path /workspace/repo --repo-url https://example.test/repo.git --mode fast
+tdc fs-git list-git-workspaces
+tdc fs-git describe-git-workspace --root-path /workspace/repo
+tdc fs-git replace-git-tree --workspace-id <id> --commit-sha <sha> --node-json '{"path":"README.md","name":"README.md","kind":"file","mode":"100644","object_sha":"..."}'
+tdc fs-git list-git-tree --workspace-id <id> --commit-sha <sha>
+tdc fs-git upsert-git-state --workspace-id <id> --checkpoint-commit <sha> --storage-type inline --content state
+tdc fs-git put-git-overlay-entry --workspace-id <id> --path README.md --operation upsert --resource-kind file --mode 100644 --content hello
+tdc fs-git delete-git-workspace --workspace-id <id>
 ```
 
 ### tdc Vault
 
 ```bash
-tdc vault create-secret --secret-name db-prod --field DB_URL=mysql://example --field PASSWORD=@./password.txt
-tdc vault replace-secret --secret-path /n/vault/db-prod --from-directory ./secret-fields
-tdc vault read-secret --secret-name db-prod
-tdc vault read-secret --secret-name db-prod --field PASSWORD --format raw
-tdc vault read-secret --secret-name db-prod --field DB_URL --format env
-tdc vault list-secrets
-tdc vault delete-secret --secret-name db-prod
-tdc vault create-grant --agent-id deploy-agent --scope db-prod/DB_URL --permission read --ttl 10m
-tdc vault delete-grant --grant-id <grant-id> --reason rotated
-tdc vault create-token --agent-id deploy-agent --task-id deploy-123 --scope db-prod --ttl 10m
-tdc vault delete-token --token-id <token-id>
-tdc vault list-audit-events --secret-name db-prod --limit 20
-tdc vault run-with-secret --secret-path /n/vault/db-prod -- env
-tdc vault mount-vault --mount-path ./vault
-tdc vault mount-vault --mount-path ./vault --vault-token "$TDC_VAULT_TOKEN"
-tdc vault unmount-vault --mount-path ./vault
+tdc fs-vault create-secret --secret-name db-prod --field DB_URL=mysql://example --field PASSWORD=@./password.txt
+tdc fs-vault replace-secret --secret-path /n/vault/db-prod --from-directory ./secret-fields
+tdc fs-vault read-secret --secret-name db-prod
+tdc fs-vault read-secret --secret-name db-prod --field PASSWORD --format raw
+tdc fs-vault read-secret --secret-name db-prod --field DB_URL --format env
+tdc fs-vault list-secrets
+tdc fs-vault delete-secret --secret-name db-prod
+tdc fs-vault create-grant --agent-id deploy-agent --scope db-prod/DB_URL --permission read --ttl 10m
+tdc fs-vault delete-grant --grant-id <grant-id> --reason rotated
+tdc fs-vault create-token --agent-id deploy-agent --task-id deploy-123 --scope db-prod --ttl 10m
+tdc fs-vault delete-token --token-id <token-id>
+tdc fs-vault list-audit-events --secret-name db-prod --limit 20
+tdc fs-vault run-with-secret --secret-path /n/vault/db-prod -- env
+tdc fs-vault mount-vault --mount-path ./vault
+tdc fs-vault mount-vault --mount-path ./vault --vault-token "$TDC_VAULT_TOKEN"
+tdc fs-vault unmount-vault --mount-path ./vault
 ```
 
 Vault commands use the active profile's tdc fs endpoint and stored `fs_api_key`; users do not configure a vault server URL. Mutating vault commands support `--dry-run`; read-only vault commands reject `--dry-run` like other read-only commands.
@@ -551,12 +545,12 @@ Vault commands use the active profile's tdc fs endpoint and stored `fs_api_key`;
 ### tdc Journal
 
 ```bash
-tdc journal create-journal --journal-id jrn-demo --journal-kind agent --title "demo task" --actor agent:tdc --label env=dev
-tdc journal append-journal-entries --journal-id jrn-demo --entry-json '{"type":"task.started","summary":{"message":"hello"}}'
-printf '%s\n' '{"type":"task.completed"}' | tdc journal append-journal-entries --journal-id jrn-demo
-tdc journal read-journal-entries --journal-id jrn-demo --after-seq 0 --limit 100
-tdc journal search-journal-entries --entry-type task.started --label env=dev --include-entries
-tdc journal verify-journal --journal-id jrn-demo --output text
+tdc fs-journal create-journal --journal-id jrn-demo --journal-kind agent --title "demo task" --actor agent:tdc --label env=dev
+tdc fs-journal append-journal-entries --journal-id jrn-demo --entry-json '{"type":"task.started","summary":{"message":"hello"}}'
+printf '%s\n' '{"type":"task.completed"}' | tdc fs-journal append-journal-entries --journal-id jrn-demo
+tdc fs-journal read-journal-entries --journal-id jrn-demo --after-seq 0 --limit 100
+tdc fs-journal search-journal-entries --entry-type task.started --label env=dev --include-entries
+tdc fs-journal verify-journal --journal-id jrn-demo --output text
 ```
 
 Journal commands use the active profile's tdc fs endpoint and stored `fs_api_key`. Users do not configure a journal server URL. Mutating journal commands support `--dry-run`; read-only journal commands reject `--dry-run`.
@@ -675,43 +669,43 @@ tdc fs find
 tdc fs mount
 tdc fs drain
 tdc fs umount
-tdc vault create-secret
-tdc vault replace-secret
-tdc vault read-secret
-tdc vault list-secrets
-tdc vault delete-secret
-tdc vault create-token
-tdc vault delete-token
-tdc vault create-grant
-tdc vault delete-grant
-tdc vault list-audit-events
-tdc vault run-with-secret
-tdc vault mount-vault
-tdc vault unmount-vault
-tdc journal create-journal
-tdc journal append-journal-entries
-tdc journal read-journal-entries
-tdc journal search-journal-entries
-tdc journal verify-journal
-tdc git clone-git-workspace
-tdc git hydrate-git-workspace
-tdc git restore-git-workspace
-tdc git add-git-worktree
-tdc git remove-git-worktree
-tdc git create-git-workspace
-tdc git list-git-workspaces
-tdc git describe-git-workspace
-tdc git delete-git-workspace
-tdc git replace-git-tree
-tdc git list-git-tree
-tdc git upsert-git-state
-tdc git describe-git-state
-tdc git put-git-object-pack
-tdc git list-git-object-packs
-tdc git describe-git-object-pack
-tdc git put-git-overlay-entry
-tdc git describe-git-overlay-entry
-tdc git list-git-overlay-entries
+tdc fs-vault create-secret
+tdc fs-vault replace-secret
+tdc fs-vault read-secret
+tdc fs-vault list-secrets
+tdc fs-vault delete-secret
+tdc fs-vault create-token
+tdc fs-vault delete-token
+tdc fs-vault create-grant
+tdc fs-vault delete-grant
+tdc fs-vault list-audit-events
+tdc fs-vault run-with-secret
+tdc fs-vault mount-vault
+tdc fs-vault unmount-vault
+tdc fs-journal create-journal
+tdc fs-journal append-journal-entries
+tdc fs-journal read-journal-entries
+tdc fs-journal search-journal-entries
+tdc fs-journal verify-journal
+tdc fs-git clone-git-workspace
+tdc fs-git hydrate-git-workspace
+tdc fs-git restore-git-workspace
+tdc fs-git add-git-worktree
+tdc fs-git remove-git-worktree
+tdc fs-git create-git-workspace
+tdc fs-git list-git-workspaces
+tdc fs-git describe-git-workspace
+tdc fs-git delete-git-workspace
+tdc fs-git replace-git-tree
+tdc fs-git list-git-tree
+tdc fs-git upsert-git-state
+tdc fs-git describe-git-state
+tdc fs-git put-git-object-pack
+tdc fs-git list-git-object-packs
+tdc fs-git describe-git-object-pack
+tdc fs-git put-git-overlay-entry
+tdc fs-git describe-git-overlay-entry
+tdc fs-git list-git-overlay-entries
 ```
 
 Help and version forms are also available at every command level:
@@ -751,8 +745,7 @@ Minimum config shape:
 
 ```toml
 [default]
-cloud_provider = "aws"
-region_code = "us-east-1"
+region_code = "aws-us-east-1"
 ```
 
 Minimum credentials shape:
@@ -785,7 +778,7 @@ Generated non-secret `tdc fs` resource metadata lives in `~/.tdc/config` as flat
 fs_resource_name = "workspace"
 fs_tenant_id = "tenant-..."
 fs_cloud_provider = "aws"
-fs_region_code = "us-east-1"
+fs_region_code = "aws-us-east-1"
 ```
 
 DB SQL user credentials live in a cluster-scoped credentials file:
@@ -812,7 +805,7 @@ password = "..."
 
 The DB SQL user credential path is not profile-scoped because TiDB Cloud cluster IDs are globally unique. The active profile only controls which TiDB Cloud API keys are used to prepare or repair those credentials. Do not add `[default.db_users."cluster-id".role]` sections to `~/.tdc/credentials`; the CLI rejects that legacy shape.
 
-Do not configure TiDB Cloud API URLs, filesystem server URLs, metadata database URLs, or endpoint overrides in normal user config. Endpoint resolution is an internal responsibility derived from `cloud_provider` and `region_code`.
+Do not configure TiDB Cloud API URLs, filesystem server URLs, metadata database URLs, or endpoint overrides in normal user config. Endpoint resolution is an internal responsibility derived from canonical `region_code`.
 
 ## API Auth And Endpoints
 
@@ -839,26 +832,25 @@ Authenticated commands use this lookup order:
 Environment variables:
 
 ```bash
-TDC_CLOUD_PROVIDER=aws
-TDC_REGION_CODE=us-east-1
+TDC_REGION_CODE=aws-us-east-1
 TDC_PUBLIC_KEY=...
 TDC_PRIVATE_KEY=...
 ```
 
-When environment credentials are used, all four variables are required.
+When environment credentials are used, all three variables are required.
 
 ## Supported Cloud Placement
 
-Users provide cloud provider and region code, never service URLs.
+Users provide one canonical region code, never service URLs. The prefix before the first `-` selects the cloud provider: `aws` maps to AWS and `ali` maps to Alibaba Cloud.
 
-| Cloud provider | Region label | Region code |
+| Region code | Cloud provider | Region label |
 | --- | --- | --- |
-| `aws` | N. Virginia | `us-east-1` |
-| `aws` | Oregon | `us-west-2` |
-| `aws` | Frankfurt | `eu-central-1` |
-| `aws` | Tokyo | `ap-northeast-1` |
-| `aws` | Singapore | `ap-southeast-1` |
-| `alibaba_cloud` | Singapore | `ap-southeast-1` |
+| `aws-us-east-1` | AWS | N. Virginia |
+| `aws-us-west-2` | AWS | Oregon |
+| `aws-eu-central-1` | AWS | Frankfurt |
+| `aws-ap-northeast-1` | AWS | Tokyo |
+| `aws-ap-southeast-1` | AWS | Singapore |
+| `ali-ap-southeast-1` | Alibaba Cloud | Singapore |
 
 ## Development Notes
 

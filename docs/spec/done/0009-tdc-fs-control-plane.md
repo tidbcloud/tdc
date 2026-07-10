@@ -32,8 +32,7 @@ Initial command set:
 ## Inputs And Config
 
 - Requires resolved credentials.
-- Uses `cloud_provider`.
-- Uses `region_code`.
+- Uses canonical `region_code`.
 - Resource identifiers must use explicit long flags.
 - MVP supports one default tdc fs resource per profile. `--file-system-name`
   creates or validates the profile's `fs_resource_name`.
@@ -58,7 +57,7 @@ Initial command set:
 ## After This Spec
 
 Users can provision and validate `tdc fs` resources in the active profile's
-cloud provider and region:
+canonical region:
 
 ```bash
 tdc fs check-file-system
@@ -67,8 +66,8 @@ tdc fs create-file-system --file-system-name workspace
 tdc fs delete-file-system --file-system-name workspace --confirm-file-system-name workspace
 ```
 
-The user chooses provider and region during `tdc configure`; the CLI resolves
-all fs endpoints internally.
+The user chooses one canonical region code during `tdc configure`; the CLI
+resolves all fs endpoints internally.
 
 ## Implementation Design
 
@@ -80,8 +79,8 @@ all fs endpoints internally.
 - `internal/fs/fscred` stores and loads the profile-level `fs_api_key` in
   `~/.tdc/credentials`.
 - `internal/api/endpoints` provides fs endpoint resolution from
-  `cloud_provider + region_code` by fetching the hosted tdc fs region manifest
-  and selecting `tidb_cloud_native` entries.
+  canonical `region_code` by fetching the hosted tdc fs region manifest and
+  selecting `tidb_cloud_native` entries.
 - `internal/fs/status` defines the structured check response with local config,
   credential, permission, endpoint, and service health entries.
 - Delete safety is implemented through an explicit long flag, initially
@@ -102,8 +101,8 @@ Confirmed from the reference filesystem protocol and region discovery flow:
 
 Endpoint selection:
 
-1. Validate the profile `cloud_provider + region_code` against tdc's supported
-   TiDB Cloud Starter placements.
+1. Validate the profile canonical `region_code` against tdc's supported TiDB
+   Cloud Starter placements.
 2. Fetch the region manifest.
 3. Select the single entry where `mode == "tidb_cloud_native"`,
    `cloud_provider` matches the TiDB Cloud API provider name, and `tidb_region`
@@ -137,7 +136,7 @@ Command mapping:
      ```
 
   4. Store `fs_resource_name`, `fs_tenant_id`, `fs_cloud_provider`, and
-     `fs_region_code` in `[profile]` of `~/.tdc/config`.
+     canonical `fs_region_code` in `[profile]` of `~/.tdc/config`.
   5. Store `fs_api_key` in `[profile]` of `~/.tdc/credentials`.
 - `tdc fs delete-file-system`
   1. Validate `--confirm-file-system-name`.

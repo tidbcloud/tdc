@@ -116,6 +116,7 @@ func WriteProfile(homeDir, profileName string, cfg ConfigProfile, creds Credenti
 	}
 	if cfg.RegionCode != "" {
 		existingConfig.RegionCode = cfg.RegionCode
+		existingConfig.CloudProvider = ""
 	}
 	if cfg.FSResourceName != "" {
 		existingConfig.FSResourceName = cfg.FSResourceName
@@ -265,7 +266,7 @@ func rejectDisallowedKeys(data []byte, path string) error {
 					next = prefix + "." + key
 				}
 				if IsDisallowedKey(key) {
-					return fmt.Errorf("unsupported URL-like config key %q in %s; configure cloud_provider and region_code instead", next, path)
+					return fmt.Errorf("unsupported URL-like config key %q in %s; configure region_code instead", next, path)
 				}
 				if err := walk(next, nested); err != nil {
 					return err

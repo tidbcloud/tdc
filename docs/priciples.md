@@ -193,23 +193,29 @@ CLI v2 for TiDB Cloud \| Init Date: 2026\-05\-18 \|@Todd Bao
 
 |**Priority \(shortcut at first match\)**|**Credential Source**|**Description**|
 |---|---|---|
-|1 \(highest\)<br>|`--profile` flag in CLI\.<br>|Reads non\-sensitive data from `.tdc/config`<br>- `[<profile_name>]`<br>    - `cloud_provider =`<br>    - `region_code =`<br>Reads sensitive data from `.tdc/credentials`<br>- `[<profile_name>]`<br>    - `tdc_public_key =`<br>    - `tdc_private_key =`<br>    |
-|2|No `--profile` in CLI, but environment variables exist\.<br>|Reads from envs\.<br>- `TDC_CLOUD_PROVIDER`<br>- `TDC_REGION_CODE`<br>- `TDC_PUBLIC_KEY`<br>- `TDC_PRIVATE_KEY`|
-|3|No `--profile`, no environmental variables exist\.|Reads non\-sensitive data from `.tdc/config`<br>- `[default]`<br>    - `cloud_provider =`<br>    - `region_code =`<br>Reads sensitive data from `.tdc/credentials`<br>- `[default]`<br>    - `tdc_public_key =`<br>    - `tdc_private_key =`<br>    |
+|1 \(highest\)<br>|`--profile` flag in CLI\.<br>|Reads non\-sensitive data from `.tdc/config`<br>- `[<profile_name>]`<br>    - `region_code =` \(canonical, for example `aws-us-east-1`\)<br>Reads sensitive data from `.tdc/credentials`<br>- `[<profile_name>]`<br>    - `tdc_public_key =`<br>    - `tdc_private_key =`<br>    |
+|2|No `--profile` in CLI, but environment variables exist\.<br>|Reads from envs\.<br>- `TDC_REGION_CODE`<br>- `TDC_PUBLIC_KEY`<br>- `TDC_PRIVATE_KEY`|
+|3|No `--profile`, no environmental variables exist\.|Reads non\-sensitive data from `.tdc/config`<br>- `[default]`<br>    - `region_code =` \(canonical, for example `aws-us-east-1`\)<br>Reads sensitive data from `.tdc/credentials`<br>- `[default]`<br>    - `tdc_public_key =`<br>    - `tdc_private_key =`<br>    |
 
 ### Cloud Provider and Region Selection
 
-Users choose a cloud provider and region. They do not provide server URLs,
-filesystem metadata database URLs, or API endpoints.
+Users choose one canonical region code. They do not provide separate cloud
+provider fields, server URLs, filesystem metadata database URLs, or API
+endpoints.
 
-| Cloud Provider | Supported MVP Regions |
-|---|---|
-| AWS | N. Virginia \(`us-east-1`\), Oregon \(`us-west-2`\), Frankfurt \(`eu-central-1`\), Tokyo \(`ap-northeast-1`\), Singapore \(`ap-southeast-1`\) |
-| Alibaba Cloud | Singapore \(`ap-southeast-1`\) |
+| Canonical Region Code | Cloud Provider | Region |
+|---|---|---|
+| `aws-us-east-1` | AWS | N. Virginia |
+| `aws-us-west-2` | AWS | Oregon |
+| `aws-eu-central-1` | AWS | Frankfurt |
+| `aws-ap-northeast-1` | AWS | Tokyo |
+| `aws-ap-southeast-1` | AWS | Singapore |
+| `ali-ap-southeast-1` | Alibaba Cloud | Singapore |
 
-The CLI internally maps `cloud_provider` and `region_code` to the correct TiDB
-Cloud Starter, IAM/account, and `tdc fs` endpoints. This mapping is product
-logic and must not require user-supplied server URLs.
+The CLI internally parses the canonical `region_code` prefix to the correct
+cloud provider and native region, then resolves TiDB Cloud Starter,
+IAM/account, and `tdc fs` endpoints. This mapping is product logic and must not
+require user-supplied server URLs.
 
 
 
@@ -259,9 +265,7 @@ logic and must not require user-supplied server URLs.
 
     3. Prompt for the TIDB Cloud API Private KEY \- `tdc_private_key` \(Skip to omit\)\.
 
-    4. Prompt for cloud provider \- `cloud_provider` \(`aws` or `alibaba_cloud`\)\.
-
-    5. Prompt for region code \- `region_code`\. AWS supports N. Virginia, Oregon, Frankfurt, Tokyo, and Singapore. Alibaba Cloud supports Singapore only.
+    4. Prompt for canonical region code \- `region_code` \(for example `aws-us-east-1` or `ali-ap-southeast-1`\)\.
 
     6. Do not prompt for server URLs, API endpoints, or filesystem metadata database URLs.
 
@@ -384,8 +388,8 @@ logic and must not require user-supplied server URLs.
 
 - `--file-system-name`: The tdc fs resource name\.
 
-- `[--profile]`: The profile for reading the TiDB Cloud API key,
-  `cloud_provider`, and `region_code`\.
+- `[--profile]`: The profile for reading the TiDB Cloud API key and canonical
+  `region_code`\.
 
 - `[--dry-run]`: Validate profile, credentials, provider/region support,
   permission, and request construction without mutating remote resources\.
@@ -393,6 +397,6 @@ logic and must not require user-supplied server URLs.
 - The command must not accept a server URL, API endpoint, or filesystem metadata
   database URL from the user\.
 
-- The CLI resolves the required backend endpoint internally from
-  `cloud_provider` and `region_code`, then provisions or initializes the
+- The CLI resolves the required backend endpoint internally from canonical
+  `region_code`, then provisions or initializes the
   filesystem through the supported TiDB Cloud and `tdc fs` APIs\.

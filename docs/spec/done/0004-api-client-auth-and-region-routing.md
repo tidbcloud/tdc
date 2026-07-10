@@ -77,15 +77,18 @@ Required values for authenticated requests:
 
 - `tdc_public_key`
 - `tdc_private_key`
-- `cloud_provider`
-- `region_code` when the target API is region-scoped
+- canonical `region_code` when the target API is region-scoped
 
-Provider/region matrix:
+Canonical region matrix:
 
-| Cloud provider | Supported regions |
-| --- | --- |
-| `aws` | `us-east-1`, `us-west-2`, `eu-central-1`, `ap-northeast-1`, `ap-southeast-1` |
-| `alibaba_cloud` | `ap-southeast-1` |
+| Region code | Cloud provider | Native region |
+| --- | --- | --- |
+| `aws-us-east-1` | `aws` | `us-east-1` |
+| `aws-us-west-2` | `aws` | `us-west-2` |
+| `aws-eu-central-1` | `aws` | `eu-central-1` |
+| `aws-ap-northeast-1` | `aws` | `ap-northeast-1` |
+| `aws-ap-southeast-1` | `aws` | `ap-southeast-1` |
+| `ali-ap-southeast-1` | `alibaba_cloud` | `ap-southeast-1` |
 
 Service endpoint overrides are allowed only for tests or developer staging
 builds. They must not be part of the normal user configuration path.
@@ -112,10 +115,7 @@ tdc [ERROR]: permission denied: profile "default" is not allowed to create Start
 
 - Missing region errors must name the expected key: `region_code` or
   `TDC_REGION_CODE`.
-- Missing provider errors must name the expected key: `cloud_provider` or
-  `TDC_CLOUD_PROVIDER`.
-- Unsupported provider/region errors must show the valid region list for the
-  selected provider.
+- Unsupported canonical region errors must show the valid region code list.
 - Network and API errors must preserve machine-readable error codes internally
   for telemetry and tests.
 - Initial exit-code mapping:
@@ -136,8 +136,9 @@ tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --dry-
 tdc fs check-file-system
 ```
 
-Users never need to know service base URLs. They configure provider and region,
-and the client resolver chooses the correct TiDB Cloud and tdc fs endpoints.
+Users never need to know service base URLs. They configure one canonical region
+code, and the client resolver chooses the correct TiDB Cloud and tdc fs
+endpoints.
 
 ## Implementation Design
 
@@ -145,8 +146,8 @@ and the client resolver chooses the correct TiDB Cloud and tdc fs endpoints.
   decoding, retry policy, and error mapping.
 - `internal/api/transport` implements HTTP Digest authentication for TiDB Cloud
   control-plane APIs and redacts credentials from logs.
-- `internal/api/endpoints` maps `cloud_provider + region_code` to Starter,
-  IAM/account, and fs base URLs.
+- `internal/api/endpoints` maps the parsed provider and native region from
+  canonical `region_code` to Starter, IAM/account, and fs base URLs.
 - `internal/auth` validates resolved credential presence and constructs the
   authenticated transport.
 - `internal/authz` defines permission constants, command requirements, and

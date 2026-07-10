@@ -82,7 +82,7 @@ type JournalSearchResult struct {
 type JournalVerifyResult apifs.JournalVerifyResult
 
 func (s Service) CreateJournal(ctx context.Context, opts JournalCreateOptions) (JournalResult, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSJournalCreate, "create tdc journal")
+	client, err := s.dataClient(opts.Profile, authz.FSJournalCreate, "create tdc fs-journal")
 	if err != nil {
 		return JournalResult{}, err
 	}
@@ -116,7 +116,7 @@ func (s Service) CreateJournal(ctx context.Context, opts JournalCreateOptions) (
 }
 
 func (s Service) AppendJournalEntries(ctx context.Context, opts JournalAppendOptions) (JournalAppendResult, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSJournalAppend, "append tdc journal entries")
+	client, err := s.dataClient(opts.Profile, authz.FSJournalAppend, "append tdc fs-journal entries")
 	if err != nil {
 		return JournalAppendResult{}, err
 	}
@@ -156,7 +156,7 @@ func (s Service) AppendJournalEntries(ctx context.Context, opts JournalAppendOpt
 }
 
 func (s Service) ReadJournalEntries(ctx context.Context, opts JournalReadOptions) (JournalEntriesResult, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSJournalRead, "read tdc journal entries")
+	client, err := s.dataClient(opts.Profile, authz.FSJournalRead, "read tdc fs-journal entries")
 	if err != nil {
 		return JournalEntriesResult{}, err
 	}
@@ -173,7 +173,7 @@ func (s Service) ReadJournalEntries(ctx context.Context, opts JournalReadOptions
 }
 
 func (s Service) SearchJournal(ctx context.Context, opts JournalSearchOptions) (JournalSearchResult, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSJournalSearch, "search tdc journal")
+	client, err := s.dataClient(opts.Profile, authz.FSJournalSearch, "search tdc fs-journal")
 	if err != nil {
 		return JournalSearchResult{}, err
 	}
@@ -206,7 +206,7 @@ func (s Service) SearchJournal(ctx context.Context, opts JournalSearchOptions) (
 }
 
 func (s Service) VerifyJournal(ctx context.Context, opts JournalVerifyOptions) (JournalVerifyResult, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSJournalVerify, "verify tdc journal")
+	client, err := s.dataClient(opts.Profile, authz.FSJournalVerify, "verify tdc fs-journal")
 	if err != nil {
 		return JournalVerifyResult{}, err
 	}

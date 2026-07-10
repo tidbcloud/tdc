@@ -12,7 +12,7 @@ import (
 
 func TestRunWritesProfileAndDoesNotPrintSecret(t *testing.T) {
 	home := t.TempDir()
-	input := strings.NewReader("aws\nus-east-1\npublic-key\nprivate-key\n")
+	input := strings.NewReader("aws-us-east-1\npublic-key\nprivate-key\n")
 	var output bytes.Buffer
 
 	err := Run(context.Background(), Options{
@@ -46,7 +46,7 @@ func TestRunWritesProfileAndDoesNotPrintSecret(t *testing.T) {
 }
 
 func TestRunRejectsUnsupportedProviderRegion(t *testing.T) {
-	input := strings.NewReader("alibaba_cloud\nus-east-1\npublic-key\nprivate-key\n")
+	input := strings.NewReader("ali-us-east-1\npublic-key\nprivate-key\n")
 
 	err := Run(context.Background(), Options{
 		HomeDir: t.TempDir(),
@@ -67,10 +67,9 @@ func TestRunNonInteractiveUsesEnvironment(t *testing.T) {
 		HomeDir:        home,
 		NonInteractive: true,
 		Env: map[string]string{
-			"TDC_CLOUD_PROVIDER": "aws",
-			"TDC_REGION_CODE":    "us-east-1",
-			"TDC_PUBLIC_KEY":     "env-public",
-			"TDC_PRIVATE_KEY":    "env-private",
+			"TDC_REGION_CODE": "aws-us-east-1",
+			"TDC_PUBLIC_KEY":  "env-public",
+			"TDC_PRIVATE_KEY": "env-private",
 		},
 		Out: &output,
 	})
@@ -102,9 +101,8 @@ func TestRunNonInteractiveRequiresMissingValues(t *testing.T) {
 		HomeDir:        t.TempDir(),
 		NonInteractive: true,
 		Env: map[string]string{
-			"TDC_CLOUD_PROVIDER": "aws",
-			"TDC_REGION_CODE":    "us-east-1",
-			"TDC_PUBLIC_KEY":     "env-public",
+			"TDC_REGION_CODE": "aws-us-east-1",
+			"TDC_PUBLIC_KEY":  "env-public",
 		},
 		Out: &bytes.Buffer{},
 	})

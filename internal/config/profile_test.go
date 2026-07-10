@@ -13,17 +13,16 @@ import (
 
 func TestLoadExplicitProfile(t *testing.T) {
 	home := t.TempDir()
-	writeProfile(t, home, "stage", "aws", "us-west-2", "stage-public", "stage-private")
+	writeProfile(t, home, "stage", "aws-us-west-2", "stage-public", "stage-private")
 
 	profile, err := Load(context.Background(), LoadOptions{
 		Profile:         "stage",
 		ProfileExplicit: true,
 		HomeDir:         home,
 		Env: map[string]string{
-			"TDC_CLOUD_PROVIDER": "alibaba_cloud",
-			"TDC_REGION_CODE":    "ap-southeast-1",
-			"TDC_PUBLIC_KEY":     "env-public",
-			"TDC_PRIVATE_KEY":    "env-private",
+			"TDC_REGION_CODE": "ali-ap-southeast-1",
+			"TDC_PUBLIC_KEY":  "env-public",
+			"TDC_PRIVATE_KEY": "env-private",
 		},
 	})
 	if err != nil {
@@ -41,10 +40,9 @@ func TestLoadEnvironmentFallback(t *testing.T) {
 	profile, err := Load(context.Background(), LoadOptions{
 		HomeDir: t.TempDir(),
 		Env: map[string]string{
-			"TDC_CLOUD_PROVIDER": "aws",
-			"TDC_REGION_CODE":    "us-east-1",
-			"TDC_PUBLIC_KEY":     "env-public",
-			"TDC_PRIVATE_KEY":    "env-private",
+			"TDC_REGION_CODE": "aws-us-east-1",
+			"TDC_PUBLIC_KEY":  "env-public",
+			"TDC_PRIVATE_KEY": "env-private",
 		},
 	})
 	if err != nil {
@@ -60,7 +58,7 @@ func TestLoadEnvironmentFallback(t *testing.T) {
 
 func TestLoadDefaultProfileFallback(t *testing.T) {
 	home := t.TempDir()
-	writeProfile(t, home, DefaultProfile, "alibaba_cloud", "ap-southeast-1", "public", "private")
+	writeProfile(t, home, DefaultProfile, "ali-ap-southeast-1", "public", "private")
 
 	profile, err := Load(context.Background(), LoadOptions{HomeDir: home})
 	if err != nil {
@@ -73,7 +71,7 @@ func TestLoadDefaultProfileFallback(t *testing.T) {
 
 func TestLoadRejectsInvalidRegionCombination(t *testing.T) {
 	home := t.TempDir()
-	writeProfile(t, home, DefaultProfile, "alibaba_cloud", "us-east-1", "public", "private")
+	writeProfile(t, home, DefaultProfile, "ali-us-east-1", "public", "private")
 
 	_, err := Load(context.Background(), LoadOptions{HomeDir: home})
 	if err == nil {
@@ -87,8 +85,7 @@ func TestLoadRejectsInvalidRegionCombination(t *testing.T) {
 func TestLoadMissingCredentialsSuggestsConfigure(t *testing.T) {
 	home := t.TempDir()
 	if err := store.WriteProfile(home, DefaultProfile, store.ConfigProfile{
-		CloudProvider: "aws",
-		RegionCode:    "us-east-1",
+		RegionCode: "aws-us-east-1",
 	}, store.CredentialsProfile{}); err != nil {
 		t.Fatal(err)
 	}
@@ -110,8 +107,7 @@ func TestLoadRejectsServerURLKeys(t *testing.T) {
 	}
 	if err := os.WriteFile(store.ConfigPath(home), []byte(`
 [default]
-cloud_provider = "aws"
-region_code = "us-east-1"
+region_code = "aws-us-east-1"
 api_endpoint = "https://example.invalid"
 `), 0o644); err != nil {
 		t.Fatal(err)
@@ -136,12 +132,11 @@ tdc_private_key = "private"
 func TestLoadReadsFSCredentials(t *testing.T) {
 	home := t.TempDir()
 	err := store.WriteProfile(home, DefaultProfile, store.ConfigProfile{
-		CloudProvider:   "aws",
-		RegionCode:      "us-east-1",
+		RegionCode:      "aws-us-east-1",
 		FSResourceName:  "workspace",
 		FSTenantID:      "tenant",
 		FSCloudProvider: "aws",
-		FSRegionCode:    "us-east-1",
+		FSRegionCode:    "aws-us-east-1",
 	}, store.CredentialsProfile{
 		TDCPublicKey:  "public",
 		TDCPrivateKey: "private",
@@ -160,11 +155,10 @@ func TestLoadReadsFSCredentials(t *testing.T) {
 	}
 }
 
-func writeProfile(t *testing.T, home, name, provider, regionCode, publicKey, privateKey string) {
+func writeProfile(t *testing.T, home, name, regionCode, publicKey, privateKey string) {
 	t.Helper()
 	err := store.WriteProfile(home, name, store.ConfigProfile{
-		CloudProvider: provider,
-		RegionCode:    regionCode,
+		RegionCode: regionCode,
 	}, store.CredentialsProfile{
 		TDCPublicKey:  publicKey,
 		TDCPrivateKey: privateKey,

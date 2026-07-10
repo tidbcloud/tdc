@@ -204,8 +204,7 @@ bootstrap_config() {
   if [ ! -f "$CONFIG_FILE" ]; then
     cat > "$CONFIG_FILE" <<'CONF'
 [default]
-cloud_provider = 'aws'
-region_code = 'us-east-1'
+region_code = 'aws-us-east-1'
 CONF
     chmod 644 "$CONFIG_FILE" 2>/dev/null || true
     info "Bootstrapped ${CONFIG_FILE} with default aws/us-east-1 placement"
@@ -253,8 +252,8 @@ report_path_status() {
 print_regions() {
   printf "\n"
   printf "  ${BOLD}Config regions:${RESET}\n"
-  printf "    aws: us-east-1, us-west-2, eu-central-1, ap-northeast-1, ap-southeast-1\n"
-  printf "    alibaba_cloud: ap-southeast-1\n"
+  printf "    aws-us-east-1, aws-us-west-2, aws-eu-central-1, aws-ap-northeast-1, aws-ap-southeast-1\n"
+  printf "    ali-ap-southeast-1\n"
   printf "\n"
   printf "  ${BOLD}tdc fs regions:${RESET}\n"
   MANIFEST="$(download_quiet_stdout "https://drive9.ai/manifest/regions/drive9-regions.json")"
@@ -272,7 +271,11 @@ print_regions() {
     }
     /^[[:space:]]*}/ {
       if (native && provider != "" && region != "") {
-        print "    " provider ": " region
+        prefix=provider
+        if (prefix == "alicloud" || prefix == "alibaba_cloud") {
+          prefix="ali"
+        }
+        print "    " prefix "-" region
       }
       native=0; provider=""; region=""
     }
@@ -280,7 +283,7 @@ print_regions() {
   if [ -n "$FS_REGIONS" ]; then
     printf "%s\n" "$FS_REGIONS"
   else
-    printf "    aws: us-east-1, ap-southeast-1\n"
+    printf "    aws-us-east-1, aws-ap-southeast-1\n"
     warn "Could not fetch the latest tdc fs region manifest; run tdc fs check-file-system after configure"
   fi
 }

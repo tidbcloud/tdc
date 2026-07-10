@@ -12,5 +12,5 @@ func (s Service) mountVaultForeground(ctx context.Context, inputs vaultMountInpu
 	_ = ctx
 	_ = inputs
 	_ = checks
-	return MountResult{}, apperr.New("vault.mount_unsupported", "runtime", 1, "tdc vault FUSE mount is not supported on Windows; use tdc vault read-secret/list-secrets or run mount-vault on macOS or Linux")
+	return MountResult{}, apperr.New("vault.mount_unsupported", "runtime", 1, "tdc fs-vault FUSE mount is not supported on Windows; use tdc fs-vault read-secret/list-secrets or run mount-vault on macOS or Linux")
 }

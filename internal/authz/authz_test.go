@@ -16,7 +16,7 @@ func TestForCommand(t *testing.T) {
 		"tdc fs create-file-system":      FSVolumeCreate,
 		"tdc fs search-file-content":     FSFileRead,
 		"tdc fs mount-file-system":       FSMount,
-		"tdc vault mount-vault":          FSVaultSecretRead,
+		"tdc fs-vault mount-vault":       FSVaultSecretRead,
 	}
 
 	for command, want := range tests {

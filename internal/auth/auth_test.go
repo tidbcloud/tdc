@@ -40,8 +40,7 @@ func TestValidateProfileRejectsMalformedCredentials(t *testing.T) {
 func TestLoadProfileMapsMissingFileCredentialsToAuthError(t *testing.T) {
 	home := t.TempDir()
 	if err := store.WriteProfile(home, "stage", store.ConfigProfile{
-		CloudProvider: "aws",
-		RegionCode:    "us-east-1",
+		RegionCode: "aws-us-east-1",
 	}, store.CredentialsProfile{}); err != nil {
 		t.Fatal(err)
 	}

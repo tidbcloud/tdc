@@ -20,17 +20,19 @@ type LoadOptions struct {
 }
 
 type Profile struct {
-	Name            string
-	Source          string
-	CloudProvider   string
-	RegionCode      string
-	TDCPublicKey    string
-	TDCPrivateKey   string
-	FSResourceName  string
-	FSTenantID      string
-	FSCloudProvider string
-	FSRegionCode    string
-	FSAPIKey        string
+	Name                  string
+	Source                string
+	PlacementRegionCode   string
+	CloudProvider         string
+	RegionCode            string
+	TDCPublicKey          string
+	TDCPrivateKey         string
+	FSResourceName        string
+	FSTenantID            string
+	FSPlacementRegionCode string
+	FSCloudProvider       string
+	FSRegionCode          string
+	FSAPIKey              string
 }
 
 func Load(ctx context.Context, opts LoadOptions) (*Profile, error) {
@@ -59,7 +61,7 @@ func Load(ctx context.Context, opts LoadOptions) (*Profile, error) {
 }
 
 func loadFromEnv(env map[string]string) (*Profile, error) {
-	missing := firstMissingEnv(env, "TDC_CLOUD_PROVIDER", "TDC_REGION_CODE", "TDC_PUBLIC_KEY", "TDC_PRIVATE_KEY")
+	missing := firstMissingEnv(env, "TDC_REGION_CODE", "TDC_PUBLIC_KEY", "TDC_PRIVATE_KEY")
 	if missing != "" {
 		return nil, apperr.New(
 			"config.env_missing",
@@ -69,16 +71,18 @@ func loadFromEnv(env map[string]string) (*Profile, error) {
 		)
 	}
 
-	profile := &Profile{
-		Name:          "env",
-		Source:        "env",
-		CloudProvider: envValue(env, "TDC_CLOUD_PROVIDER"),
-		RegionCode:    envValue(env, "TDC_REGION_CODE"),
-		TDCPublicKey:  envValue(env, "TDC_PUBLIC_KEY"),
-		TDCPrivateKey: envValue(env, "TDC_PRIVATE_KEY"),
-	}
-	if err := validatePlacement(profile.CloudProvider, profile.RegionCode); err != nil {
+	placement, err := parsePlacement(envValue(env, "TDC_REGION_CODE"))
+	if err != nil {
 		return nil, err
+	}
+	profile := &Profile{
+		Name:                "env",
+		Source:              "env",
+		PlacementRegionCode: placement.Code,
+		CloudProvider:       placement.Provider,
+		RegionCode:          placement.NativeCode,
+		TDCPublicKey:        envValue(env, "TDC_PUBLIC_KEY"),
+		TDCPrivateKey:       envValue(env, "TDC_PRIVATE_KEY"),
 	}
 	return profile, nil
 }
@@ -106,9 +110,6 @@ func loadFromFiles(homeDir, profileName string) (*Profile, error) {
 	if !ok {
 		return nil, missingCredential(profileName, store.CredentialsPath(homeDir), "tdc_public_key")
 	}
-	if cfg.CloudProvider == "" {
-		return nil, missingConfig(profileName, store.ConfigPath(homeDir), "cloud_provider")
-	}
 	if cfg.RegionCode == "" {
 		return nil, missingConfig(profileName, store.ConfigPath(homeDir), "region_code")
 	}
@@ -119,35 +120,41 @@ func loadFromFiles(homeDir, profileName string) (*Profile, error) {
 		return nil, missingCredential(profileName, store.CredentialsPath(homeDir), "tdc_private_key")
 	}
 
-	if err := validatePlacement(cfg.CloudProvider, cfg.RegionCode); err != nil {
+	placement, err := parsePlacement(cfg.RegionCode)
+	if err != nil {
 		return nil, err
 	}
-	if cfg.FSCloudProvider != "" || cfg.FSRegionCode != "" {
-		if err := validatePlacement(cfg.FSCloudProvider, cfg.FSRegionCode); err != nil {
+	var fsPlacement region.Placement
+	if cfg.FSRegionCode != "" {
+		fsPlacement, err = parsePlacement(cfg.FSRegionCode)
+		if err != nil {
 			return nil, err
 		}
 	}
 
 	return &Profile{
-		Name:            profileName,
-		Source:          "profile",
-		CloudProvider:   cfg.CloudProvider,
-		RegionCode:      cfg.RegionCode,
-		TDCPublicKey:    creds.TDCPublicKey,
-		TDCPrivateKey:   creds.TDCPrivateKey,
-		FSResourceName:  cfg.FSResourceName,
-		FSTenantID:      cfg.FSTenantID,
-		FSCloudProvider: cfg.FSCloudProvider,
-		FSRegionCode:    cfg.FSRegionCode,
-		FSAPIKey:        creds.FSAPIKey,
+		Name:                  profileName,
+		Source:                "profile",
+		PlacementRegionCode:   placement.Code,
+		CloudProvider:         placement.Provider,
+		RegionCode:            placement.NativeCode,
+		TDCPublicKey:          creds.TDCPublicKey,
+		TDCPrivateKey:         creds.TDCPrivateKey,
+		FSResourceName:        cfg.FSResourceName,
+		FSTenantID:            cfg.FSTenantID,
+		FSPlacementRegionCode: fsPlacement.Code,
+		FSCloudProvider:       fsPlacement.Provider,
+		FSRegionCode:          fsPlacement.NativeCode,
+		FSAPIKey:              creds.FSAPIKey,
 	}, nil
 }
 
-func validatePlacement(provider, regionCode string) error {
-	if err := region.Validate(provider, regionCode); err != nil {
-		return apperr.Wrap("config.invalid_region", "config", 2, err.Error(), err)
+func parsePlacement(regionCode string) (region.Placement, error) {
+	placement, err := region.ParsePlacementCode(regionCode)
+	if err != nil {
+		return region.Placement{}, apperr.Wrap("config.invalid_region", "config", 2, err.Error(), err)
 	}
-	return nil
+	return placement, nil
 }
 
 func missingConfig(profileName, path, key string) error {
@@ -169,7 +176,7 @@ func missingCredential(profileName, path, key string) error {
 }
 
 func envMode(env map[string]string) bool {
-	for _, key := range []string{"TDC_CLOUD_PROVIDER", "TDC_REGION_CODE", "TDC_PUBLIC_KEY", "TDC_PRIVATE_KEY"} {
+	for _, key := range []string{"TDC_REGION_CODE", "TDC_PUBLIC_KEY", "TDC_PRIVATE_KEY"} {
 		if envValue(env, key) != "" {
 			return true
 		}

@@ -18,7 +18,6 @@ import (
 type Options struct {
 	Profile        string
 	HomeDir        string
-	CloudProvider  string
 	RegionCode     string
 	TDCPublicKey   string
 	TDCPrivateKey  string
@@ -53,19 +52,13 @@ func Run(ctx context.Context, opts Options) error {
 		input = bufio.NewReader(opts.In)
 	}
 
-	provider, err := valueOrPrompt(ctx, input, opts.Out, valueOrEnv(opts.CloudProvider, opts.Env, "TDC_CLOUD_PROVIDER"), "cloud provider", "Cloud provider [aws/alibaba_cloud] (aws): ", region.ProviderAWS, false, opts.NonInteractive)
-	if err != nil {
-		return err
-	}
-	defaultRegion, err := region.DefaultRegion(provider)
-	if err != nil {
-		return apperr.Wrap("config.invalid_provider", "config", 2, err.Error(), err)
-	}
+	defaultRegion := region.DefaultPlacementCode()
 	regionCode, err := valueOrPrompt(ctx, input, opts.Out, valueOrEnv(opts.RegionCode, opts.Env, "TDC_REGION_CODE"), "region code", fmt.Sprintf("Region code (%s): ", defaultRegion), defaultRegion, false, opts.NonInteractive)
 	if err != nil {
 		return err
 	}
-	if err := region.Validate(provider, regionCode); err != nil {
+	placement, err := region.ParsePlacementCode(regionCode)
+	if err != nil {
 		return apperr.Wrap("config.invalid_region", "config", 2, err.Error(), err)
 	}
 
@@ -79,8 +72,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	if err := store.WriteProfile(opts.HomeDir, opts.Profile, store.ConfigProfile{
-		CloudProvider: provider,
-		RegionCode:    regionCode,
+		RegionCode: placement.Code,
 	}, store.CredentialsProfile{
 		TDCPublicKey:  publicKey,
 		TDCPrivateKey: privateKey,

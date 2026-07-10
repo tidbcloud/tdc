@@ -199,7 +199,7 @@ func (s Service) DryRunMountVault(ctx context.Context, commandPath string, opts 
 		commandPath,
 		"mount_vault",
 		dryrun.RequestSummary{
-			Description: "normal execution starts a local read-only FUSE runtime exposing tdc vault secrets as /<secret>/<field>",
+			Description: "normal execution starts a local read-only FUSE runtime exposing tdc fs-vault secrets as /<secret>/<field>",
 			Method:      "GET",
 			Path:        "/v1/vault/secrets or /v1/vault/read",
 			Body: map[string]any{
@@ -221,7 +221,7 @@ func (s Service) mountVaultBackground(ctx context.Context, inputs vaultMountInpu
 	}
 	args := []string{
 		"--profile", inputs.profile.Name,
-		"vault", "mount-vault",
+		"fs-vault", "mount-vault",
 		"--mount-path", inputs.mountPath,
 		"--foreground",
 	}
@@ -258,7 +258,7 @@ func (s Service) vaultMountInputs(ctx context.Context, opts VaultMountOptions) (
 	if err != nil {
 		return vaultMountInputs{}, nil, err
 	}
-	client, ownerMode, err := s.vaultReadClient(opts.Profile, opts.VaultToken, authz.FSVaultSecretRead, "mount tdc vault")
+	client, ownerMode, err := s.vaultReadClient(opts.Profile, opts.VaultToken, authz.FSVaultSecretRead, "mount tdc fs-vault")
 	if err != nil {
 		return vaultMountInputs{}, nil, err
 	}
@@ -342,7 +342,7 @@ func vaultMountResult(status string, inputs vaultMountInputs, checks []MountRunt
 }
 
 func (s Service) CreateVaultSecret(ctx context.Context, opts VaultCreateSecretOptions) (VaultSecretResult, error) {
-	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultSecretCreate, "create tdc vault secret")
+	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultSecretCreate, "create tdc fs-vault secret")
 	if err != nil {
 		return VaultSecretResult{}, err
 	}
@@ -362,7 +362,7 @@ func (s Service) CreateVaultSecret(ctx context.Context, opts VaultCreateSecretOp
 }
 
 func (s Service) ReplaceVaultSecret(ctx context.Context, opts VaultReplaceSecretOptions) (VaultSecretResult, error) {
-	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultSecretUpdate, "replace tdc vault secret")
+	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultSecretUpdate, "replace tdc fs-vault secret")
 	if err != nil {
 		return VaultSecretResult{}, err
 	}
@@ -382,7 +382,7 @@ func (s Service) ReplaceVaultSecret(ctx context.Context, opts VaultReplaceSecret
 }
 
 func (s Service) ReadVaultSecret(ctx context.Context, opts VaultReadSecretOptions) (any, error) {
-	client, ownerMode, err := s.vaultReadClient(opts.Profile, opts.VaultToken, authz.FSVaultSecretRead, "read tdc vault secret")
+	client, ownerMode, err := s.vaultReadClient(opts.Profile, opts.VaultToken, authz.FSVaultSecretRead, "read tdc fs-vault secret")
 	if err != nil {
 		return nil, err
 	}
@@ -446,7 +446,7 @@ func (s Service) ReadVaultSecret(ctx context.Context, opts VaultReadSecretOption
 }
 
 func (s Service) ListVaultSecrets(ctx context.Context, opts VaultListSecretsOptions) (VaultListSecretsResult, error) {
-	client, ownerMode, err := s.vaultReadClient(opts.Profile, opts.VaultToken, authz.FSVaultSecretRead, "list tdc vault secrets")
+	client, ownerMode, err := s.vaultReadClient(opts.Profile, opts.VaultToken, authz.FSVaultSecretRead, "list tdc fs-vault secrets")
 	if err != nil {
 		return VaultListSecretsResult{}, err
 	}
@@ -471,7 +471,7 @@ func (s Service) ListVaultSecrets(ctx context.Context, opts VaultListSecretsOpti
 }
 
 func (s Service) DeleteVaultSecret(ctx context.Context, opts VaultDeleteSecretOptions) (VaultDeleteResult, error) {
-	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultSecretDelete, "delete tdc vault secret")
+	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultSecretDelete, "delete tdc fs-vault secret")
 	if err != nil {
 		return VaultDeleteResult{}, err
 	}
@@ -486,7 +486,7 @@ func (s Service) DeleteVaultSecret(ctx context.Context, opts VaultDeleteSecretOp
 }
 
 func (s Service) CreateVaultToken(ctx context.Context, opts VaultCreateTokenOptions) (VaultTokenResult, error) {
-	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultTokenCreate, "create tdc vault token")
+	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultTokenCreate, "create tdc fs-vault token")
 	if err != nil {
 		return VaultTokenResult{}, err
 	}
@@ -504,7 +504,7 @@ func (s Service) CreateVaultToken(ctx context.Context, opts VaultCreateTokenOpti
 }
 
 func (s Service) DeleteVaultToken(ctx context.Context, opts VaultDeleteTokenOptions) (VaultDeleteResult, error) {
-	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultTokenDelete, "delete tdc vault token")
+	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultTokenDelete, "delete tdc fs-vault token")
 	if err != nil {
 		return VaultDeleteResult{}, err
 	}
@@ -519,7 +519,7 @@ func (s Service) DeleteVaultToken(ctx context.Context, opts VaultDeleteTokenOpti
 }
 
 func (s Service) CreateVaultGrant(ctx context.Context, opts VaultCreateGrantOptions) (VaultTokenResult, error) {
-	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultGrantCreate, "create tdc vault grant")
+	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultGrantCreate, "create tdc fs-vault grant")
 	if err != nil {
 		return VaultTokenResult{}, err
 	}
@@ -549,7 +549,7 @@ func (s Service) CreateVaultGrant(ctx context.Context, opts VaultCreateGrantOpti
 }
 
 func (s Service) DeleteVaultGrant(ctx context.Context, opts VaultDeleteGrantOptions) (VaultDeleteResult, error) {
-	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultGrantDelete, "delete tdc vault grant")
+	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultGrantDelete, "delete tdc fs-vault grant")
 	if err != nil {
 		return VaultDeleteResult{}, err
 	}
@@ -568,7 +568,7 @@ func (s Service) DeleteVaultGrant(ctx context.Context, opts VaultDeleteGrantOpti
 }
 
 func (s Service) ListVaultAuditEvents(ctx context.Context, opts VaultAuditOptions) (VaultAuditResult, error) {
-	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultAuditRead, "list tdc vault audit events")
+	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultAuditRead, "list tdc fs-vault audit events")
 	if err != nil {
 		return VaultAuditResult{}, err
 	}
@@ -597,7 +597,7 @@ func (s Service) ListVaultAuditEvents(ctx context.Context, opts VaultAuditOption
 }
 
 func (s Service) RunWithVaultSecret(ctx context.Context, opts VaultRunWithSecretOptions) error {
-	client, ownerMode, err := s.vaultReadClient(opts.Profile, opts.VaultToken, authz.FSVaultSecretRead, "run with tdc vault secret")
+	client, ownerMode, err := s.vaultReadClient(opts.Profile, opts.VaultToken, authz.FSVaultSecretRead, "run with tdc fs-vault secret")
 	if err != nil {
 		return err
 	}
@@ -656,7 +656,7 @@ func (s Service) vaultReadClient(profile *config.Profile, token string, permissi
 		Timeout:     s.Timeout,
 		Debug:       s.Debug,
 		DebugWriter: s.DebugWriter,
-		UserAgent:   "tdc vault",
+		UserAgent:   "tdc fs-vault",
 	})
 	if err != nil {
 		return nil, false, err

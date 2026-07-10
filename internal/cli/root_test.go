@@ -147,6 +147,9 @@ func TestServiceCommandsDeclarePermissions(t *testing.T) {
 		path := cmd.CommandPath()
 		if !strings.HasPrefix(path, "tdc db ") &&
 			!strings.HasPrefix(path, "tdc fs ") &&
+			!strings.HasPrefix(path, "tdc fs-git ") &&
+			!strings.HasPrefix(path, "tdc fs-journal ") &&
+			!strings.HasPrefix(path, "tdc fs-vault ") &&
 			!strings.HasPrefix(path, "tdc organization ") {
 			return
 		}
@@ -217,6 +220,26 @@ func TestFSUnixAliasesResolveToCanonicalCommands(t *testing.T) {
 				t.Fatalf("expected alias help to list %q, got:\n%s", tt.alias, stdout)
 			}
 		})
+	}
+}
+
+func TestFSAdjunctCommandsRequireConfiguredFSResource(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("TDC_REGION_CODE", "")
+	t.Setenv("TDC_PUBLIC_KEY", "")
+	t.Setenv("TDC_PRIVATE_KEY", "")
+	writeCompleteProfile(t, home, "default")
+
+	_, _, err := executeForTest("fs-vault", "list-secrets")
+	if err == nil {
+		t.Fatal("expected missing tdc fs resource to fail")
+	}
+	if got := apperr.ExitCodeFor(err); got != 3 {
+		t.Fatalf("expected auth exit code 3, got %d", got)
+	}
+	if got := apperr.MessageFor(err); !strings.Contains(got, "tdc fs is not configured") || !strings.Contains(got, "tdc fs create-file-system") {
+		t.Fatalf("unexpected message %q", got)
 	}
 }
 
@@ -418,7 +441,6 @@ func TestInvalidQueryFails(t *testing.T) {
 
 func TestDryRunRequiresConfigAndCredentials(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("TDC_CLOUD_PROVIDER", "")
 	t.Setenv("TDC_REGION_CODE", "")
 	t.Setenv("TDC_PUBLIC_KEY", "")
 	t.Setenv("TDC_PRIVATE_KEY", "")
@@ -440,7 +462,6 @@ func TestTDCProfileEnvironmentSelectsFileProfile(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("TDC_PROFILE", "stage")
-	t.Setenv("TDC_CLOUD_PROVIDER", "")
 	t.Setenv("TDC_REGION_CODE", "")
 	t.Setenv("TDC_PUBLIC_KEY", "")
 	t.Setenv("TDC_PRIVATE_KEY", "")
@@ -485,8 +506,7 @@ func TestDryRunRejectedOnReadOnlyCommand(t *testing.T) {
 
 func withConfigEnv(t *testing.T) {
 	t.Helper()
-	t.Setenv("TDC_CLOUD_PROVIDER", "aws")
-	t.Setenv("TDC_REGION_CODE", "us-east-1")
+	t.Setenv("TDC_REGION_CODE", "aws-us-east-1")
 	t.Setenv("TDC_PUBLIC_KEY", "test-public")
 	t.Setenv("TDC_PRIVATE_KEY", "test-private")
 }
@@ -494,8 +514,7 @@ func withConfigEnv(t *testing.T) {
 func writeCompleteProfile(t *testing.T, home, profileName string) {
 	t.Helper()
 	err := store.WriteProfile(home, profileName, store.ConfigProfile{
-		CloudProvider: "aws",
-		RegionCode:    "us-east-1",
+		RegionCode: "aws-us-east-1",
 	}, store.CredentialsProfile{
 		TDCPublicKey:  "test-public",
 		TDCPrivateKey: "test-private",
@@ -510,8 +529,7 @@ func writeConfigOnlyProfile(t *testing.T, profileName string) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	err := store.WriteProfile(home, profileName, store.ConfigProfile{
-		CloudProvider: "aws",
-		RegionCode:    "us-east-1",
+		RegionCode: "aws-us-east-1",
 	}, store.CredentialsProfile{})
 	if err != nil {
 		t.Fatal(err)

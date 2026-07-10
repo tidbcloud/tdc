@@ -96,24 +96,24 @@ Implemented:
 - Unix-style `tdc fs` command aliases: `cp`, `cat`, `ls`, `stat`, `mv`, `rm`,
   `mkdir`, `chmod`, `symlink`, `hardlink`, `grep`, `find`, `mount`, `drain`,
   and `umount`
-- `tdc vault create-secret`
-- `tdc vault replace-secret`
-- `tdc vault read-secret`
-- `tdc vault list-secrets`
-- `tdc vault delete-secret`
-- `tdc vault create-token`
-- `tdc vault delete-token`
-- `tdc vault create-grant`
-- `tdc vault delete-grant`
-- `tdc vault list-audit-events`
-- `tdc vault run-with-secret`
-- `tdc vault mount-vault`
-- `tdc vault unmount-vault`
-- `tdc journal create-journal`
-- `tdc journal append-journal-entries`
-- `tdc journal read-journal-entries`
-- `tdc journal search-journal-entries`
-- `tdc journal verify-journal`
+- `tdc fs-vault create-secret`
+- `tdc fs-vault replace-secret`
+- `tdc fs-vault read-secret`
+- `tdc fs-vault list-secrets`
+- `tdc fs-vault delete-secret`
+- `tdc fs-vault create-token`
+- `tdc fs-vault delete-token`
+- `tdc fs-vault create-grant`
+- `tdc fs-vault delete-grant`
+- `tdc fs-vault list-audit-events`
+- `tdc fs-vault run-with-secret`
+- `tdc fs-vault mount-vault`
+- `tdc fs-vault unmount-vault`
+- `tdc fs-journal create-journal`
+- `tdc fs-journal append-journal-entries`
+- `tdc fs-journal read-journal-entries`
+- `tdc fs-journal search-journal-entries`
+- `tdc fs-journal verify-journal`
 - help and version behavior at every command level
 - structured JSON/text rendering and JMESPath `--query`
 - `--dry-run` on mutating control-plane commands
@@ -129,15 +129,15 @@ Implemented:
 - tdc fs layer client and command coverage for create/list/describe/diff/replay,
   layer entry/object read-write, checkpoints, events, rollback, commit, and
   layer-aware copy/search/find flows
-- tdc vault client and command coverage for secret create/read/replace/delete,
+- tdc fs-vault client and command coverage for secret create/read/replace/delete,
   delegated grants/tokens, audit listing, command environment injection, and a
   read-only vault mount filesystem view
-- tdc journal client and command coverage for create/append/read/search/verify
+- tdc fs-journal client and command coverage for create/append/read/search/verify
   against the Drive9-compatible journal endpoints
 - tdc fs pack/unpack workflows, mount-profile local overlays, portable
   auto-pack/auto-unpack, POSIX-style chmod/symlink/hardlink, stdin/stdout copy,
   tags, and descriptions
-- tdc git workspace workflows for fast clone, hydrate, restore, linked worktree
+- tdc fs-git workspace workflows for fast clone, hydrate, restore, linked worktree
   add/remove, low-level git workspace/tree/state/object-pack/overlay commands,
   and FUSE synthetic Git tree/overlay handling with restore of missing local
   Git state
@@ -310,8 +310,8 @@ Follow these rules unless `docs/priciples.md` is updated:
   before reporting a planned mutation.
 - Read-only commands reject `--dry-run`.
 - Apply `--query` after command execution and before rendering.
-- Users provide cloud placement as `cloud_provider` plus `region_code`, never as
-  server URLs.
+- Users provide cloud placement as one canonical `region_code`, never as
+  separate provider/region fields or server URLs.
 - Every command should be usable by scripts and agents without
   terminal-specific assumptions.
 - Help must work as:
@@ -445,41 +445,41 @@ Implemented command behavior:
 - `tdc fs drain-file-system --mount-path ./workspace --timeout 30s`
 - `tdc fs unmount-file-system --mount-path ./workspace`
 - `tdc fs unmount-file-system --mount-path ./workspace --ignore-absent`
-- `tdc vault create-secret --secret-name db-prod --field DB_URL=mysql://example --field PASSWORD=@./password.txt`
-- `tdc vault replace-secret --secret-path /n/vault/db-prod --from-directory ./secret-fields`
-- `tdc vault read-secret --secret-name db-prod`
-- `tdc vault read-secret --secret-name db-prod --field PASSWORD --format raw`
-- `tdc vault read-secret --secret-name db-prod --field DB_URL --format env`
-- `tdc vault list-secrets`
-- `tdc vault delete-secret --secret-name db-prod`
-- `tdc vault create-grant --agent-id deploy-agent --scope db-prod/DB_URL --permission read --ttl 10m`
-- `tdc vault delete-grant --grant-id <grant-id> --reason rotated`
-- `tdc vault create-token --agent-id deploy-agent --task-id deploy-123 --scope db-prod --ttl 10m`
-- `tdc vault delete-token --token-id <token-id>`
-- `tdc vault list-audit-events --secret-name db-prod --limit 20`
-- `tdc vault run-with-secret --secret-path /n/vault/db-prod -- env`
-- `tdc vault mount-vault --mount-path ./vault`
-- `tdc vault mount-vault --mount-path ./vault --vault-token "$TDC_VAULT_TOKEN"`
-- `tdc vault unmount-vault --mount-path ./vault`
-- `tdc journal create-journal --journal-id jrn-demo --journal-kind agent --title "demo task" --actor agent:tdc --label env=dev`
-- `tdc journal append-journal-entries --journal-id jrn-demo --entry-json '{"type":"task.started"}'`
-- `tdc journal read-journal-entries --journal-id jrn-demo --after-seq 0 --limit 100`
-- `tdc journal search-journal-entries --entry-type task.started --label env=dev --include-entries`
-- `tdc journal verify-journal --journal-id jrn-demo --output text`
-- `tdc git clone-git-workspace --repo-url https://github.com/pingcap/tidb.git --target-path ./workspace/tidb`
-- `tdc git clone-git-workspace --repo-url https://github.com/pingcap/tidb.git --target-path ./workspace/tidb --blobless --hydrate sync`
-- `tdc git hydrate-git-workspace --target-path ./workspace/tidb --timeout 30m`
-- `tdc git restore-git-workspace --target-path ./workspace/tidb`
-- `tdc git add-git-worktree --base-path ./workspace/tidb --worktree-path ./workspace/tidb-feature --branch-name feature-x`
-- `tdc git remove-git-worktree --worktree-path ./workspace/tidb-feature --force`
-- `tdc git create-git-workspace --root-path /workspace/repo --repo-url https://example.test/repo.git --mode fast`
-- `tdc git list-git-workspaces`
-- `tdc git describe-git-workspace --root-path /workspace/repo`
-- `tdc git replace-git-tree --workspace-id <id> --commit-sha <sha> --node-json '{"path":"README.md","name":"README.md","kind":"file","mode":"100644","object_sha":"..."}'`
-- `tdc git list-git-tree --workspace-id <id> --commit-sha <sha>`
-- `tdc git upsert-git-state --workspace-id <id> --checkpoint-commit <sha> --storage-type inline --content state`
-- `tdc git put-git-overlay-entry --workspace-id <id> --path README.md --operation upsert --resource-kind file --mode 100644 --content hello`
-- `tdc git delete-git-workspace --workspace-id <id>`
+- `tdc fs-vault create-secret --secret-name db-prod --field DB_URL=mysql://example --field PASSWORD=@./password.txt`
+- `tdc fs-vault replace-secret --secret-path /n/vault/db-prod --from-directory ./secret-fields`
+- `tdc fs-vault read-secret --secret-name db-prod`
+- `tdc fs-vault read-secret --secret-name db-prod --field PASSWORD --format raw`
+- `tdc fs-vault read-secret --secret-name db-prod --field DB_URL --format env`
+- `tdc fs-vault list-secrets`
+- `tdc fs-vault delete-secret --secret-name db-prod`
+- `tdc fs-vault create-grant --agent-id deploy-agent --scope db-prod/DB_URL --permission read --ttl 10m`
+- `tdc fs-vault delete-grant --grant-id <grant-id> --reason rotated`
+- `tdc fs-vault create-token --agent-id deploy-agent --task-id deploy-123 --scope db-prod --ttl 10m`
+- `tdc fs-vault delete-token --token-id <token-id>`
+- `tdc fs-vault list-audit-events --secret-name db-prod --limit 20`
+- `tdc fs-vault run-with-secret --secret-path /n/vault/db-prod -- env`
+- `tdc fs-vault mount-vault --mount-path ./vault`
+- `tdc fs-vault mount-vault --mount-path ./vault --vault-token "$TDC_VAULT_TOKEN"`
+- `tdc fs-vault unmount-vault --mount-path ./vault`
+- `tdc fs-journal create-journal --journal-id jrn-demo --journal-kind agent --title "demo task" --actor agent:tdc --label env=dev`
+- `tdc fs-journal append-journal-entries --journal-id jrn-demo --entry-json '{"type":"task.started"}'`
+- `tdc fs-journal read-journal-entries --journal-id jrn-demo --after-seq 0 --limit 100`
+- `tdc fs-journal search-journal-entries --entry-type task.started --label env=dev --include-entries`
+- `tdc fs-journal verify-journal --journal-id jrn-demo --output text`
+- `tdc fs-git clone-git-workspace --repo-url https://github.com/pingcap/tidb.git --target-path ./workspace/tidb`
+- `tdc fs-git clone-git-workspace --repo-url https://github.com/pingcap/tidb.git --target-path ./workspace/tidb --blobless --hydrate sync`
+- `tdc fs-git hydrate-git-workspace --target-path ./workspace/tidb --timeout 30m`
+- `tdc fs-git restore-git-workspace --target-path ./workspace/tidb`
+- `tdc fs-git add-git-worktree --base-path ./workspace/tidb --worktree-path ./workspace/tidb-feature --branch-name feature-x`
+- `tdc fs-git remove-git-worktree --worktree-path ./workspace/tidb-feature --force`
+- `tdc fs-git create-git-workspace --root-path /workspace/repo --repo-url https://example.test/repo.git --mode fast`
+- `tdc fs-git list-git-workspaces`
+- `tdc fs-git describe-git-workspace --root-path /workspace/repo`
+- `tdc fs-git replace-git-tree --workspace-id <id> --commit-sha <sha> --node-json '{"path":"README.md","name":"README.md","kind":"file","mode":"100644","object_sha":"..."}'`
+- `tdc fs-git list-git-tree --workspace-id <id> --commit-sha <sha>`
+- `tdc fs-git upsert-git-state --workspace-id <id> --checkpoint-commit <sha> --storage-type inline --content state`
+- `tdc fs-git put-git-overlay-entry --workspace-id <id> --path README.md --operation upsert --resource-kind file --mode 100644 --content hello`
+- `tdc fs-git delete-git-workspace --workspace-id <id>`
 
 Registered command surface:
 
@@ -547,43 +547,43 @@ Registered command surface:
 - `tdc fs mount` aliases `tdc fs mount-file-system`
 - `tdc fs drain` aliases `tdc fs drain-file-system`
 - `tdc fs umount` aliases `tdc fs unmount-file-system`
-- `tdc vault create-secret`
-- `tdc vault replace-secret`
-- `tdc vault read-secret`
-- `tdc vault list-secrets`
-- `tdc vault delete-secret`
-- `tdc vault create-token`
-- `tdc vault delete-token`
-- `tdc vault create-grant`
-- `tdc vault delete-grant`
-- `tdc vault list-audit-events`
-- `tdc vault run-with-secret`
-- `tdc vault mount-vault`
-- `tdc vault unmount-vault`
-- `tdc journal create-journal`
-- `tdc journal append-journal-entries`
-- `tdc journal read-journal-entries`
-- `tdc journal search-journal-entries`
-- `tdc journal verify-journal`
-- `tdc git clone-git-workspace`
-- `tdc git hydrate-git-workspace`
-- `tdc git restore-git-workspace`
-- `tdc git add-git-worktree`
-- `tdc git remove-git-worktree`
-- `tdc git create-git-workspace`
-- `tdc git list-git-workspaces`
-- `tdc git describe-git-workspace`
-- `tdc git delete-git-workspace`
-- `tdc git replace-git-tree`
-- `tdc git list-git-tree`
-- `tdc git upsert-git-state`
-- `tdc git describe-git-state`
-- `tdc git put-git-object-pack`
-- `tdc git list-git-object-packs`
-- `tdc git describe-git-object-pack`
-- `tdc git put-git-overlay-entry`
-- `tdc git describe-git-overlay-entry`
-- `tdc git list-git-overlay-entries`
+- `tdc fs-vault create-secret`
+- `tdc fs-vault replace-secret`
+- `tdc fs-vault read-secret`
+- `tdc fs-vault list-secrets`
+- `tdc fs-vault delete-secret`
+- `tdc fs-vault create-token`
+- `tdc fs-vault delete-token`
+- `tdc fs-vault create-grant`
+- `tdc fs-vault delete-grant`
+- `tdc fs-vault list-audit-events`
+- `tdc fs-vault run-with-secret`
+- `tdc fs-vault mount-vault`
+- `tdc fs-vault unmount-vault`
+- `tdc fs-journal create-journal`
+- `tdc fs-journal append-journal-entries`
+- `tdc fs-journal read-journal-entries`
+- `tdc fs-journal search-journal-entries`
+- `tdc fs-journal verify-journal`
+- `tdc fs-git clone-git-workspace`
+- `tdc fs-git hydrate-git-workspace`
+- `tdc fs-git restore-git-workspace`
+- `tdc fs-git add-git-worktree`
+- `tdc fs-git remove-git-worktree`
+- `tdc fs-git create-git-workspace`
+- `tdc fs-git list-git-workspaces`
+- `tdc fs-git describe-git-workspace`
+- `tdc fs-git delete-git-workspace`
+- `tdc fs-git replace-git-tree`
+- `tdc fs-git list-git-tree`
+- `tdc fs-git upsert-git-state`
+- `tdc fs-git describe-git-state`
+- `tdc fs-git put-git-object-pack`
+- `tdc fs-git list-git-object-packs`
+- `tdc fs-git describe-git-object-pack`
+- `tdc fs-git put-git-overlay-entry`
+- `tdc fs-git describe-git-overlay-entry`
+- `tdc fs-git list-git-overlay-entries`
 
 Do not rename commands without updating specs, README, e2e tests, and AGENTS.
 Any code change that changes user-visible behavior must keep README.md in sync.
@@ -597,11 +597,11 @@ All tdc local state belongs under `~/.tdc/`.
 - Both files use profile sections such as `[default]` and `[stage]`.
 - The default profile name is `default`.
 - The global `--profile` flag selects a profile when explicitly provided.
-- `tdc configure` writes `cloud_provider`, `region_code`, `tdc_public_key`, and
+- `tdc configure` writes canonical `region_code`, `tdc_public_key`, and
   `tdc_private_key`.
 - `tdc configure --non-interactive` must not prompt. It reads values from flags
-  first, then `TDC_CLOUD_PROVIDER`, `TDC_REGION_CODE`, `TDC_PUBLIC_KEY`, and
-  `TDC_PRIVATE_KEY`. Missing values fail with an actionable error.
+  first, then `TDC_REGION_CODE`, `TDC_PUBLIC_KEY`, and `TDC_PRIVATE_KEY`.
+  Missing values fail with an actionable error.
 - For CI/CD, prefer environment variables for private keys over command-line
   secret flags.
 - Interactive `tdc configure` must respond to Ctrl+C and surface an
@@ -614,8 +614,7 @@ Minimum current keys:
 ```toml
 # ~/.tdc/config
 [default]
-cloud_provider = "aws"
-region_code = "us-east-1"
+region_code = "aws-us-east-1"
 
 # ~/.tdc/credentials
 [default]
@@ -639,7 +638,7 @@ flat keys under the active profile:
 fs_resource_name = "workspace"
 fs_tenant_id = "tenant-..."
 fs_cloud_provider = "aws"
-fs_region_code = "us-east-1"
+fs_region_code = "aws-us-east-1"
 ```
 
 DB SQL user credentials live outside the main credentials file:
@@ -666,7 +665,7 @@ password = "..."
 
 Do not ask users to provide TiDB Cloud API endpoints, filesystem metadata
 database URLs, or server URLs. Endpoint selection is an internal resolver
-responsibility based on `cloud_provider` and `region_code`. Test-only endpoint
+responsibility based on canonical `region_code`. Test-only endpoint
 overrides, if added later, must be hidden from ordinary user workflows and must
 not be required by MVP usage.
 
@@ -693,9 +692,8 @@ Credential lookup order for authenticated commands:
 1. If `--profile <name>` is explicitly provided, read that profile from
    `~/.tdc/config` and `~/.tdc/credentials`.
 2. If no profile is explicitly provided and any credential environment variable
-   is present, read environment credentials from `TDC_CLOUD_PROVIDER`,
-   `TDC_REGION_CODE`, `TDC_PUBLIC_KEY`, and `TDC_PRIVATE_KEY`. All four are
-   required in this mode.
+   is present, read environment credentials from `TDC_REGION_CODE`,
+   `TDC_PUBLIC_KEY`, and `TDC_PRIVATE_KEY`. All three are required in this mode.
 3. Otherwise read the `default` profile.
 
 When implementing command handlers, detect whether `--profile` was explicitly
@@ -704,10 +702,18 @@ default must not suppress environment-variable fallback.
 
 Supported MVP placement values:
 
-| Cloud provider | Region labels | Region codes |
+| Canonical region code | Cloud provider | Region label |
 | --- | --- | --- |
-| `aws` | N. Virginia, Oregon, Frankfurt, Tokyo, Singapore | `us-east-1`, `us-west-2`, `eu-central-1`, `ap-northeast-1`, `ap-southeast-1` |
-| `alibaba_cloud` | Singapore | `ap-southeast-1` |
+| `aws-us-east-1` | AWS | N. Virginia |
+| `aws-us-west-2` | AWS | Oregon |
+| `aws-eu-central-1` | AWS | Frankfurt |
+| `aws-ap-northeast-1` | AWS | Tokyo |
+| `aws-ap-southeast-1` | AWS | Singapore |
+| `ali-ap-southeast-1` | Alibaba Cloud | Singapore |
+
+The prefix before the first `-` is the cloud provider selector. `aws` maps to
+internal provider `aws`; `ali` maps to internal provider `alibaba_cloud`. Keep
+this mapping centralized in `internal/config/region`.
 
 Do not store secrets in logs, telemetry, generated docs examples, or test
 fixtures.
@@ -766,7 +772,7 @@ targets into the layer. It must reject `--append`, `--resume`, and
 `search-file-content --layer-id` and `find-files --layer-id` pass the layer
 overlay selector to the backend.
 
-`tdc vault` commands use the active profile's resolved tdc fs endpoint and
+`tdc fs-vault` commands use the active profile's resolved tdc fs endpoint and
 stored `fs_api_key`; do not add a raw vault server URL. Management and owner
 read paths authenticate with `Authorization: Bearer <tdc-fs-api-key>`.
 Delegated reads use `--vault-token` or `TDC_VAULT_TOKEN` with the same Bearer
@@ -786,7 +792,7 @@ readable vault secrets as a read-only FUSE filesystem at
 `--vault-token` or `TDC_VAULT_TOKEN`. For background delegated mounts, pass the
 token through the child environment rather than process arguments.
 
-`tdc journal` commands use the active profile's resolved tdc fs endpoint and
+`tdc fs-journal` commands use the active profile's resolved tdc fs endpoint and
 stored `fs_api_key`; do not add a raw journal server URL. They wrap
 Drive9-compatible `/v1/journals`, `/v1/journals/<journal_id>/entries`,
 `/v1/journals/<journal_id>/verify`, and `/v1/journal-entries`. Mutating
@@ -820,7 +826,7 @@ mount, and packs the local overlay on unmount unless the user passes
 `--no-auto-unpack` or `--no-auto-pack`. Default local roots live under
 `~/.tdc/local/fs/<hash>` and must not depend on the mount path alone.
 
-`tdc git clone-git-workspace`, `hydrate-git-workspace`,
+`tdc fs-git clone-git-workspace`, `hydrate-git-workspace`,
 `restore-git-workspace`, `add-git-worktree`, and `remove-git-worktree` are
 Drive9-style client workflows using tdc command names. They require a target
 path inside a tdc fs mount with readable mount metadata. Fast clone/worktree

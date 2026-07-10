@@ -62,13 +62,11 @@ Live e2e reads repository-level GitHub Actions secrets and variables:
 
 - `TDC_PUBLIC_KEY` secret
 - `TDC_PRIVATE_KEY` secret
-- `TDC_CLOUD_PROVIDER` variable, for example `aws`
-- `TDC_REGION_CODE` variable, for example `us-east-1`
+- `TDC_REGION_CODE` variable, for example `aws-us-east-1`
 
 The workflow configures the live profile non-interactively:
 
 ```bash
-TDC_CLOUD_PROVIDER="$TDC_CLOUD_PROVIDER" \
 TDC_REGION_CODE="$TDC_REGION_CODE" \
 TDC_PUBLIC_KEY="$TDC_PUBLIC_KEY" \
 TDC_PRIVATE_KEY="$TDC_PRIVATE_KEY" \

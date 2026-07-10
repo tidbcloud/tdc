@@ -21,17 +21,17 @@ tdc MVP is intended to replace Drive9 usage on TiDB Cloud. This extension theref
 - Local recursive copy rejects symlinks instead of silently following them.
 - tdc fs layer commands and client support are implemented for `/v1/layers`, `/v1/layers/<layer_id>/*`, and `/v1/layer-checkpoints/<checkpoint_id>`.
 - `tdc fs copy-file --layer-id`, `tdc fs search-file-content --layer-id`, and `tdc fs find-files --layer-id` provide Drive9-style layer-aware client workflows using tdc's explicit long flag naming.
-- tdc vault commands and client support are implemented for `/v1/vault/secrets`, `/v1/vault/tokens`, `/v1/vault/grants`, `/v1/vault/audit`, and `/v1/vault/read/*`.
-- `tdc vault run-with-secret` injects one vault secret into a child process environment, validates Drive9-style env key/value constraints, and scrubs tdc credential environment variables before exec.
-- `tdc vault mount-vault` exposes readable vault secrets as a read-only FUSE filesystem at `<mount>/<secret>/<field>`, and `tdc vault unmount-vault` stops that mount through shared mount state.
-- tdc journal commands and client support are implemented for `/v1/journals`, `/v1/journals/<journal_id>/entries`, `/v1/journals/<journal_id>/verify`, and `/v1/journal-entries`.
+- tdc fs-vault commands and client support are implemented for `/v1/vault/secrets`, `/v1/vault/tokens`, `/v1/vault/grants`, `/v1/vault/audit`, and `/v1/vault/read/*`.
+- `tdc fs-vault run-with-secret` injects one vault secret into a child process environment, validates Drive9-style env key/value constraints, and scrubs tdc credential environment variables before exec.
+- `tdc fs-vault mount-vault` exposes readable vault secrets as a read-only FUSE filesystem at `<mount>/<secret>/<field>`, and `tdc fs-vault unmount-vault` stops that mount through shared mount state.
+- tdc fs-journal commands and client support are implemented for `/v1/journals`, `/v1/journals/<journal_id>/entries`, `/v1/journals/<journal_id>/verify`, and `/v1/journal-entries`.
 - `tdc fs copy-file --from-stdin`, `--to-stdout`, repeatable `--tag key=value`, and `--description` are implemented for agent-friendly stream and metadata workflows.
 - `tdc fs chmod-file`, `tdc fs create-symlink`, and `tdc fs create-hardlink` are implemented. tdc stores client-side POSIX metadata for mode and symlink targets under `~/.tdc/fs_metadata`, so `describe-file` and FUSE can report tdc-managed metadata even when remote stat responses omit it.
 - `tdc fs pack-file-system` and `tdc fs unpack-file-system` implement a tdc-native `tdc.pack.v1` archive format and accept Drive9 `drive9.pack.v1` archives on unpack.
 - Mount profiles are implemented with `coding-agent`, `portable`, and `none`; mount state records `local_root`, `mount_profile`, and `pack_paths`.
 - Portable mount auto-unpack on mount and auto-pack on unmount are implemented with `--no-auto-unpack`, `--no-auto-pack`, and explicit archive path overrides.
-- `tdc git clone-git-workspace`, `hydrate-git-workspace`, `restore-git-workspace`, `add-git-worktree`, and `remove-git-worktree` implement Drive9-style fast Git workflows in tdc command naming.
-- Low-level `tdc git` workspace/tree/state/object-pack/overlay commands are implemented for diagnostics and automation.
+- `tdc fs-git clone-git-workspace`, `hydrate-git-workspace`, `restore-git-workspace`, `add-git-worktree`, and `remove-git-worktree` implement Drive9-style fast Git workflows in tdc command naming.
+- Low-level `tdc fs-git` workspace/tree/state/object-pack/overlay commands are implemented for diagnostics and automation.
 - FUSE synthetic Git workspace handling is implemented: clean Git entries are served from `/v1/git-workspaces` tree manifests plus local `.git` objects, and dirty changes are written to Git overlay endpoints instead of ordinary `/v1/fs` rows.
 - Unit tests include tdc-adapted Drive9 client-side upload cases for buffer reuse, bounded parallelism, V2 multipart part sizing, V2 presign retry, expected revision propagation, invalid tag rejection before requests, short-read abort, V1 fallback, upload resume, and append patch upload.
 - Unit tests and live e2e cover the implemented range read, multipart upload, upload resume, append, download resume, recursive copy, POSIX metadata commands, layer behavior, vault behavior including mount view, journal behavior, pack/unpack behavior, and Git workspace API behavior. Unit tests also cover fast clone registration, Git restore from state/object packs, FUSE synthetic Git reads/writes, and mount auto pack/unpack.
@@ -135,17 +135,17 @@ Pack/unpack:
 
 Git workspace workflow:
 
-1. `tdc git clone-git-workspace` resolves `--target-path` through tdc mount state, runs `git clone --no-checkout`, and optionally adds `--filter=blob:none`.
+1. `tdc fs-git clone-git-workspace` resolves `--target-path` through tdc mount state, runs `git clone --no-checkout`, and optionally adds `--filter=blob:none`.
 2. It reads `HEAD`, branch, and `git ls-tree -r -t -z`, then sends `POST /v1/git-workspaces` and `POST /v1/git-workspaces/<id>/tree`.
 3. It runs `git read-tree --reset <head>` and applies local Git performance settings.
 4. It archives lightweight `.git` state without object databases or lock files and sends `POST /v1/git-workspaces/<id>/git-state` with `storage_type=tar.gz-no-objects`.
-5. `tdc git hydrate-git-workspace` reads the registered tree and runs `git cat-file -e` for clean objects, causing blobless remotes to prefetch through Git.
-6. `tdc git add-git-worktree` uses native `git worktree add --no-checkout`, registers a linked workspace with `common_workspace_id`, replaces its tree, and checkpoints linked `.git` state.
-7. `tdc git remove-git-worktree` refuses dirty linked worktrees unless `--force`, deletes the linked workspace row, and removes the linked local overlay root without recursive clean-tree whiteouts.
+5. `tdc fs-git hydrate-git-workspace` reads the registered tree and runs `git cat-file -e` for clean objects, causing blobless remotes to prefetch through Git.
+6. `tdc fs-git add-git-worktree` uses native `git worktree add --no-checkout`, registers a linked workspace with `common_workspace_id`, replaces its tree, and checkpoints linked `.git` state.
+7. `tdc fs-git remove-git-worktree` refuses dirty linked worktrees unless `--force`, deletes the linked workspace row, and removes the linked local overlay root without recursive clean-tree whiteouts.
 8. FUSE loads active git workspaces, trees, and overlays from `/v1/git-workspaces`; longest root path wins.
 9. FUSE reads clean files with `git cat-file -p <object_sha>` from the local overlay `.git`; overlay entries override clean tree entries, and whiteouts hide clean entries.
 10. FUSE writes, chmod, symlink, hardlink copies, rename, and delete inside Git workspaces send `POST /v1/git-workspaces/<id>/overlay`.
-11. `tdc git restore-git-workspace --target-path <path>` downloads `GET /v1/git-workspaces/<id>/git-state`, extracts it into the local `.git` layout, lists object packs with `GET /v1/git-workspaces/<id>/object-packs`, downloads missing pack bytes with `GET /v1/git-workspaces/<id>/object-packs/<pack_id>`, and runs `git unpack-objects -r`.
+11. `tdc fs-git restore-git-workspace --target-path <path>` downloads `GET /v1/git-workspaces/<id>/git-state`, extracts it into the local `.git` layout, lists object packs with `GET /v1/git-workspaces/<id>/object-packs`, downloads missing pack bytes with `GET /v1/git-workspaces/<id>/object-packs/<pack_id>`, and runs `git unpack-objects -r`.
 12. FUSE clean Git reads call the same restore path when the workspace is registered but the local `.git` object store is missing, then retry `git cat-file`.
 
 Remote-to-local resume:
@@ -182,32 +182,32 @@ Layers:
 
 Vault:
 
-1. `tdc vault create-secret` sends `POST /v1/vault/secrets` with `name`, parsed `fields`, and `created_by=tdc`.
-2. `tdc vault replace-secret` validates `/n/vault/<secret>`, reads one field per file from `--from-directory`, and sends `PUT /v1/vault/secrets/<name>`.
-3. Owner `tdc vault read-secret` sends `GET /v1/vault/secrets/<name>/value`; owner field reads send `GET /v1/vault/secrets/<name>/value/<field>` and return raw bytes when requested.
-4. Delegated `tdc vault read-secret --vault-token` and `TDC_VAULT_TOKEN` use `Authorization: Bearer <vault-token>` and send `GET /v1/vault/read/<name>` or `GET /v1/vault/read/<name>/<field>`.
-5. `tdc vault list-secrets` sends `GET /v1/vault/secrets` in owner mode and `GET /v1/vault/read` in delegated mode.
-6. `tdc vault delete-secret` sends `DELETE /v1/vault/secrets/<name>`.
-7. `tdc vault create-grant` sends `POST /v1/vault/grants` with `agent`, `scope`, `perm`, `ttl_seconds`, and optional `label_hint`; it does not send `principal_type`.
-8. `tdc vault delete-grant` sends `DELETE /v1/vault/grants/<grant_id>` with `revoked_by` and optional `reason`.
-9. `tdc vault create-token` sends `POST /v1/vault/tokens` with `agent_id`, `task_id`, `scope`, and `ttl_seconds`.
-10. `tdc vault delete-token` sends `DELETE /v1/vault/tokens/<token_id>`.
-11. `tdc vault list-audit-events` sends `GET /v1/vault/audit` with optional `secret` and capped `limit`, then applies client-side `--agent-id` and `--since` filters.
-12. `tdc vault run-with-secret` reads one whole secret, validates each field is an environment key matching `[A-Z_][A-Z0-9_]*`, rejects control bytes except tabs, scrubs tdc credential variables, and execs the child command.
-13. `tdc vault mount-vault --mount-path <path>` validates the active profile, resolves the tdc fs endpoint, probes owner or delegated vault readability, checks FUSE prerequisites, and starts a read-only background FUSE process by default.
+1. `tdc fs-vault create-secret` sends `POST /v1/vault/secrets` with `name`, parsed `fields`, and `created_by=tdc`.
+2. `tdc fs-vault replace-secret` validates `/n/vault/<secret>`, reads one field per file from `--from-directory`, and sends `PUT /v1/vault/secrets/<name>`.
+3. Owner `tdc fs-vault read-secret` sends `GET /v1/vault/secrets/<name>/value`; owner field reads send `GET /v1/vault/secrets/<name>/value/<field>` and return raw bytes when requested.
+4. Delegated `tdc fs-vault read-secret --vault-token` and `TDC_VAULT_TOKEN` use `Authorization: Bearer <vault-token>` and send `GET /v1/vault/read/<name>` or `GET /v1/vault/read/<name>/<field>`.
+5. `tdc fs-vault list-secrets` sends `GET /v1/vault/secrets` in owner mode and `GET /v1/vault/read` in delegated mode.
+6. `tdc fs-vault delete-secret` sends `DELETE /v1/vault/secrets/<name>`.
+7. `tdc fs-vault create-grant` sends `POST /v1/vault/grants` with `agent`, `scope`, `perm`, `ttl_seconds`, and optional `label_hint`; it does not send `principal_type`.
+8. `tdc fs-vault delete-grant` sends `DELETE /v1/vault/grants/<grant_id>` with `revoked_by` and optional `reason`.
+9. `tdc fs-vault create-token` sends `POST /v1/vault/tokens` with `agent_id`, `task_id`, `scope`, and `ttl_seconds`.
+10. `tdc fs-vault delete-token` sends `DELETE /v1/vault/tokens/<token_id>`.
+11. `tdc fs-vault list-audit-events` sends `GET /v1/vault/audit` with optional `secret` and capped `limit`, then applies client-side `--agent-id` and `--since` filters.
+12. `tdc fs-vault run-with-secret` reads one whole secret, validates each field is an environment key matching `[A-Z_][A-Z0-9_]*`, rejects control bytes except tabs, scrubs tdc credential variables, and execs the child command.
+13. `tdc fs-vault mount-vault --mount-path <path>` validates the active profile, resolves the tdc fs endpoint, probes owner or delegated vault readability, checks FUSE prerequisites, and starts a read-only background FUSE process by default.
 14. The vault mount root lists readable secrets. Each secret is a directory. Each field is a read-only file whose bytes are materialized at `Open`.
 15. Owner vault mount reads use `GET /v1/vault/secrets` and `GET /v1/vault/secrets/<name>/value[/<field>]`. Delegated vault mount reads use `GET /v1/vault/read` and `GET /v1/vault/read/<name>[/<field>]`.
 16. A `--vault-token` value is passed to the background mount through `TDC_VAULT_TOKEN` in the child environment rather than through process arguments.
-17. `tdc vault unmount-vault --mount-path <path>` reuses shared mount state and process termination, with no fs auto-pack because vault mount state has no local overlay root.
+17. `tdc fs-vault unmount-vault --mount-path <path>` reuses shared mount state and process termination, with no fs auto-pack because vault mount state has no local overlay root.
 
 Journal:
 
-1. `tdc journal create-journal` sends `POST /v1/journals` with `journal_id`, `kind`, `title`, optional `actor`, and repeated labels. When `--journal-id` is omitted, tdc generates a local `jrn_*` id.
-2. `tdc journal append-journal-entries` parses repeatable `--entry-json` objects, JSONL stdin, or JSON array stdin with `--json-array`, applies `--entry-type`, `--source`, and repeated `--subject`, then sends `POST /v1/journals/<journal_id>/entries`.
+1. `tdc fs-journal create-journal` sends `POST /v1/journals` with `journal_id`, `kind`, `title`, optional `actor`, and repeated labels. When `--journal-id` is omitted, tdc generates a local `jrn_*` id.
+2. `tdc fs-journal append-journal-entries` parses repeatable `--entry-json` objects, JSONL stdin, or JSON array stdin with `--json-array`, applies `--entry-type`, `--source`, and repeated `--subject`, then sends `POST /v1/journals/<journal_id>/entries`.
 3. The append command sends `--idempotency-key` as `Idempotency-Key`; when omitted, tdc generates a local `app_*` id.
-4. `tdc journal read-journal-entries` sends `GET /v1/journals/<journal_id>/entries` with optional `after_seq` and capped `limit`, then decodes the backend NDJSON stream into structured output.
-5. `tdc journal search-journal-entries` sends `GET /v1/journal-entries` with Drive9-compatible query filters: `type`, `status`, `kind`, `actor`, repeated `subject`, repeated `meta`, `since`, `until`, `limit`, `cursor`, and `include=entry`.
-6. `tdc journal verify-journal` sends `GET /v1/journals/<journal_id>/verify`.
+4. `tdc fs-journal read-journal-entries` sends `GET /v1/journals/<journal_id>/entries` with optional `after_seq` and capped `limit`, then decodes the backend NDJSON stream into structured output.
+5. `tdc fs-journal search-journal-entries` sends `GET /v1/journal-entries` with Drive9-compatible query filters: `type`, `status`, `kind`, `actor`, repeated `subject`, repeated `meta`, `since`, `until`, `limit`, `cursor`, and `include=entry`.
+6. `tdc fs-journal verify-journal` sends `GET /v1/journals/<journal_id>/verify`.
 
 ## Drive9 Parity Status
 
@@ -225,8 +225,8 @@ Aligned:
 - FUSE mount drain: implemented with a local control socket, Drive9-compatible request/response shape, dirty open-handle flush, pending write-back recovery, non-FUSE rejection, and live e2e coverage.
 - FUSE correctness: improved cache isolation, stale-write checks, and open-handle rename/unlink behavior.
 - Layers: implemented in tdc command style for create/list/describe/diff/replay/entry/object/checkpoint/events/rollback/commit. `copy-file --layer-id`, `search-file-content --layer-id`, and `find-files --layer-id` cover the Drive9 layer-aware client flows with explicit tdc flag names.
-- Vault: implemented as top-level `tdc vault` commands to preserve tdc's two-level command style. It covers owner and delegated secret reads, grants, legacy scoped tokens, audit listing, raw/env output, Drive9-style command environment injection, and a read-only mount-time vault filesystem view.
-- Journal: implemented as top-level `tdc journal` commands to preserve tdc's two-level command style. It covers create, append with idempotency keys, NDJSON/JSON entry input, read, search with repeated labels, and verify.
+- Vault: implemented as top-level `tdc fs-vault` commands to preserve tdc's two-level command style. It covers owner and delegated secret reads, grants, legacy scoped tokens, audit listing, raw/env output, Drive9-style command environment injection, and a read-only mount-time vault filesystem view.
+- Journal: implemented as top-level `tdc fs-journal` commands to preserve tdc's two-level command style. It covers create, append with idempotency keys, NDJSON/JSON entry input, read, search with repeated labels, and verify.
 - Pack/unpack: implemented with tdc archive creation, Drive9 archive unpack compatibility, local overlay semantics, remote pack paths, and mount auto-pack/auto-unpack integration.
 - POSIX metadata and stream workflows: implemented for chmod, symlink, hardlink, tags, descriptions, stdin upload, and stdout download, with client-side metadata persistence for tdc-managed mode and symlink target visibility.
 - Git workspace: implemented with low-level API commands, fast clone, hydrate, restore, linked worktree add/remove, FUSE synthetic tree reads, Git overlay writes, and automatic FUSE restore when local Git state is absent.

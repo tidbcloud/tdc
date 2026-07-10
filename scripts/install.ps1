@@ -53,8 +53,7 @@ function Bootstrap-Config {
     if (-not (Test-Path $ConfigFile)) {
         @"
 [default]
-cloud_provider = 'aws'
-region_code = 'us-east-1'
+region_code = 'aws-us-east-1'
 "@ | Set-Content -Path $ConfigFile -NoNewline
         Info "Bootstrapped $ConfigFile with default aws/us-east-1 placement"
     }
@@ -78,20 +77,26 @@ function Report-PathStatus {
 function Print-Regions {
     Write-Output ""
     Write-Output "  Config regions:"
-    Write-Output "    aws: us-east-1, us-west-2, eu-central-1, ap-northeast-1, ap-southeast-1"
-    Write-Output "    alibaba_cloud: ap-southeast-1"
+    Write-Output "    aws-us-east-1, aws-us-west-2, aws-eu-central-1, aws-ap-northeast-1, aws-ap-southeast-1"
+    Write-Output "    ali-ap-southeast-1"
     Write-Output ""
     Write-Output "  tdc fs regions:"
     try {
         $manifest = Invoke-RestMethod -Uri "https://drive9.ai/manifest/regions/drive9-regions.json"
-        $regions = @($manifest.regions | Where-Object { $_.mode -eq "tidb_cloud_native" } | ForEach-Object { "    $($_.cloud_provider): $($_.tidb_region)" } | Sort-Object -Unique)
+        $regions = @($manifest.regions | Where-Object { $_.mode -eq "tidb_cloud_native" } | ForEach-Object {
+            $prefix = $_.cloud_provider
+            if ($prefix -eq "alicloud" -or $prefix -eq "alibaba_cloud") {
+                $prefix = "ali"
+            }
+            "    $prefix-$($_.tidb_region)"
+        } | Sort-Object -Unique)
         if ($regions.Count -gt 0) {
             $regions | ForEach-Object { Write-Output $_ }
             return
         }
     } catch {
     }
-    Write-Output "    aws: us-east-1, ap-southeast-1"
+    Write-Output "    aws-us-east-1, aws-ap-southeast-1"
     Warn "Could not fetch the latest tdc fs region manifest; run tdc fs check-file-system after configure"
 }
 

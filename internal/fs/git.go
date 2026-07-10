@@ -225,7 +225,7 @@ const (
 )
 
 func (s Service) CreateGitWorkspace(ctx context.Context, opts GitWorkspaceCreateOptions) (apifs.GitWorkspace, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "create tdc git workspace")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "create tdc fs-git workspace")
 	if err != nil {
 		return apifs.GitWorkspace{}, err
 	}
@@ -251,7 +251,7 @@ func (s Service) CreateGitWorkspace(ctx context.Context, opts GitWorkspaceCreate
 }
 
 func (s Service) ListGitWorkspaces(ctx context.Context, profile *config.Profile) (apifs.GitWorkspacesResponse, error) {
-	client, err := s.dataClient(profile, authz.FSGitWorkspaceRead, "list tdc git workspaces")
+	client, err := s.dataClient(profile, authz.FSGitWorkspaceRead, "list tdc fs-git workspaces")
 	if err != nil {
 		return apifs.GitWorkspacesResponse{}, err
 	}
@@ -259,7 +259,7 @@ func (s Service) ListGitWorkspaces(ctx context.Context, profile *config.Profile)
 }
 
 func (s Service) DescribeGitWorkspace(ctx context.Context, opts GitWorkspaceDescribeOptions) (apifs.GitWorkspace, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "describe tdc git workspace")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "describe tdc fs-git workspace")
 	if err != nil {
 		return apifs.GitWorkspace{}, err
 	}
@@ -270,7 +270,7 @@ func (s Service) DescribeGitWorkspace(ctx context.Context, opts GitWorkspaceDesc
 }
 
 func (s Service) DeleteGitWorkspace(ctx context.Context, opts GitWorkspaceDeleteOptions) (GitDeleteResult, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "delete tdc git workspace")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "delete tdc fs-git workspace")
 	if err != nil {
 		return GitDeleteResult{}, err
 	}
@@ -285,7 +285,7 @@ func (s Service) DeleteGitWorkspace(ctx context.Context, opts GitWorkspaceDelete
 }
 
 func (s Service) ReplaceGitTree(ctx context.Context, opts GitTreeReplaceOptions) (GitDeleteResult, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "replace tdc git tree")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "replace tdc fs-git tree")
 	if err != nil {
 		return GitDeleteResult{}, err
 	}
@@ -304,7 +304,7 @@ func (s Service) ReplaceGitTree(ctx context.Context, opts GitTreeReplaceOptions)
 }
 
 func (s Service) ListGitTree(ctx context.Context, opts GitTreeListOptions) (apifs.GitTreeResponse, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "list tdc git tree")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "list tdc fs-git tree")
 	if err != nil {
 		return apifs.GitTreeResponse{}, err
 	}
@@ -316,7 +316,7 @@ func (s Service) ListGitTree(ctx context.Context, opts GitTreeListOptions) (apif
 }
 
 func (s Service) UpsertGitState(ctx context.Context, opts GitStateUpsertOptions) (apifs.GitState, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "upsert tdc git state")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "upsert tdc fs-git state")
 	if err != nil {
 		return apifs.GitState{}, err
 	}
@@ -336,7 +336,7 @@ func (s Service) UpsertGitState(ctx context.Context, opts GitStateUpsertOptions)
 }
 
 func (s Service) DescribeGitState(ctx context.Context, opts GitWorkspaceIDOptions) (apifs.GitState, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "describe tdc git state")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "describe tdc fs-git state")
 	if err != nil {
 		return apifs.GitState{}, err
 	}
@@ -348,7 +348,7 @@ func (s Service) DescribeGitState(ctx context.Context, opts GitWorkspaceIDOption
 }
 
 func (s Service) PutGitObjectPack(ctx context.Context, opts GitObjectPackPutOptions) (apifs.GitObjectPack, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "put tdc git object pack")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "put tdc fs-git object pack")
 	if err != nil {
 		return apifs.GitObjectPack{}, err
 	}
@@ -360,7 +360,7 @@ func (s Service) PutGitObjectPack(ctx context.Context, opts GitObjectPackPutOpti
 }
 
 func (s Service) ListGitObjectPacks(ctx context.Context, opts GitWorkspaceIDOptions) (apifs.GitObjectPacksResponse, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "list tdc git object packs")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "list tdc fs-git object packs")
 	if err != nil {
 		return apifs.GitObjectPacksResponse{}, err
 	}
@@ -372,7 +372,7 @@ func (s Service) ListGitObjectPacks(ctx context.Context, opts GitWorkspaceIDOpti
 }
 
 func (s Service) DescribeGitObjectPack(ctx context.Context, opts GitObjectPackDescribeOptions) (apifs.GitObjectPack, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "describe tdc git object pack")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "describe tdc fs-git object pack")
 	if err != nil {
 		return apifs.GitObjectPack{}, err
 	}
@@ -387,7 +387,7 @@ func (s Service) DescribeGitObjectPack(ctx context.Context, opts GitObjectPackDe
 }
 
 func (s Service) PutGitOverlayEntry(ctx context.Context, opts GitOverlayPutOptions) (apifs.GitOverlayEntry, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "put tdc git overlay entry")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "put tdc fs-git overlay entry")
 	if err != nil {
 		return apifs.GitOverlayEntry{}, err
 	}
@@ -414,7 +414,7 @@ func (s Service) PutGitOverlayEntry(ctx context.Context, opts GitOverlayPutOptio
 }
 
 func (s Service) DescribeGitOverlayEntry(ctx context.Context, opts GitOverlayDescribeOptions) (apifs.GitOverlayEntry, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "describe tdc git overlay entry")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "describe tdc fs-git overlay entry")
 	if err != nil {
 		return apifs.GitOverlayEntry{}, err
 	}
@@ -429,7 +429,7 @@ func (s Service) DescribeGitOverlayEntry(ctx context.Context, opts GitOverlayDes
 }
 
 func (s Service) ListGitOverlayEntries(ctx context.Context, opts GitWorkspaceIDOptions) (apifs.GitOverlayEntriesResponse, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "list tdc git overlay entries")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "list tdc fs-git overlay entries")
 	if err != nil {
 		return apifs.GitOverlayEntriesResponse{}, err
 	}
@@ -441,7 +441,7 @@ func (s Service) ListGitOverlayEntries(ctx context.Context, opts GitWorkspaceIDO
 }
 
 func (s Service) CloneGitWorkspace(ctx context.Context, opts GitWorkspaceCloneOptions) (GitWorkspaceCloneResult, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "clone tdc git workspace")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "clone tdc fs-git workspace")
 	if err != nil {
 		return GitWorkspaceCloneResult{}, err
 	}
@@ -544,7 +544,7 @@ func (s Service) CloneGitWorkspace(ctx context.Context, opts GitWorkspaceCloneOp
 }
 
 func (s Service) HydrateGitWorkspace(ctx context.Context, opts GitWorkspaceHydrateOptions) (GitHydrateResult, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "hydrate tdc git workspace")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "hydrate tdc fs-git workspace")
 	if err != nil {
 		return GitHydrateResult{}, err
 	}
@@ -566,7 +566,7 @@ func (s Service) HydrateGitWorkspace(ctx context.Context, opts GitWorkspaceHydra
 }
 
 func (s Service) RestoreGitWorkspace(ctx context.Context, opts GitWorkspaceRestoreOptions) (GitRestoreResult, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "restore tdc git workspace")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "restore tdc fs-git workspace")
 	if err != nil {
 		return GitRestoreResult{}, err
 	}
@@ -592,7 +592,7 @@ func (s Service) RestoreGitWorkspace(ctx context.Context, opts GitWorkspaceResto
 }
 
 func (s Service) AddGitWorktree(ctx context.Context, opts GitWorktreeAddOptions) (GitWorkspaceCloneResult, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "add tdc git worktree")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "add tdc fs-git worktree")
 	if err != nil {
 		return GitWorkspaceCloneResult{}, err
 	}
@@ -737,7 +737,7 @@ func (s Service) AddGitWorktree(ctx context.Context, opts GitWorktreeAddOptions)
 }
 
 func (s Service) RemoveGitWorktree(ctx context.Context, opts GitWorktreeRemoveOptions) (GitWorktreeRemoveResult, error) {
-	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "remove tdc git worktree")
+	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "remove tdc fs-git worktree")
 	if err != nil {
 		return GitWorktreeRemoveResult{}, err
 	}
@@ -1675,7 +1675,7 @@ func startGitHydrateBackground(ctx context.Context, targetPath, profileName stri
 	if err != nil {
 		return err
 	}
-	args := []string{"git", "hydrate-git-workspace", "--target-path", targetPath, "--timeout", gitHydrateTimeout.String()}
+	args := []string{"fs-git", "hydrate-git-workspace", "--target-path", targetPath, "--timeout", gitHydrateTimeout.String()}
 	if strings.TrimSpace(profileName) != "" {
 		args = append(args, "--profile", profileName)
 	}

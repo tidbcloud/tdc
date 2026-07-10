@@ -13,9 +13,8 @@ authenticated tdc commands.
 
 - `tdc configure` is interactive and may prompt for values.
 - `tdc configure --non-interactive` is for automation and CI/CD. It reads
-  values from flags first, then from `TDC_CLOUD_PROVIDER`, `TDC_REGION_CODE`,
-  `TDC_PUBLIC_KEY`, and `TDC_PRIVATE_KEY`; missing values fail without
-  prompting.
+  values from flags first, then from `TDC_REGION_CODE`, `TDC_PUBLIC_KEY`, and
+  `TDC_PRIVATE_KEY`; missing values fail without prompting.
 - If `--profile` is omitted, configure the `default` profile.
 - Store all local state under `~/.tdc/`.
 - Store non-sensitive values in `~/.tdc/config`.
@@ -29,12 +28,10 @@ authenticated tdc commands.
 - Use TOML profile sections in both files.
 - Create `~/.tdc/` and missing files as needed.
 - Restrict credentials file permissions to owner read/write where supported.
-- Prompt for cloud provider and region instead of any server URL.
-- Supported MVP cloud providers are `aws` and `alibaba_cloud`.
-- AWS regions are N. Virginia (`us-east-1`), Oregon (`us-west-2`), Frankfurt
-  (`eu-central-1`), Tokyo (`ap-northeast-1`), and Singapore
-  (`ap-southeast-1`).
-- Alibaba Cloud supports Singapore (`ap-southeast-1`) only.
+- Prompt for canonical region code instead of any server URL.
+- Supported MVP region codes are `aws-us-east-1`, `aws-us-west-2`,
+  `aws-eu-central-1`, `aws-ap-northeast-1`, `aws-ap-southeast-1`, and
+  `ali-ap-southeast-1`.
 - Allow agents to bypass the interactive command by writing valid TOML directly;
   the CLI only needs to read the resulting files correctly.
 
@@ -45,12 +42,11 @@ Minimum config shape:
 ```toml
 # ~/.tdc/config
 [default]
-cloud_provider = "aws"
-region_code = "us-east-1"
+region_code = "aws-us-east-1"
 fs_resource_name = "workspace"
 fs_tenant_id = "tdcfs-tenant-id"
 fs_cloud_provider = "aws"
-fs_region_code = "us-east-1"
+fs_region_code = "aws-us-east-1"
 ```
 
 Minimum credentials shape:
@@ -67,13 +63,12 @@ Lookup order:
 
 1. If `--profile` is provided, read that profile from config and credentials.
 2. If no profile is provided and environment variables are present, read
-   `TDC_CLOUD_PROVIDER`, `TDC_REGION_CODE`, `TDC_PUBLIC_KEY`, and
-   `TDC_PRIVATE_KEY`.
+   `TDC_REGION_CODE`, `TDC_PUBLIC_KEY`, and `TDC_PRIVATE_KEY`.
 3. Otherwise read the `default` profile.
 
 Do not store or accept server-url-like config keys, TiDB Cloud API endpoints, or
 filesystem metadata database URLs as user configuration. Endpoint resolution is
-implemented in the API client layer from `cloud_provider` and `region_code`.
+implemented in the API client layer from canonical `region_code`.
 
 ## Output And Errors
 
@@ -93,12 +88,12 @@ specs without repeating credentials:
 ```bash
 tdc configure
 tdc configure --profile stage
-TDC_CLOUD_PROVIDER=aws TDC_REGION_CODE=us-east-1 TDC_PUBLIC_KEY=... TDC_PRIVATE_KEY=... tdc organization list-projects
+TDC_REGION_CODE=aws-us-east-1 TDC_PUBLIC_KEY=... TDC_PRIVATE_KEY=... tdc organization list-projects
 ```
 
 Agents can create `~/.tdc/config` and `~/.tdc/credentials` directly using the
 same TOML schema. The CLI remains responsible for validating the schema and
-provider/region matrix.
+region matrix.
 
 ## Implementation Design
 

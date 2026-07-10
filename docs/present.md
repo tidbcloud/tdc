@@ -22,8 +22,7 @@ bin/tdc configure
 CI 或提前准备时可以用非交互式配置：
 
 ```bash
-TDC_CLOUD_PROVIDER=aws \
-TDC_REGION_CODE=us-east-1 \
+TDC_REGION_CODE=aws-us-east-1 \
 TDC_PUBLIC_KEY="$TDC_PUBLIC_KEY" \
 TDC_PRIVATE_KEY="$TDC_PRIVATE_KEY" \
 bin/tdc configure --non-interactive
@@ -273,14 +272,14 @@ bin/tdc fs list-files --path /demo --output text
 bin/tdc fs drain-file-system --mount-path "$MOUNT_PATH" --output text
 ```
 
-## 7. tdc git：在 tdc fs mount 里做 Git-aware workspace
+## 7. tdc fs-git：在 tdc fs mount 里做 Git-aware workspace
 
 Git workspace 需要目标路径位于 tdc fs mount 下，因为它会把本地 `.git` 状态、远端 tree manifest、overlay 写入都绑定到这个 workspace。
 
 ```bash
 mkdir -p "$MOUNT_PATH/repos"
 
-bin/tdc git clone-git-workspace \
+bin/tdc fs-git clone-git-workspace \
   --repo-url https://github.com/octocat/Hello-World.git \
   --target-path "$MOUNT_PATH/repos/hello" \
   --blobless \
@@ -291,42 +290,42 @@ bin/tdc git clone-git-workspace \
 
 ```bash
 git -C "$MOUNT_PATH/repos/hello" status --short
-printf '\nhello from tdc git demo\n' >> "$MOUNT_PATH/repos/hello/README"
+printf '\nhello from tdc fs-git demo\n' >> "$MOUNT_PATH/repos/hello/README"
 git -C "$MOUNT_PATH/repos/hello" status --short
 ```
 
 展示 tdc 的 Git restore/hydrate 入口：
 
 ```bash
-bin/tdc git hydrate-git-workspace --target-path "$MOUNT_PATH/repos/hello"
-bin/tdc git restore-git-workspace --target-path "$MOUNT_PATH/repos/hello"
+bin/tdc fs-git hydrate-git-workspace --target-path "$MOUNT_PATH/repos/hello"
+bin/tdc fs-git restore-git-workspace --target-path "$MOUNT_PATH/repos/hello"
 ```
 
 如果要展示 linked worktree：
 
 ```bash
-bin/tdc git add-git-worktree \
+bin/tdc fs-git add-git-worktree \
   --base-path "$MOUNT_PATH/repos/hello" \
   --worktree-path "$MOUNT_PATH/repos/hello-feature" \
   --branch-name demo-feature
 
 git -C "$MOUNT_PATH/repos/hello-feature" status --short
 
-bin/tdc git remove-git-worktree \
+bin/tdc fs-git remove-git-worktree \
   --worktree-path "$MOUNT_PATH/repos/hello-feature" \
   --force
 ```
 
-可以说明：tdc git 不是替代 git，而是在 tdc fs mount 里提供 fast clone、hydrate、restore、worktree 这类 agent workspace 加速路径。
+可以说明：tdc fs-git 不是替代 git，而是在 tdc fs mount 里提供 fast clone、hydrate、restore、worktree 这类 agent workspace 加速路径。
 
-## 8. tdc journal：记录 agent/workflow 事件
+## 8. tdc fs-journal：记录 agent/workflow 事件
 
 创建一个 journal：
 
 ```bash
 export JOURNAL_ID="jrn-demo-${DEMO_ID}"
 
-bin/tdc journal create-journal \
+bin/tdc fs-journal create-journal \
   --journal-id "$JOURNAL_ID" \
   --journal-kind agent \
   --title "tdc demo run ${DEMO_ID}" \
@@ -337,7 +336,7 @@ bin/tdc journal create-journal \
 追加事件。可以从 flag 传 JSON，也可以从 stdin 传 JSONL：
 
 ```bash
-bin/tdc journal append-journal-entries \
+bin/tdc fs-journal append-journal-entries \
   --journal-id "$JOURNAL_ID" \
   --entry-json '{"type":"demo.started","summary":{"message":"presentation started"}}' \
   --entry-json '{"type":"db.ready","summary":{"cluster":"ready for sql"}}'
@@ -345,28 +344,28 @@ bin/tdc journal append-journal-entries \
 printf '%s\n' \
   '{"type":"fs.mounted","summary":{"path":"mounted and visible"}}' \
   '{"type":"demo.completed","summary":{"message":"presentation completed"}}' \
-  | bin/tdc journal append-journal-entries \
+  | bin/tdc fs-journal append-journal-entries \
       --journal-id "$JOURNAL_ID"
 ```
 
 读取、搜索、验证 journal：
 
 ```bash
-bin/tdc journal read-journal-entries --journal-id "$JOURNAL_ID" --output text
-bin/tdc journal search-journal-entries --entry-type fs.mounted --include-entries
-bin/tdc journal verify-journal --journal-id "$JOURNAL_ID" --output text
+bin/tdc fs-journal read-journal-entries --journal-id "$JOURNAL_ID" --output text
+bin/tdc fs-journal search-journal-entries --entry-type fs.mounted --include-entries
+bin/tdc fs-journal verify-journal --journal-id "$JOURNAL_ID" --output text
 ```
 
 可以说明：journal 是 append-only 的 agent/workflow ledger，用来记录任务轨迹、审计事件和可验证执行历史，不是普通文本日志文件。
 
-## 9. tdc vault：管理 secret、授权 agent、注入环境变量
+## 9. tdc fs-vault：管理 secret、授权 agent、注入环境变量
 
 创建一个 secret。`key=value` 直接传值，`key=@file` 从文件读取，`key=-` 从 stdin 读取：
 
 ```bash
 printf 'demo-token-%s\n' "$DEMO_ID" > /tmp/tdc-demo-token.txt
 
-bin/tdc vault create-secret \
+bin/tdc fs-vault create-secret \
   --secret-name demo-db \
   --field DB_URL="mysql://example.invalid/demo" \
   --field API_TOKEN=@/tmp/tdc-demo-token.txt
@@ -375,15 +374,15 @@ bin/tdc vault create-secret \
 读取整个 secret 或某个字段：
 
 ```bash
-bin/tdc vault read-secret --secret-name demo-db
-bin/tdc vault read-secret --secret-name demo-db --field DB_URL --format raw
-bin/tdc vault read-secret --secret-name demo-db --format env
+bin/tdc fs-vault read-secret --secret-name demo-db
+bin/tdc fs-vault read-secret --secret-name demo-db --field DB_URL --format raw
+bin/tdc fs-vault read-secret --secret-name demo-db --format env
 ```
 
 创建一个只读 delegated grant 给 agent，只允许读 `demo-db/DB_URL`：
 
 ```bash
-export TDC_VAULT_TOKEN="$(bin/tdc vault create-grant \
+export TDC_VAULT_TOKEN="$(bin/tdc fs-vault create-grant \
   --agent-id demo-agent \
   --scope demo-db/DB_URL \
   --permission read \
@@ -396,7 +395,7 @@ echo "$TDC_VAULT_TOKEN"
 用 delegated token 读取被授权字段：
 
 ```bash
-bin/tdc vault read-secret \
+bin/tdc fs-vault read-secret \
   --secret-name demo-db \
   --field DB_URL \
   --format raw \
@@ -406,7 +405,7 @@ bin/tdc vault read-secret \
 把 secret 注入子进程环境变量：
 
 ```bash
-bin/tdc vault run-with-secret \
+bin/tdc fs-vault run-with-secret \
   --secret-path /n/vault/demo-db \
   -- env | grep -E '^(DB_URL|API_TOKEN)='
 ```
@@ -414,7 +413,7 @@ bin/tdc vault run-with-secret \
 查看 audit：
 
 ```bash
-bin/tdc vault list-audit-events --secret-name demo-db --limit 20 --output text
+bin/tdc fs-vault list-audit-events --secret-name demo-db --limit 20 --output text
 ```
 
 如果现场环境支持 FUSE，也可以把 vault 只读挂载出来：
@@ -423,10 +422,10 @@ bin/tdc vault list-audit-events --secret-name demo-db --limit 20 --output text
 export VAULT_MOUNT_PATH="/tmp/tdc-demo-vault-${DEMO_ID}"
 mkdir -p "$VAULT_MOUNT_PATH"
 
-bin/tdc vault mount-vault --mount-path "$VAULT_MOUNT_PATH"
+bin/tdc fs-vault mount-vault --mount-path "$VAULT_MOUNT_PATH"
 find "$VAULT_MOUNT_PATH" -maxdepth 2 -type f -print
 cat "$VAULT_MOUNT_PATH/demo-db/DB_URL"
-bin/tdc vault unmount-vault --mount-path "$VAULT_MOUNT_PATH"
+bin/tdc fs-vault unmount-vault --mount-path "$VAULT_MOUNT_PATH"
 ```
 
 可以说明：vault 是给 agent 使用的 secret surface，重点是 scoped grant、审计、只读挂载和安全地注入子进程，而不是把 secret 当普通文件随意复制。
@@ -444,7 +443,7 @@ rm -rf "$MOUNT_PATH"
 删除 vault secret 和本地临时 token 文件：
 
 ```bash
-bin/tdc vault delete-secret --secret-name demo-db
+bin/tdc fs-vault delete-secret --secret-name demo-db
 rm -f /tmp/tdc-demo-token.txt
 ```
 

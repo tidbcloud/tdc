@@ -55,7 +55,7 @@ func TestHelpAndVersion(t *testing.T) {
 	packFileSystem.wantStdoutContains("--mount-profile")
 	packFileSystem.wantStdoutContains("--path")
 
-	gitClone := runTDC(t, bin, "git", "clone-git-workspace", "help")
+	gitClone := runTDC(t, bin, "fs-git", "clone-git-workspace", "help")
 	gitClone.wantExitCode(0)
 	gitClone.wantStdoutContains("--repo-url")
 	gitClone.wantStdoutContains("--target-path")
@@ -170,8 +170,7 @@ func TestOutputQueryAndDryRun(t *testing.T) {
 
 func tdcConfigEnv() []string {
 	return []string{
-		"TDC_CLOUD_PROVIDER=aws",
-		"TDC_REGION_CODE=us-east-1",
+		"TDC_REGION_CODE=aws-us-east-1",
 		"TDC_PUBLIC_KEY=e2e-public",
 		"TDC_PRIVATE_KEY=e2e-private",
 	}
@@ -210,7 +209,7 @@ func TestConfigureWritesLocalProfile(t *testing.T) {
 	bin := tdcBinary(t)
 	home := t.TempDir()
 
-	result := runTDCWithInput(t, bin, "aws\nus-east-1\npublic-key\nprivate-key\n", []string{"HOME=" + home}, "configure", "--profile", "stage")
+	result := runTDCWithInput(t, bin, "aws-us-east-1\npublic-key\nprivate-key\n", []string{"HOME=" + home}, "configure", "--profile", "stage")
 	result.wantExitCode(0)
 	result.wantStdoutContains(`Profile "stage" configured.`)
 	result.wantStdoutNotContains("private-key")
@@ -226,8 +225,8 @@ func TestConfigureWritesLocalProfile(t *testing.T) {
 	}
 
 	if !strings.Contains(string(configBytes), `[stage]`) ||
-		!strings.Contains(string(configBytes), `cloud_provider = 'aws'`) ||
-		!strings.Contains(string(configBytes), `region_code = 'us-east-1'`) {
+		strings.Contains(string(configBytes), `cloud_provider`) ||
+		!strings.Contains(string(configBytes), `region_code = 'aws-us-east-1'`) {
 		t.Fatalf("config did not contain expected stage profile:\n%s", string(configBytes))
 	}
 	if !strings.Contains(string(credentialsBytes), `tdc_public_key = 'public-key'`) ||
@@ -252,8 +251,7 @@ func TestConfigureNonInteractiveFromEnvironment(t *testing.T) {
 
 	result := runTDCWithInput(t, bin, "", []string{
 		"HOME=" + home,
-		"TDC_CLOUD_PROVIDER=aws",
-		"TDC_REGION_CODE=us-east-1",
+		"TDC_REGION_CODE=aws-us-east-1",
 		"TDC_PUBLIC_KEY=ci-public",
 		"TDC_PRIVATE_KEY=ci-private",
 	}, "configure", "--profile", "ci", "--non-interactive")
@@ -270,7 +268,8 @@ func TestConfigureNonInteractiveFromEnvironment(t *testing.T) {
 		t.Fatalf("read credentials: %v", err)
 	}
 	if !strings.Contains(string(configBytes), `[ci]`) ||
-		!strings.Contains(string(configBytes), `cloud_provider = 'aws'`) {
+		!strings.Contains(string(configBytes), `region_code = 'aws-us-east-1'`) ||
+		strings.Contains(string(configBytes), `cloud_provider`) {
 		t.Fatalf("config did not contain expected ci profile:\n%s", string(configBytes))
 	}
 	if !strings.Contains(string(credentialsBytes), `tdc_public_key = 'ci-public'`) ||
