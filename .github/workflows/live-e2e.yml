@@ -20,7 +20,6 @@ jobs:
   live-e2e:
     runs-on: ubuntu-latest
     env:
-      TDC_CLOUD_PROVIDER: ${{ vars.TDC_CLOUD_PROVIDER }}
       TDC_REGION_CODE: ${{ vars.TDC_REGION_CODE }}
       TDC_PUBLIC_KEY: ${{ secrets.TDC_PUBLIC_KEY }}
       TDC_PRIVATE_KEY: ${{ secrets.TDC_PRIVATE_KEY }}
@@ -49,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=0
-          for name in TDC_CLOUD_PROVIDER TDC_REGION_CODE TDC_PUBLIC_KEY TDC_PRIVATE_KEY; do
+          for name in TDC_REGION_CODE TDC_PUBLIC_KEY TDC_PRIVATE_KEY; do
             if [ -z "${!name:-}" ]; then
               echo "::error::$name is required for live-e2e"
               missing=1
