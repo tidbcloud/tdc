@@ -24,12 +24,12 @@ scoop update tdc
 Existing `tdc` commands keep the same behavior:
 
 ```bash
-tdc cli check-update
-tdc cli update --dry-run
-tdc cli update --yes
+tdc update --check
+tdc update --dry-run
+tdc update --yes
 ```
 
-For Homebrew and Scoop installs, `tdc cli update` must not replace the binary. It returns `update.managed_install` with the correct package-manager command.
+For Homebrew and Scoop installs, `tdc update` must not replace the binary. It returns `update.managed_install` with the correct package-manager command.
 
 ## Behavior
 
@@ -39,8 +39,8 @@ For Homebrew and Scoop installs, `tdc cli update` must not replace the binary. I
 - GoReleaser updates the Homebrew formula and Scoop manifest as part of release publishing after this spec is implemented.
 - The Homebrew formula and Scoop manifest consume GitHub Releases assets produced by `0012-install-and-update-distribution.md`.
 - Package-manager installs embed `install_source=homebrew` or `install_source=scoop` through package build/wrapper metadata when practical.
-- `tdc cli update` also detects common Homebrew and Scoop install paths as a fallback, even if build metadata is missing.
-- Users can still run `tdc cli check-update` from Homebrew/Scoop installs; it reports release availability but does not mutate package-managed files.
+- `tdc update` also detects common Homebrew and Scoop install paths as a fallback, even if build metadata is missing.
+- Users can still run `tdc update --check` from Homebrew/Scoop installs; it reports release availability but does not mutate package-managed files.
 
 ## Inputs And Config
 
@@ -59,13 +59,13 @@ No user `~/.tdc/` config or credentials are required for package-manager install
 
 ## Output And Errors
 
-`tdc cli update --yes` from a Homebrew install:
+`tdc update --yes` from a Homebrew install:
 
 ```text
 tdc [ERROR]: tdc is managed by homebrew; update it with `brew upgrade tidbcloud/tap/tdc`
 ```
 
-`tdc cli update --yes` from a Scoop install:
+`tdc update --yes` from a Scoop install:
 
 ```text
 tdc [ERROR]: tdc is managed by scoop; update it with `scoop update tdc`
@@ -91,7 +91,7 @@ scoop bucket add icemap https://github.com/tidbcloud/scoop-bucket
 scoop install tdc
 ```
 
-Package-manager users update through the package manager, not `tdc cli update`.
+Package-manager users update through the package manager, not `tdc update`.
 
 ## Implementation Design
 
@@ -100,7 +100,7 @@ Package-manager users update through the package manager, not `tdc cli update`.
 - Add release workflow secret usage for the cross-repository publishing token.
 - Add README installation sections for Homebrew and Scoop.
 - Add e2e/unit coverage for `install_source=homebrew`, `install_source=scoop`, and known path detection.
-- Keep `tdc cli update` refusal logic in `internal/update`; do not add package-manager-specific update code outside that package.
+- Keep `tdc update` refusal logic in `internal/update`; do not add package-manager-specific update code outside that package.
 
 Homebrew tap repository work:
 
@@ -129,9 +129,9 @@ Release publishing call chain:
 
 Runtime update call chain from package-managed installs:
 
-1. `tdc cli check-update` reads GitHub Releases metadata normally.
-2. `tdc cli update` reads local install-source metadata and known install path patterns.
-3. `tdc cli update` returns `update.managed_install` before downloading or replacing anything.
+1. `tdc update --check` reads GitHub Releases metadata normally.
+2. `tdc update` reads local install-source metadata and known install path patterns.
+3. `tdc update` returns `update.managed_install` before downloading or replacing anything.
 
 ## Dependencies And Platform
 
@@ -152,8 +152,8 @@ Runtime update call chain from package-managed installs:
 - `brew upgrade tidbcloud/tap/tdc` upgrades to a newer release.
 - `scoop bucket add icemap https://github.com/tidbcloud/scoop-bucket` and `scoop install tdc` install `tdc.exe` on Windows.
 - `scoop update tdc` upgrades to a newer release.
-- `tdc cli check-update` works from Homebrew and Scoop installs.
-- `tdc cli update --yes` refuses Homebrew and Scoop installs with `update.managed_install`.
+- `tdc update --check` works from Homebrew and Scoop installs.
+- `tdc update --yes` refuses Homebrew and Scoop installs with `update.managed_install`.
 - README documents Homebrew and Scoop as optional package-manager channels.
 
 ## Out Of Scope

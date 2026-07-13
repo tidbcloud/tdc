@@ -243,7 +243,7 @@ func TestFSAdjunctCommandsRequireConfiguredFSResource(t *testing.T) {
 	}
 }
 
-func TestCLICheckUpdateUsesReleaseMetadata(t *testing.T) {
+func TestUpdateCheckUsesReleaseMetadata(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/releases/latest" {
 			http.NotFound(w, r)
@@ -263,12 +263,22 @@ func TestCLICheckUpdateUsesReleaseMetadata(t *testing.T) {
 	defer server.Close()
 	t.Setenv("TDC_RELEASE_API_BASE_URL", server.URL)
 
-	stdout, _, err := executeForTest("cli", "check-update", "--query", "latest_version")
+	stdout, _, err := executeForTest("update", "--check", "--query", "latest_version")
 	if err != nil {
-		t.Fatalf("expected check-update to succeed, got %v", err)
+		t.Fatalf("expected update --check to succeed, got %v", err)
 	}
 	if got := stdout; got != "\"0.1.0\"\n" {
 		t.Fatalf("unexpected output %q", got)
+	}
+}
+
+func TestUpdateCheckRejectsApplyFlags(t *testing.T) {
+	_, _, err := executeForTest("update", "--check", "--dry-run")
+	if err == nil {
+		t.Fatal("expected update --check --dry-run to fail")
+	}
+	if got := apperr.MessageFor(err); !strings.Contains(got, "--dry-run cannot be used with --check") {
+		t.Fatalf("unexpected message: %q", got)
 	}
 }
 
@@ -282,7 +292,7 @@ func containsString(values []string, target string) bool {
 }
 
 func TestCLIUpdateRefusesUnownedLocalBuild(t *testing.T) {
-	_, _, err := executeForTest("cli", "update", "--dry-run")
+	_, _, err := executeForTest("update", "--dry-run")
 	if err == nil {
 		t.Fatal("expected local build update to fail")
 	}

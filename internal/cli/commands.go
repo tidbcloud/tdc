@@ -64,46 +64,44 @@ func newConfigureCommand(info version.Info) *cobra.Command {
 	return cmd
 }
 
-func newCLICommand(info version.Info) *cobra.Command {
-	cmd := newParentCommand("cli", "Manage the tdc CLI installation.", info)
-	cmd.AddCommand(
-		newCLICheckUpdateCommand(info),
-		newCLIUpdateCommand(info),
-	)
-	return cmd
-}
-
-func newCLICheckUpdateCommand(info version.Info) *cobra.Command {
-	cmd := newCommand(commandSpec{
-		Use:   "check-update",
-		Short: "Check whether a newer tdc release is available.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			result, err := update.Check(cmd.Context(), info, update.CheckOptions{})
-			if err != nil {
-				return err
-			}
-			if err := renderStructured(cmd, result); err != nil {
-				return err
-			}
-			failIfAvailable, err := cmd.Flags().GetBool("fail-if-update-available")
-			if err != nil {
-				return err
-			}
-			if failIfAvailable && result.UpdateAvailable {
-				return apperr.New("update.available", "runtime", 1, "a newer tdc release is available")
-			}
-			return nil
-		},
-	}, info)
-	cmd.Flags().Bool("fail-if-update-available", false, "exit with code 1 when an update is available")
-	return cmd
-}
-
-func newCLIUpdateCommand(info version.Info) *cobra.Command {
+func newUpdateCommand(info version.Info) *cobra.Command {
 	cmd := newCommand(commandSpec{
 		Use:   "update",
-		Short: "Update an owned tdc installation.",
+		Short: "Check for or apply tdc updates.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			check, err := cmd.Flags().GetBool("check")
+			if err != nil {
+				return err
+			}
+			if check {
+				if err := rejectCheckUpdateFlagCombinations(cmd); err != nil {
+					return err
+				}
+				result, err := update.Check(cmd.Context(), info, update.CheckOptions{})
+				if err != nil {
+					return err
+				}
+				if err := renderStructured(cmd, result); err != nil {
+					return err
+				}
+				failIfAvailable, err := cmd.Flags().GetBool("fail-if-update-available")
+				if err != nil {
+					return err
+				}
+				if failIfAvailable && result.UpdateAvailable {
+					return apperr.New("update.available", "runtime", 1, "a newer tdc release is available")
+				}
+				return nil
+			}
+
+			if cmd.Flags().Changed("fail-if-update-available") {
+				return apperr.New(
+					"update.incompatible_flag",
+					"usage",
+					2,
+					"--fail-if-update-available requires --check",
+				)
+			}
 			targetVersion, err := cmd.Flags().GetString("target-version")
 			if err != nil {
 				return err
@@ -127,10 +125,26 @@ func newCLIUpdateCommand(info version.Info) *cobra.Command {
 			return renderStructured(cmd, result)
 		},
 	}, info)
+	cmd.Flags().Bool("check", false, "check whether a newer tdc release is available without updating")
+	cmd.Flags().Bool("fail-if-update-available", false, "with --check, exit with code 1 when an update is available")
 	cmd.Flags().String("target-version", "latest", "target tdc version, such as latest or v0.1.0")
 	cmd.Flags().Bool("dry-run", false, "show the update plan without changing the local binary")
 	cmd.Flags().Bool("yes", false, "confirm replacing the local tdc binary")
 	return cmd
+}
+
+func rejectCheckUpdateFlagCombinations(cmd *cobra.Command) error {
+	for _, flagName := range []string{"target-version", "dry-run", "yes"} {
+		if cmd.Flags().Changed(flagName) {
+			return apperr.New(
+				"update.incompatible_flag",
+				"usage",
+				2,
+				fmt.Sprintf("--%s cannot be used with --check", flagName),
+			)
+		}
+	}
+	return nil
 }
 
 func newDBCommand(info version.Info) *cobra.Command {

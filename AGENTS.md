@@ -46,8 +46,8 @@ Implemented:
 - install and update distribution from
   `docs/spec/done/0012-install-and-update-distribution.md`
 - `tdc configure`
-- `tdc cli check-update`
-- `tdc cli update`
+- `tdc update --check`
+- `tdc update`
 - `tdc organization list-projects`
 - `tdc db create-db-cluster`
 - `tdc db list-db-clusters`
@@ -288,10 +288,9 @@ without underscores.
 Follow these rules unless `docs/priciples.md` is updated:
 
 - The command tree is at most two levels: `tdc <command> [subcommand]`.
-- `tdc configure` is the only intentional exception: it is a top-level verb and
-  the only interactive command.
-- Other top-level commands are nouns such as `cli`, `db`, `fs`, and
-  `organization`.
+- `tdc configure` and `tdc update` are the only intentional top-level verb
+  exceptions. `tdc configure` is the only interactive command.
+- Other top-level commands are nouns such as `db`, `fs`, and `organization`.
 - Use long flags only, for example `--profile` and `--db-cluster-name`.
 - Do not add short flags or one-letter aliases. The current CLI rejects short
   flags before invoking Cobra.
@@ -321,9 +320,9 @@ Follow these rules unless `docs/priciples.md` is updated:
 - Keep the global `--version` behavior intact at every command level. Do not
   add command-specific `--version <value>` flags; use names such as
   `--target-version` when a command needs a version input.
-- `tdc cli check-update` and `tdc cli update` use GitHub Releases metadata and
+- `tdc update --check` and `tdc update` use GitHub Releases metadata and
   must not read or mutate `~/.tdc/`.
-- `tdc cli update` may replace only tdc-owned archive/script installs. It must
+- `tdc update` may replace only tdc-owned archive/script installs. It must
   refuse local, unknown, Homebrew, Scoop, Winget, or other package-manager
   installs with actionable guidance.
 - Installer scripts prefer upgrading the active `tdc`/`tdc.exe` found on
@@ -346,11 +345,11 @@ Implemented command behavior:
 - `tdc <command> <subcommand> help`
 - `tdc <command> --version`
 - `tdc <command> <subcommand> --version`
-- `tdc cli check-update`
-- `tdc cli check-update --fail-if-update-available`
-- `tdc cli update --dry-run`
-- `tdc cli update --yes`
-- `tdc cli update --target-version v0.1.0 --yes`
+- `tdc update --check`
+- `tdc update --check --fail-if-update-available`
+- `tdc update --dry-run`
+- `tdc update --yes`
+- `tdc update --target-version v0.1.0 --yes`
 - `tdc organization list-projects`
 - `tdc organization list-projects --query 'projects[0].id'`
 - `tdc organization list-projects --output text`
@@ -483,8 +482,8 @@ Implemented command behavior:
 
 Registered command surface:
 
-- `tdc cli check-update`
-- `tdc cli update`
+- `tdc update --check`
+- `tdc update`
 - `tdc organization list-projects`
 - `tdc db create-db-cluster`
 - `tdc db list-db-clusters`

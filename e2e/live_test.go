@@ -336,13 +336,12 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		describe.wantStdoutContains(clusterList.Clusters[0].ID)
 	}
 
-	checkUpdateHelp := runTDC(t, bin, "cli", "check-update", "help")
+	checkUpdateHelp := runTDC(t, bin, "update", "help")
 	checkUpdateHelp.wantExitCode(0)
+	checkUpdateHelp.wantStdoutContains("--check")
 	checkUpdateHelp.wantStdoutContains("--fail-if-update-available")
 
-	updateHelp := runTDC(t, bin, "cli", "update", "help")
-	updateHelp.wantExitCode(0)
-	updateHelp.wantStdoutContains("--yes")
+	checkUpdateHelp.wantStdoutContains("--yes")
 }
 
 func TestLiveFSDataPlaneLifecycle(t *testing.T) {

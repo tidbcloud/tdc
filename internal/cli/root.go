@@ -54,7 +54,7 @@ func NewRootCommand(info version.Info) *cobra.Command {
 	flags.StringVar(&opts.Query, "query", "", "JMESPath query applied before rendering")
 
 	root.AddCommand(newConfigureCommand(info))
-	root.AddCommand(newCLICommand(info))
+	root.AddCommand(newUpdateCommand(info))
 	root.AddCommand(newDBCommand(info))
 	root.AddCommand(newFSCommand(info))
 	root.AddCommand(newFSGitCommand(info))

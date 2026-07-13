@@ -15,7 +15,7 @@ on.
 - `tdc <command> help`
 - `tdc <command> <subcommand> help`
 - `tdc configure`
-- `tdc cli <subcommand>`
+- `tdc update`
 - `tdc db <subcommand>`
 - `tdc fs <subcommand>`
 - `tdc organization <subcommand>`
@@ -24,10 +24,9 @@ on.
 
 - Implement the executable as `tdc`.
 - Enforce a maximum two-level command tree: `tdc <command> [subcommand]`.
-- Treat `tdc configure` as the only top-level verb and the only interactive
-  command.
-- Use nouns for every other top-level command, including product-management
-  namespaces such as `cli`.
+- Treat `tdc configure` and `tdc update` as the only top-level verb exceptions.
+  `tdc configure` is the only interactive command.
+- Use nouns for every other top-level command.
 - Use long flags only. Do not add short flags or aliases.
 - Support global flags everywhere they make sense:
   - `--profile`

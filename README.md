@@ -33,19 +33,19 @@ After installation, the scripts detect PATH shadowing, bootstrap `~/.tdc/config`
 Check for updates:
 
 ```bash
-tdc cli check-update
-tdc cli check-update --output text
+tdc update --check
+tdc update --check --output text
 ```
 
 Update an official archive/script install:
 
 ```bash
-tdc cli update --dry-run
-tdc cli update --yes
-tdc cli update --target-version v0.1.0 --yes
+tdc update --dry-run
+tdc update --yes
+tdc update --target-version v0.1.0 --yes
 ```
 
-Local `make build` binaries are marked as `install_source=local`; `tdc cli update` refuses them. Windows self-update cannot safely replace the running executable yet, so rerun `install.ps1` there. Homebrew and Scoop are planned in `docs/spec/0016-homebrew-and-scoop-distribution.md`; apt/yum/winget and other reviewed package channels are not part of the current plan.
+Local `make build` binaries are marked as `install_source=local`; `tdc update` refuses them. Windows self-update cannot safely replace the running executable yet, so rerun `install.ps1` there. Homebrew and Scoop are planned in `docs/spec/0016-homebrew-and-scoop-distribution.md`; apt/yum/winget and other reviewed package channels are not part of the current plan.
 
 ## Build
 
@@ -242,18 +242,18 @@ Configure-specific flags:
 - `--tdc-private-key <key>`
 - `--non-interactive`
 
-### CLI Management
+### Update
 
 ```bash
-tdc cli check-update
-tdc cli check-update --fail-if-update-available
-tdc cli update
-tdc cli update --dry-run
-tdc cli update --yes
-tdc cli update --target-version v0.1.0 --yes
+tdc update --check
+tdc update --check --fail-if-update-available
+tdc update
+tdc update --dry-run
+tdc update --yes
+tdc update --target-version v0.1.0 --yes
 ```
 
-`check-update` calls the GitHub Releases API for `github.com/tidbcloud/tdc`, matches the release artifact for the current OS/arch, and reports whether a newer release is available. It supports `--output json|text` and `--query`.
+`tdc update --check` calls the GitHub Releases API for `github.com/tidbcloud/tdc`, matches the release artifact for the current OS/arch, and reports whether a newer release is available. It supports `--output json|text` and `--query`.
 
 `update` only mutates official archive/script installs. It refuses local builds, unknown installs, and future package-manager installs with actionable errors. Use `--dry-run` to preview the selected artifact, checksum, and target path. Use `--yes` to replace the current binary on Unix-like platforms. On Windows, rerun `install.ps1` for the target version.
 
@@ -607,8 +607,8 @@ tdc help
 tdc --version
 tdc configure
 tdc configure --non-interactive
-tdc cli check-update
-tdc cli update
+tdc update --check
+tdc update
 tdc organization list-projects
 tdc db create-db-cluster
 tdc db list-db-clusters

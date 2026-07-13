@@ -164,7 +164,7 @@ func Apply(ctx context.Context, info version.Info, opts ApplyOptions) (ApplyResu
 			"update.confirmation_required",
 			"usage",
 			2,
-			"tdc cli update requires --yes for filesystem changes; use --dry-run to preview the update",
+			"tdc update requires --yes for filesystem changes; use --dry-run to preview the update",
 		)
 	}
 
@@ -181,7 +181,7 @@ func Apply(ctx context.Context, info version.Info, opts ApplyOptions) (ApplyResu
 			"update.unknown_install",
 			"runtime",
 			1,
-			fmt.Sprintf("tdc install source %q is not owned by tdc; reinstall with scripts/install.sh or scripts/install.ps1 before using tdc cli update", source.Name),
+			fmt.Sprintf("tdc install source %q is not owned by tdc; reinstall with scripts/install.sh or scripts/install.ps1 before using tdc update", source.Name),
 		)
 	}
 
@@ -190,7 +190,7 @@ func Apply(ctx context.Context, info version.Info, opts ApplyOptions) (ApplyResu
 			"update.unsupported_platform",
 			"runtime",
 			1,
-			"tdc cli update cannot safely replace the running Windows executable yet; rerun the PowerShell installer for the target version",
+			"tdc update cannot safely replace the running Windows executable yet; rerun the PowerShell installer for the target version",
 		)
 	}
 

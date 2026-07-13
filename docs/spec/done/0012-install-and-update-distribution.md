@@ -6,11 +6,11 @@ Make `tdc` installable and updatable through deterministic GitHub Releases artif
 
 ## User-facing Commands
 
-- `tdc cli check-update`
-- `tdc cli check-update --fail-if-update-available`
-- `tdc cli update --dry-run`
-- `tdc cli update --yes`
-- `tdc cli update --target-version v0.1.0 --yes`
+- `tdc update --check`
+- `tdc update --check --fail-if-update-available`
+- `tdc update --dry-run`
+- `tdc update --yes`
+- `tdc update --target-version v0.1.0 --yes`
 
 External installers:
 
@@ -18,7 +18,7 @@ External installers:
 - `scripts/install.sh --version latest --install-dir "$HOME/.local/bin" --yes`
 - `scripts/install.ps1 -Version latest -InstallDir "$HOME\bin" -Yes`
 
-The installer scripts use `--version` because they are not Cobra commands. The `tdc cli update` command uses `--target-version` so it does not shadow the global `--version` flag that works at every CLI level.
+The installer scripts use `--version` because they are not Cobra commands. The `tdc update` command uses `--target-version` so it does not shadow the global `--version` flag that works at every CLI level.
 
 ## Behavior
 
@@ -39,29 +39,32 @@ The installer scripts use `--version` because they are not Cobra commands. The `
 - Install scripts detect PATH shadowing after installation and report both the installed path and the path currently resolved by `PATH`.
 - Install scripts bootstrap `~/.tdc/config` only when it is missing, writing a default `[default]` profile with `region_code = 'aws-us-east-1'`. They do not write `~/.tdc/credentials`.
 - Install scripts print DB config regions, fetch and print tdc fs regions from `https://drive9.ai/manifest/regions/drive9-regions.json` when available, and finish with clear next-step commands.
-- `tdc cli check-update` calls the GitHub Releases API `GET /repos/tidbcloud/tdc/releases/latest`, matches the current OS/arch release asset, compares the local version with the latest tag, and prints structured output.
-- `tdc cli update` updates only binaries built with `install_source=archive` or `install_source=script`. Local builds and unknown installs are refused. Package-manager installs are refused with package-manager-specific guidance.
-- `tdc cli update --dry-run` resolves the target release, artifact, checksum, and target path, but does not download or replace the binary.
-- `tdc cli update --yes` downloads the target archive and `tdc_checksums.txt`, verifies SHA-256, extracts the binary, atomically replaces the current binary on Unix-like platforms, and validates the new binary by running `tdc --version`.
-- Windows self-update cannot safely replace the running executable yet. On Windows, `tdc cli check-update` and install scripts are supported; `tdc cli update --yes` returns an actionable error telling the user to rerun the PowerShell installer.
+- `tdc update --check` calls the GitHub Releases API `GET /repos/tidbcloud/tdc/releases/latest`, matches the current OS/arch release asset, compares the local version with the latest tag, and prints structured output.
+- `tdc update` updates only binaries built with `install_source=archive` or `install_source=script`. Local builds and unknown installs are refused. Package-manager installs are refused with package-manager-specific guidance.
+- `tdc update --dry-run` resolves the target release, artifact, checksum, and target path, but does not download or replace the binary.
+- `tdc update --yes` downloads the target archive and `tdc_checksums.txt`, verifies SHA-256, extracts the binary, atomically replaces the current binary on Unix-like platforms, and validates the new binary by running `tdc --version`.
+- Windows self-update cannot safely replace the running executable yet. On Windows, `tdc update --check` and install scripts are supported; `tdc update --yes` returns an actionable error telling the user to rerun the PowerShell installer.
 - No command performs background or silent auto-update.
 - Update never reads, modifies, or uploads `~/.tdc/config`, `~/.tdc/credentials`, DB SQL credentials, tdc fs credentials, SQL text, file contents, or API response payloads.
 
 ## Inputs And Config
 
-`tdc cli check-update` flags:
+`tdc update --check` flags:
 
 - `--output json|text`
 - `--query <jmespath-expression>`
 - `--fail-if-update-available`
 
-`tdc cli update` flags:
+`tdc update` flags:
 
+- `--check`
 - `--target-version <latest|vX.Y.Z>`, default `latest`
 - `--dry-run`
 - `--yes`
 - `--output json|text`
 - `--query <jmespath-expression>`
+
+`--check` switches `tdc update` into read-only update-check mode. It must not be combined with `--target-version`, `--dry-run`, or `--yes`. `--fail-if-update-available` is valid only with `--check`.
 
 Build metadata exposed through `internal/version`:
 
@@ -74,8 +77,8 @@ Build metadata exposed through `internal/version`:
 
 Install source values:
 
-- `archive`: GoReleaser/GitHub Releases binary, owned by `tdc cli update`
-- `script`: script-installed binary, owned by `tdc cli update` if used later
+- `archive`: GoReleaser/GitHub Releases binary, owned by `tdc update`
+- `script`: script-installed binary, owned by `tdc update` if used later
 - `local`: `make build` or local developer build, not update-owned
 - `homebrew`, `scoop`, `winget`: package-manager installs, not update-owned
 - `unknown`: not update-owned
@@ -84,7 +87,7 @@ Install source values:
 
 ## Output And Errors
 
-`tdc cli check-update --output json` output shape:
+`tdc update --check --output json` output shape:
 
 ```json
 {
@@ -101,7 +104,7 @@ Install source values:
 }
 ```
 
-`tdc cli update --dry-run --output json` output shape:
+`tdc update --dry-run --output json` output shape:
 
 ```json
 {
@@ -122,8 +125,8 @@ Install source values:
 
 Stable error codes:
 
-- `update.available`: `check-update --fail-if-update-available` found a newer release
-- `update.confirmation_required`: `tdc cli update` was run without `--yes` or `--dry-run`
+- `update.available`: `tdc update --check --fail-if-update-available` found a newer release
+- `update.confirmation_required`: `tdc update` was run without `--yes` or `--dry-run`
 - `update.managed_install`: Homebrew/Scoop/Winget or another package manager owns the install
 - `update.unknown_install`: local, unknown, or otherwise not update-owned install
 - `update.permission_denied`: target path or directory cannot be replaced by the current user
@@ -144,9 +147,9 @@ Users and agents can install from GitHub Releases:
 ```bash
 curl -fsSL https://github.com/tidbcloud/tdc/releases/latest/download/install.sh | sh -s -- --yes
 tdc --version
-tdc cli check-update --output json
-tdc cli update --dry-run
-tdc cli update --yes
+tdc update --check --output json
+tdc update --dry-run
+tdc update --yes
 ```
 
 Pinned install:
@@ -172,14 +175,14 @@ tdc --version
 - `scripts/install.ps1` supports Windows `amd64`.
 - `internal/version` carries release metadata through Go linker variables.
 - `internal/update` owns GitHub release lookup, semantic version comparison, artifact selection, checksum verification, archive extraction, install-source checks, and atomic Unix replacement.
-- `internal/cli` wires `tdc cli check-update` and `tdc cli update` as normal structured-output commands.
+- `internal/cli` wires `tdc update --check` and `tdc update` as normal structured-output commands.
 - Release builds set `installSource=archive`; local Makefile builds set `installSource=local`.
 
 ## API Call Chain
 
 This spec adds no TiDB Cloud product API calls.
 
-`tdc cli check-update`:
+`tdc update --check`:
 
 1. Read local version metadata.
 2. `GET https://api.github.com/repos/tidbcloud/tdc/releases/latest`.
@@ -187,7 +190,7 @@ This spec adds no TiDB Cloud product API calls.
 4. Compare local version and latest release tag.
 5. Render JSON or text output.
 
-`tdc cli update --dry-run`:
+`tdc update --dry-run`:
 
 1. Resolve current executable path and install source.
 2. Refuse package-managed or unknown installs.
@@ -196,7 +199,7 @@ This spec adds no TiDB Cloud product API calls.
 5. Download only `tdc_checksums.txt`.
 6. Render the planned artifact, checksum, and target path.
 
-`tdc cli update --yes`:
+`tdc update --yes`:
 
 1. Run the dry-run resolution path.
 2. Download the selected archive.
@@ -247,10 +250,10 @@ Installer scripts:
 - Install scripts upgrade the active binary by default and detect PATH shadowing.
 - Install scripts bootstrap missing `~/.tdc/config` without touching credentials.
 - Install scripts print DB and tdc fs region lists plus clear next steps.
-- `tdc cli check-update` reports update availability without reading credentials.
-- `tdc cli update --dry-run` reports the planned update without changing files.
-- `tdc cli update --yes` updates an owned archive/script install on Unix-like platforms.
-- `tdc cli update` refuses package-managed, local, unknown, and non-writable installs with actionable guidance.
+- `tdc update --check` reports update availability without reading credentials.
+- `tdc update --dry-run` reports the planned update without changing files.
+- `tdc update --yes` updates an owned archive/script install on Unix-like platforms.
+- `tdc update` refuses package-managed, local, unknown, and non-writable installs with actionable guidance.
 - README documents install/update commands and the current package-manager deferral.
 
 ## Out Of Scope

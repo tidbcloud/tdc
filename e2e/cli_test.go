@@ -133,11 +133,11 @@ func TestErrorsAreRenderedAtCLIBoundary(t *testing.T) {
 	}))
 	defer releaseServer.Close()
 
-	checkUpdate := runTDCWithInput(t, bin, "", []string{"TDC_RELEASE_API_BASE_URL=" + releaseServer.URL}, "cli", "check-update", "--query", "latest_version")
+	checkUpdate := runTDCWithInput(t, bin, "", []string{"TDC_RELEASE_API_BASE_URL=" + releaseServer.URL}, "update", "--check", "--query", "latest_version")
 	checkUpdate.wantExitCode(0)
 	checkUpdate.wantStdoutContains(`"99.0.0"`)
 
-	update := runTDC(t, bin, "cli", "update", "--dry-run")
+	update := runTDC(t, bin, "update", "--dry-run")
 	update.wantExitCode(1)
 	update.wantStderrContains("tdc [ERROR]: tdc install source")
 

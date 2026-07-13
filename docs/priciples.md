@@ -150,9 +150,9 @@ CLI v2 for TiDB Cloud \| Init Date: 2026\-05\-18 \|@Todd Bao
 
     - No background or silent auto\-update\.
 
-    - Update checks are explicit, for example `tdc cli check-update`\.
+    - Update checks are explicit, for example `tdc update --check`\.
 
-    - Self\-update is explicit, for example `tdc cli update --yes`, and must
+    - Self\-update is explicit, for example `tdc update --yes`, and must
       refuse package\-manager installs with actionable instructions\.
 
 5. `--output`
