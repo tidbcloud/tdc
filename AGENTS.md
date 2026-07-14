@@ -8,7 +8,7 @@ tdc is a Go command-line product for TiDB Cloud Starter. It is designed to be
 agent-friendly, predictable, scriptable, and safe for automation.
 
 Module: `github.com/tidbcloud/tdc`
-Go version: 1.26.1 (see `go.mod`)
+Go version: 1.26.5 (see `go.mod`)
 
 The most important product document is `docs/priciples.md`. Treat that file as
 the source of truth for product principles. Requirement specs live in

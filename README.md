@@ -51,7 +51,7 @@ Local `make build` binaries are marked as `install_source=local`; `tdc update` r
 
 Requirements:
 
-- Go 1.26.1 or newer
+- Go 1.26.5 or newer
 - `make`
 - GoReleaser, only for `make release-snapshot` or release publishing
 
