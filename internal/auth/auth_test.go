@@ -74,3 +74,29 @@ func TestLoadProfileMissingProfileRemainsConfigError(t *testing.T) {
 		t.Fatalf("missing profile should remain a config error, got exit %d", got)
 	}
 }
+
+func TestLoadProfileMissingPartialEnvironmentCredentialsDoesNotReportEnvProfile(t *testing.T) {
+	home := t.TempDir()
+	if err := store.WriteProfile(home, config.DefaultProfile, store.ConfigProfile{
+		RegionCode: "aws-us-east-1",
+	}, store.CredentialsProfile{}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadProfile(context.Background(), config.LoadOptions{
+		HomeDir: home,
+		Env: map[string]string{
+			"TDC_PUBLIC_KEY": "env-public",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected missing environment private key to fail")
+	}
+	if got := apperr.ExitCodeFor(err); got != 3 {
+		t.Fatalf("expected auth exit code 3, got %d", got)
+	}
+	message := apperr.MessageFor(err)
+	if strings.Contains(message, `profile "env"`) || !strings.Contains(message, "environment credentials") {
+		t.Fatalf("unexpected message %q", message)
+	}
+}

@@ -177,6 +177,9 @@ func TestHelpOutputDoesNotExposeShortFlags(t *testing.T) {
 	if strings.Contains(stdout, "-h,") || strings.Contains(stdout, "-v,") {
 		t.Fatalf("help output exposes a short flag:\n%s", stdout)
 	}
+	if !strings.Contains(stdout, "--region string") {
+		t.Fatalf("help output does not include global --region flag:\n%s", stdout)
+	}
 }
 
 func TestNoCommandDefinesShortFlags(t *testing.T) {
@@ -459,6 +462,47 @@ func TestMutatingControlPlaneDryRunRendersJSON(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "permission_requirement") || !strings.Contains(stdout, string(authz.StarterClusterCreate)) {
 		t.Fatalf("dry-run output did not include permission requirement:\n%s", stdout)
+	}
+}
+
+func TestRegionOverrideWinsOverEnvironmentCredentials(t *testing.T) {
+	t.Setenv("TDC_REGION_CODE", "aws-us-east-1")
+	t.Setenv("TDC_PUBLIC_KEY", "test-public")
+	t.Setenv("TDC_PRIVATE_KEY", "test-private")
+
+	stdout, _, err := executeForTest("--region", "aws-ap-southeast-1", "db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--db-cluster-type", "starter", "--project-id", "project-1", "--dry-run")
+	if err != nil {
+		t.Fatalf("expected dry-run to succeed, got %v", err)
+	}
+	if !strings.Contains(stdout, "aws ap-southeast-1") {
+		t.Fatalf("expected region override in endpoint check, got:\n%s", stdout)
+	}
+}
+
+func TestRegionOverrideAllowsEnvironmentCredentialsWithoutEnvRegion(t *testing.T) {
+	t.Setenv("TDC_REGION_CODE", "")
+	t.Setenv("TDC_PUBLIC_KEY", "test-public")
+	t.Setenv("TDC_PRIVATE_KEY", "test-private")
+
+	stdout, _, err := executeForTest("--region", "ali-ap-southeast-1", "db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--db-cluster-type", "starter", "--project-id", "project-1", "--dry-run")
+	if err != nil {
+		t.Fatalf("expected dry-run to succeed, got %v", err)
+	}
+	if !strings.Contains(stdout, "alibaba_cloud ap-southeast-1") {
+		t.Fatalf("expected region override in endpoint check, got:\n%s", stdout)
+	}
+}
+
+func TestExplicitEmptyRegionFails(t *testing.T) {
+	_, _, err := executeForTest("--region", "", "db", "list-db-clusters")
+	if err == nil {
+		t.Fatal("expected empty region to fail")
+	}
+	if got := apperr.ExitCodeFor(err); got != 2 {
+		t.Fatalf("expected exit code 2, got %d", got)
+	}
+	if got := apperr.MessageFor(err); !strings.Contains(got, "--region cannot be empty") {
+		t.Fatalf("unexpected message %q", got)
 	}
 }
 

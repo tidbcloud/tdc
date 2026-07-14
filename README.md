@@ -217,6 +217,7 @@ tdc [ERROR]: <actionable message>
 Global flags:
 
 - `--profile <name>`
+- `--region <canonical-region-code>`
 - `--debug`
 - `--output <json|text>`
 - `--query <jmespath-expression>`
@@ -791,6 +792,16 @@ Profile selection order:
 
 An explicit empty `--profile ""` is a usage error. Omitting `--profile` is not an error: the CLI uses `TDC_PROFILE` when it is set, otherwise it uses `default`. For shell scripts and CI jobs, prefer either a literal `--profile live-e2e` or an exported `TDC_PROFILE=live-e2e`.
 
+Region selection order:
+
+1. Non-empty `--region <canonical-region-code>`
+2. `TDC_REGION_CODE=<canonical-region-code>`
+3. `region_code` from the selected profile
+
+`--region` is a command-scope override and has the highest placement priority. It does not persist to `~/.tdc/config` and does not change which profile or credential source is used. An explicit empty `--region ""` is a usage error.
+
+Environment credentials are only a TiDB Cloud API key source. They do not change the selected local profile and do not create a local `[env]` profile. Generated tdc fs resource state is stored under `--profile`, `TDC_PROFILE`, or `default`.
+
 Generated `tdc fs` resource credentials also live in `~/.tdc/credentials` as a flat key under the active profile:
 
 ```toml
@@ -850,11 +861,16 @@ Each control-plane command declares a permission requirement internally. Remote 
 
 ## Profile And Environment Lookup
 
-Authenticated commands use this lookup order:
+Authenticated commands first select a local profile namespace:
 
-1. If `--profile <name>` is explicitly provided, read that profile from `~/.tdc/config` and `~/.tdc/credentials`.
-2. If no profile is explicitly provided and any `TDC_*` credential environment variable is present, read environment credentials.
-3. Otherwise read the `default` profile.
+1. Non-empty `--profile <name>`
+2. `TDC_PROFILE=<name>`
+3. `default`
+
+Then tdc selects the TiDB Cloud API key source:
+
+1. `TDC_PUBLIC_KEY` and `TDC_PRIVATE_KEY` when either is set
+2. `tdc_public_key` and `tdc_private_key` from the selected local profile
 
 Environment variables:
 
@@ -865,7 +881,7 @@ TDC_PRIVATE_KEY=...
 TDC_LOGGING=off
 ```
 
-When environment credentials are used, all three variables are required.
+When environment credentials are used, `TDC_PUBLIC_KEY` and `TDC_PRIVATE_KEY` are both required. `TDC_REGION_CODE` is optional when the selected local profile already has `region_code` or the command provides `--region`.
 
 ## Supported Cloud Placement
 

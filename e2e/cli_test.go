@@ -21,6 +21,7 @@ func TestHelpAndVersion(t *testing.T) {
 	root.wantExitCode(0)
 	root.wantStdoutContains("Commands:")
 	root.wantStdoutContains("db")
+	root.wantStdoutContains("--region string")
 	root.wantStdoutNotContains("-h,")
 
 	db := runTDC(t, bin, "db", "help")
@@ -155,6 +156,13 @@ func TestOutputQueryAndDryRun(t *testing.T) {
 	dryRun.wantExitCode(0)
 	dryRun.wantStdoutContains(`"dry_run": true`)
 	dryRun.wantStdoutContains(`"would_send_request": true`)
+
+	regionOverride := runTDCWithInput(t, bin, "", []string{
+		"TDC_PUBLIC_KEY=e2e-public",
+		"TDC_PRIVATE_KEY=e2e-private",
+	}, append([]string{"--region", "aws-ap-southeast-1"}, createClusterDryRunArgs()...)...)
+	regionOverride.wantExitCode(0)
+	regionOverride.wantStdoutContains("aws ap-southeast-1")
 
 	text := runTDCWithInput(t, bin, "", env, append(createClusterDryRunArgs(), "--output", "text")...)
 	text.wantExitCode(0)

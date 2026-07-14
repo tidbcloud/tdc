@@ -24,6 +24,9 @@ No standalone command is required. This spec supports:
   database URLs.
 - Maintain an internal endpoint resolver keyed by `cloud_provider` and
   `region_code`.
+- Support a global `--region <canonical-region-code>` placement override for a
+  single command. The override has the highest routing priority but must not
+  change profile selection, credentials, or persisted config.
 - Respect `--debug` by enabling diagnostic logs without exposing secrets.
 - Support request timeouts and cancellation.
 
@@ -79,6 +82,12 @@ Required values for authenticated requests:
 - `tdc_private_key`
 - canonical `region_code` when the target API is region-scoped
 
+Region-scoped commands resolve the canonical region in this order:
+
+1. Non-empty `--region <canonical-region-code>`.
+2. `TDC_REGION_CODE`.
+3. `region_code` from the selected profile.
+
 Canonical region matrix:
 
 | Region code | Cloud provider | Native region |
@@ -114,7 +123,8 @@ tdc [ERROR]: permission denied: profile "default" is not allowed to create Start
 ```
 
 - Missing region errors must name the expected key: `region_code` or
-  `TDC_REGION_CODE`.
+  `TDC_REGION_CODE`, and may mention `--region` as the command-scope override.
+- An explicit empty `--region ""` is a usage error.
 - Unsupported canonical region errors must show the valid region code list.
 - Network and API errors must preserve machine-readable error codes internally
   for telemetry and tests.

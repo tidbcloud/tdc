@@ -59,12 +59,29 @@ tdc_private_key = "..."
 fs_api_key = "..."
 ```
 
-Lookup order:
+Local profile namespace lookup order:
 
-1. If `--profile` is provided, read that profile from config and credentials.
-2. If no profile is provided and environment variables are present, read
-   `TDC_REGION_CODE`, `TDC_PUBLIC_KEY`, and `TDC_PRIVATE_KEY`.
-3. Otherwise read the `default` profile.
+1. If `--profile` is provided, use that profile.
+2. If `TDC_PROFILE` is set, use that profile.
+3. Otherwise use the `default` profile.
+
+TiDB Cloud API key lookup order:
+
+1. If either `TDC_PUBLIC_KEY` or `TDC_PRIVATE_KEY` is set, read both values from
+   environment variables.
+2. Otherwise read `tdc_public_key` and `tdc_private_key` from the selected local
+   profile in `~/.tdc/credentials`.
+
+Placement lookup is separate from credential lookup. A non-empty global
+`--region <canonical-region-code>` overrides placement for the current command
+only and has higher priority than `TDC_REGION_CODE` and profile `region_code`.
+It does not persist config and does not change the selected profile or
+credential source. `TDC_REGION_CODE` is also a command-scope placement override
+and does not change where local state is read or written.
+
+Environment credentials are a TiDB Cloud API key source only. They do not create
+or select a local `[env]` profile. Generated tdc fs resource state is persisted
+under the selected local profile: `--profile`, `TDC_PROFILE`, or `default`.
 
 Do not store or accept server-url-like config keys, TiDB Cloud API endpoints, or
 filesystem metadata database URLs as user configuration. Endpoint resolution is
@@ -89,6 +106,7 @@ specs without repeating credentials:
 tdc configure
 tdc configure --profile stage
 TDC_REGION_CODE=aws-us-east-1 TDC_PUBLIC_KEY=... TDC_PRIVATE_KEY=... tdc organization list-projects
+TDC_PUBLIC_KEY=... TDC_PRIVATE_KEY=... tdc --region aws-ap-southeast-1 organization list-projects
 ```
 
 Agents can create `~/.tdc/config` and `~/.tdc/credentials` directly using the

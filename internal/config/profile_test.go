@@ -19,11 +19,6 @@ func TestLoadExplicitProfile(t *testing.T) {
 		Profile:         "stage",
 		ProfileExplicit: true,
 		HomeDir:         home,
-		Env: map[string]string{
-			"TDC_REGION_CODE": "ali-ap-southeast-1",
-			"TDC_PUBLIC_KEY":  "env-public",
-			"TDC_PRIVATE_KEY": "env-private",
-		},
 	})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
@@ -33,6 +28,27 @@ func TestLoadExplicitProfile(t *testing.T) {
 	}
 	if profile.CloudProvider != "aws" || profile.RegionCode != "us-west-2" {
 		t.Fatalf("explicit profile did not win over env: %#v", profile)
+	}
+}
+
+func TestLoadRegionOverrideWinsOverExplicitProfile(t *testing.T) {
+	home := t.TempDir()
+	writeProfile(t, home, "stage", "aws-us-west-2", "stage-public", "stage-private")
+
+	profile, err := Load(context.Background(), LoadOptions{
+		Profile:         "stage",
+		ProfileExplicit: true,
+		RegionOverride:  "aws-ap-southeast-1",
+		HomeDir:         home,
+	})
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if profile.Name != "stage" || profile.CloudProvider != "aws" || profile.RegionCode != "ap-southeast-1" || profile.PlacementRegionCode != "aws-ap-southeast-1" {
+		t.Fatalf("region override did not win over profile: %#v", profile)
+	}
+	if profile.TDCPublicKey != "stage-public" || profile.TDCPrivateKey != "stage-private" {
+		t.Fatalf("region override changed credentials: %#v", profile)
 	}
 }
 
@@ -53,6 +69,106 @@ func TestLoadEnvironmentFallback(t *testing.T) {
 	}
 	if profile.TDCPrivateKey != "env-private" {
 		t.Fatalf("env private key not loaded")
+	}
+}
+
+func TestLoadEnvironmentFallbackUsesRegionOverride(t *testing.T) {
+	profile, err := Load(context.Background(), LoadOptions{
+		HomeDir:        t.TempDir(),
+		RegionOverride: "ali-ap-southeast-1",
+		Env: map[string]string{
+			"TDC_PUBLIC_KEY":  "env-public",
+			"TDC_PRIVATE_KEY": "env-private",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if profile.Source != "env" || profile.CloudProvider != "alibaba_cloud" || profile.RegionCode != "ap-southeast-1" {
+		t.Fatalf("expected env credentials with region override, got %#v", profile)
+	}
+}
+
+func TestLoadEnvironmentCredentialsUseDefaultProfileNamespace(t *testing.T) {
+	home := t.TempDir()
+	if err := store.WriteProfile(home, DefaultProfile, store.ConfigProfile{
+		RegionCode:      "aws-us-east-1",
+		FSResourceName:  "dropme-fs",
+		FSTenantID:      "tenant-1",
+		FSCloudProvider: "aws",
+		FSRegionCode:    "aws-us-east-1",
+	}, store.CredentialsProfile{
+		TDCPublicKey:  "local-public",
+		TDCPrivateKey: "local-private",
+		FSAPIKey:      "fs-secret",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	profile, err := Load(context.Background(), LoadOptions{
+		HomeDir: home,
+		Env: map[string]string{
+			"TDC_REGION_CODE": "aws-us-east-1",
+			"TDC_PUBLIC_KEY":  "env-public",
+			"TDC_PRIVATE_KEY": "env-private",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if profile.Source != "env" || profile.Name != DefaultProfile {
+		t.Fatalf("expected env credential source with default profile namespace, got %#v", profile)
+	}
+	if profile.TDCPublicKey != "env-public" || profile.TDCPrivateKey != "env-private" {
+		t.Fatalf("expected credentials from environment, got %#v", profile)
+	}
+	if profile.FSResourceName != "dropme-fs" || profile.FSTenantID != "tenant-1" || profile.FSAPIKey != "fs-secret" {
+		t.Fatalf("expected persisted fs resource to be merged, got %#v", profile)
+	}
+	if profile.FSCloudProvider != "aws" || profile.FSRegionCode != "us-east-1" || profile.FSPlacementRegionCode != "aws-us-east-1" {
+		t.Fatalf("expected persisted fs placement to be merged, got %#v", profile)
+	}
+}
+
+func TestLoadEnvironmentCredentialsUseExplicitProfileNamespace(t *testing.T) {
+	home := t.TempDir()
+	if err := store.WriteProfile(home, "stage", store.ConfigProfile{
+		RegionCode:      "aws-us-west-2",
+		FSResourceName:  "stage-fs",
+		FSTenantID:      "tenant-stage",
+		FSCloudProvider: "aws",
+		FSRegionCode:    "aws-us-west-2",
+	}, store.CredentialsProfile{
+		TDCPublicKey:  "stage-local-public",
+		TDCPrivateKey: "stage-local-private",
+		FSAPIKey:      "stage-fs-secret",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	profile, err := Load(context.Background(), LoadOptions{
+		Profile:         "stage",
+		ProfileExplicit: true,
+		HomeDir:         home,
+		Env: map[string]string{
+			"TDC_PUBLIC_KEY":  "env-public",
+			"TDC_PRIVATE_KEY": "env-private",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if profile.Source != "env" || profile.Name != "stage" {
+		t.Fatalf("expected env credential source with explicit profile namespace, got %#v", profile)
+	}
+	if profile.TDCPublicKey != "env-public" || profile.TDCPrivateKey != "env-private" {
+		t.Fatalf("expected credentials from environment, got %#v", profile)
+	}
+	if profile.FSResourceName != "stage-fs" || profile.FSTenantID != "tenant-stage" || profile.FSAPIKey != "stage-fs-secret" {
+		t.Fatalf("expected persisted stage fs resource, got %#v", profile)
+	}
+	if profile.PlacementRegionCode != "aws-us-west-2" || profile.RegionCode != "us-west-2" {
+		t.Fatalf("expected profile region when env region is absent, got %#v", profile)
 	}
 }
 

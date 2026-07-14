@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/tidbcloud/tdc/internal/apperr"
 	"github.com/tidbcloud/tdc/internal/config/region"
@@ -15,6 +16,7 @@ const DefaultProfile = "default"
 type LoadOptions struct {
 	Profile         string
 	ProfileExplicit bool
+	RegionOverride  string
 	HomeDir         string
 	Env             map[string]string
 }
@@ -53,77 +55,28 @@ func Load(ctx context.Context, opts LoadOptions) (*Profile, error) {
 		profileName = DefaultProfile
 	}
 
-	if !opts.ProfileExplicit && envMode(opts.Env) {
-		return loadFromEnv(opts.Env)
-	}
-
-	return loadFromFiles(opts.HomeDir, profileName)
-}
-
-func loadFromEnv(env map[string]string) (*Profile, error) {
-	missing := firstMissingEnv(env, "TDC_REGION_CODE", "TDC_PUBLIC_KEY", "TDC_PRIVATE_KEY")
-	if missing != "" {
-		return nil, apperr.New(
-			"config.env_missing",
-			"config",
-			2,
-			fmt.Sprintf("%s is required when using TDC_* environment credentials", missing),
-		)
-	}
-
-	placement, err := parsePlacement(envValue(env, "TDC_REGION_CODE"))
-	if err != nil {
-		return nil, err
-	}
-	profile := &Profile{
-		Name:                "env",
-		Source:              "env",
-		PlacementRegionCode: placement.Code,
-		CloudProvider:       placement.Provider,
-		RegionCode:          placement.NativeCode,
-		TDCPublicKey:        envValue(env, "TDC_PUBLIC_KEY"),
-		TDCPrivateKey:       envValue(env, "TDC_PRIVATE_KEY"),
-	}
-	return profile, nil
-}
-
-func loadFromFiles(homeDir, profileName string) (*Profile, error) {
-	configDoc, err := store.ReadConfig(homeDir)
+	configDoc, err := store.ReadConfig(opts.HomeDir)
 	if err != nil {
 		return nil, apperr.Wrap("config.read_config", "config", 1, err.Error(), err)
 	}
-	credentialsDoc, err := store.ReadCredentials(homeDir)
+	credentialsDoc, err := store.ReadCredentials(opts.HomeDir)
 	if err != nil {
 		return nil, apperr.Wrap("config.read_credentials", "config", 1, err.Error(), err)
 	}
 
-	cfg, ok := configDoc[profileName]
-	if !ok {
-		return nil, apperr.New(
-			"config.profile_not_found",
-			"config",
-			2,
-			fmt.Sprintf("profile %q not found in %s; run tdc configure --profile %s or write ~/.tdc/config", profileName, store.ConfigPath(homeDir), profileName),
-		)
-	}
-	creds, ok := credentialsDoc[profileName]
-	if !ok {
-		return nil, missingCredential(profileName, store.CredentialsPath(homeDir), "tdc_public_key")
-	}
-	if cfg.RegionCode == "" {
-		return nil, missingConfig(profileName, store.ConfigPath(homeDir), "region_code")
-	}
-	if creds.TDCPublicKey == "" {
-		return nil, missingCredential(profileName, store.CredentialsPath(homeDir), "tdc_public_key")
-	}
-	if creds.TDCPrivateKey == "" {
-		return nil, missingCredential(profileName, store.CredentialsPath(homeDir), "tdc_private_key")
-	}
+	cfg, hasConfig := configDoc[profileName]
+	creds, hasCreds := credentialsDoc[profileName]
 
-	placement, err := parsePlacement(cfg.RegionCode)
+	placement, err := resolvePlacement(opts.HomeDir, profileName, cfg, hasConfig, opts.RegionOverride, opts.Env)
 	if err != nil {
 		return nil, err
 	}
+
+	publicKey, privateKey, source, err := resolveTDCCredentials(opts.HomeDir, profileName, creds, hasCreds, opts.Env)
+	if err != nil {
+		return nil, err
+	}
+
 	var fsPlacement region.Placement
 	if cfg.FSRegionCode != "" {
 		fsPlacement, err = parsePlacement(cfg.FSRegionCode)
@@ -134,12 +87,12 @@ func loadFromFiles(homeDir, profileName string) (*Profile, error) {
 
 	return &Profile{
 		Name:                  profileName,
-		Source:                "profile",
+		Source:                source,
 		PlacementRegionCode:   placement.Code,
 		CloudProvider:         placement.Provider,
 		RegionCode:            placement.NativeCode,
-		TDCPublicKey:          creds.TDCPublicKey,
-		TDCPrivateKey:         creds.TDCPrivateKey,
+		TDCPublicKey:          publicKey,
+		TDCPrivateKey:         privateKey,
 		FSResourceName:        cfg.FSResourceName,
 		FSTenantID:            cfg.FSTenantID,
 		FSPlacementRegionCode: fsPlacement.Code,
@@ -147,6 +100,62 @@ func loadFromFiles(homeDir, profileName string) (*Profile, error) {
 		FSRegionCode:          fsPlacement.NativeCode,
 		FSAPIKey:              creds.FSAPIKey,
 	}, nil
+}
+
+func resolvePlacement(homeDir, profileName string, cfg store.ConfigProfile, hasConfig bool, regionOverride string, env map[string]string) (region.Placement, error) {
+	regionCode := strings.TrimSpace(regionOverride)
+	if regionCode == "" {
+		regionCode = envValue(env, "TDC_REGION_CODE")
+	}
+	if regionCode == "" {
+		regionCode = cfg.RegionCode
+	}
+	if regionCode == "" {
+		if !hasConfig {
+			return region.Placement{}, apperr.New(
+				"config.profile_not_found",
+				"config",
+				2,
+				fmt.Sprintf("profile %q not found in %s; run tdc configure --profile %s or write ~/.tdc/config", profileName, store.ConfigPath(homeDir), profileName),
+			)
+		}
+		return region.Placement{}, missingConfig(profileName, store.ConfigPath(homeDir), "region_code")
+	}
+	return parsePlacement(regionCode)
+}
+
+func resolveTDCCredentials(homeDir, profileName string, creds store.CredentialsProfile, hasCreds bool, env map[string]string) (string, string, string, error) {
+	envPublic := strings.TrimSpace(envValue(env, "TDC_PUBLIC_KEY"))
+	envPrivate := strings.TrimSpace(envValue(env, "TDC_PRIVATE_KEY"))
+	if envPublic != "" || envPrivate != "" {
+		if envPublic == "" {
+			return "", "", "", envMissing("TDC_PUBLIC_KEY")
+		}
+		if envPrivate == "" {
+			return "", "", "", envMissing("TDC_PRIVATE_KEY")
+		}
+		return envPublic, envPrivate, "env", nil
+	}
+
+	if !hasCreds {
+		return "", "", "", missingCredential(profileName, store.CredentialsPath(homeDir), "tdc_public_key")
+	}
+	if creds.TDCPublicKey == "" {
+		return "", "", "", missingCredential(profileName, store.CredentialsPath(homeDir), "tdc_public_key")
+	}
+	if creds.TDCPrivateKey == "" {
+		return "", "", "", missingCredential(profileName, store.CredentialsPath(homeDir), "tdc_private_key")
+	}
+	return creds.TDCPublicKey, creds.TDCPrivateKey, "profile", nil
+}
+
+func envMissing(key string) error {
+	return apperr.New(
+		"config.env_missing",
+		"config",
+		2,
+		fmt.Sprintf("%s is required when using TDC_* environment credentials", key),
+	)
 }
 
 func parsePlacement(regionCode string) (region.Placement, error) {
@@ -173,24 +182,6 @@ func missingCredential(profileName, path, key string) error {
 		2,
 		fmt.Sprintf("%s missing for profile %q in %s; run tdc configure --profile %s or write ~/.tdc/credentials", key, profileName, path, profileName),
 	)
-}
-
-func envMode(env map[string]string) bool {
-	for _, key := range []string{"TDC_REGION_CODE", "TDC_PUBLIC_KEY", "TDC_PRIVATE_KEY"} {
-		if envValue(env, key) != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func firstMissingEnv(env map[string]string, keys ...string) string {
-	for _, key := range keys {
-		if envValue(env, key) == "" {
-			return key
-		}
-	}
-	return ""
 }
 
 func envValue(env map[string]string, key string) string {

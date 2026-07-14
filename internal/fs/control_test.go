@@ -77,6 +77,69 @@ func TestCreateFileSystemStoresFlatCredentialsAndRedactsOutput(t *testing.T) {
 	}
 }
 
+func TestCreateFileSystemWithEnvironmentCredentialsStoresDefaultProfile(t *testing.T) {
+	home := t.TempDir()
+	profile := &config.Profile{
+		Name:                config.DefaultProfile,
+		Source:              "env",
+		PlacementRegionCode: "aws-us-east-1",
+		CloudProvider:       "aws",
+		RegionCode:          "us-east-1",
+		TDCPublicKey:        "env-public",
+		TDCPrivateKey:       "env-private",
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/provision" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if body["public_key"] != "env-public" || body["private_key"] != "env-private" {
+			t.Fatalf("unexpected request body: %#v", body)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"tenant_id": "tenant-env",
+			"api_key":   "fs-env-secret",
+			"status":    "active",
+		})
+	}))
+	defer server.Close()
+
+	result, err := testService(home, server.URL).CreateFileSystem(context.Background(), CreateFileSystemOptions{
+		Profile:        profile,
+		FileSystemName: "workspace",
+	})
+	if err != nil {
+		t.Fatalf("CreateFileSystem failed: %v", err)
+	}
+	if !result.CredentialsStored {
+		t.Fatalf("expected credentials to be stored: %#v", result)
+	}
+
+	configDoc, err := store.ReadConfig(home)
+	if err != nil {
+		t.Fatalf("ReadConfig failed: %v", err)
+	}
+	if got := configDoc[config.DefaultProfile]; got.FSResourceName != "workspace" || got.FSTenantID != "tenant-env" {
+		t.Fatalf("expected fs config under default profile, got %#v", got)
+	}
+	if _, ok := configDoc["env"]; ok {
+		t.Fatalf("did not expect generated [env] config section: %#v", configDoc["env"])
+	}
+	credentialsDoc, err := store.ReadCredentials(home)
+	if err != nil {
+		t.Fatalf("ReadCredentials failed: %v", err)
+	}
+	if got := credentialsDoc[config.DefaultProfile]; got.FSAPIKey != "fs-env-secret" {
+		t.Fatalf("expected fs api key under default profile, got %#v", got)
+	}
+	if _, ok := credentialsDoc["env"]; ok {
+		t.Fatalf("did not expect generated [env] credentials section: %#v", credentialsDoc["env"])
+	}
+}
+
 func TestDeleteFileSystemUsesBearerAndClearsFlatCredentials(t *testing.T) {
 	home := t.TempDir()
 	profile := testProfile()

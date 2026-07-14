@@ -39,7 +39,7 @@ func LoadProfile(ctx context.Context, opts config.LoadOptions) (*config.Profile,
 			return nil, MissingCredentials(profileName, "tdc_public_key", "tdc_private_key")
 		case "config.env_missing":
 			if strings.Contains(appErr.Message, "TDC_PUBLIC_KEY") || strings.Contains(appErr.Message, "TDC_PRIVATE_KEY") {
-				return nil, MissingCredentials("env", "TDC_PUBLIC_KEY", "TDC_PRIVATE_KEY")
+				return nil, MissingEnvironmentCredentials()
 			}
 		}
 	}
@@ -102,6 +102,15 @@ func MissingCredentials(profileName string, keys ...string) error {
 			joinKeys(keys),
 			profileName,
 		),
+	)
+}
+
+func MissingEnvironmentCredentials() error {
+	return apperr.New(
+		"auth.missing_environment_credentials",
+		"authentication",
+		3,
+		"authentication required: missing environment credentials. Set both TDC_PUBLIC_KEY and TDC_PRIVATE_KEY, or unset them to use profile credentials.",
 	)
 }
 

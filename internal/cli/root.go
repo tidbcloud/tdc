@@ -25,6 +25,7 @@ import (
 
 type Options struct {
 	Profile string
+	Region  string
 	Debug   bool
 	Output  string
 	Query   string
@@ -55,6 +56,7 @@ func NewRootCommand(info version.Info) *cobra.Command {
 
 	flags := root.PersistentFlags()
 	flags.StringVar(&opts.Profile, "profile", "default", "profile name")
+	flags.StringVar(&opts.Region, "region", "", "override canonical tdc region code for this command, for example aws-us-east-1")
 	flags.BoolVar(&opts.Debug, "debug", false, "enable debug output")
 	flags.StringVar(&opts.Output, "output", "json", "output format: json or text")
 	flags.StringVar(&opts.Query, "query", "", "JMESPath query applied before rendering")
@@ -152,6 +154,10 @@ func changedFlagNames(cmd *cobra.Command) []string {
 
 func commandProfileSummary(cmd *cobra.Command) (string, string) {
 	profileName := config.DefaultProfile
+	regionOverride := ""
+	if flag := cmd.Flag("region"); flag != nil {
+		regionOverride = strings.TrimSpace(flag.Value.String())
+	}
 	profileExplicit := false
 	if flag := cmd.Flag("profile"); flag != nil {
 		if strings.TrimSpace(flag.Value.String()) != "" {
@@ -162,11 +168,13 @@ func commandProfileSummary(cmd *cobra.Command) (string, string) {
 	if !profileExplicit {
 		if envProfile := strings.TrimSpace(os.Getenv("TDC_PROFILE")); envProfile != "" {
 			profileName = envProfile
-			profileExplicit = true
 		}
 	}
-	if !profileExplicit && envCredentialsMode() {
-		return "env", strings.TrimSpace(os.Getenv("TDC_REGION_CODE"))
+	if regionOverride != "" {
+		return profileName, regionOverride
+	}
+	if envRegion := strings.TrimSpace(os.Getenv("TDC_REGION_CODE")); envRegion != "" {
+		return profileName, envRegion
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -177,15 +185,6 @@ func commandProfileSummary(cmd *cobra.Command) (string, string) {
 		return profileName, ""
 	}
 	return profileName, configDoc[profileName].RegionCode
-}
-
-func envCredentialsMode() bool {
-	for _, key := range []string{"TDC_REGION_CODE", "TDC_PUBLIC_KEY", "TDC_PRIVATE_KEY"} {
-		if strings.TrimSpace(os.Getenv(key)) != "" {
-			return true
-		}
-	}
-	return false
 }
 
 func rejectShortFlags(args []string) error {
@@ -441,6 +440,14 @@ func loadProfileForCommand(cmd *cobra.Command) (*config.Profile, error) {
 	if err != nil {
 		return nil, err
 	}
+	regionOverride, err := stringFlag(cmd, "region")
+	if err != nil {
+		return nil, err
+	}
+	regionFlag := cmd.Flag("region")
+	if regionFlag != nil && regionFlag.Changed && strings.TrimSpace(regionOverride) == "" {
+		return nil, apperr.New("config.empty_region", "usage", 2, "--region cannot be empty")
+	}
 	profileFlag := cmd.Flag("profile")
 	profileExplicit := profileFlag != nil && profileFlag.Changed
 	if profileExplicit {
@@ -454,6 +461,7 @@ func loadProfileForCommand(cmd *cobra.Command) (*config.Profile, error) {
 	return auth.LoadProfile(cmd.Context(), config.LoadOptions{
 		Profile:         profileName,
 		ProfileExplicit: profileExplicit,
+		RegionOverride:  regionOverride,
 	})
 }
 

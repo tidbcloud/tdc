@@ -312,6 +312,10 @@ Follow these rules unless `docs/priciples.md` is updated:
 - Apply `--query` after command execution and before rendering.
 - Users provide cloud placement as one canonical `region_code`, never as
   separate provider/region fields or server URLs.
+- The global `--region <canonical-region-code>` flag overrides placement for
+  the current command only. It has higher priority than `TDC_REGION_CODE` and
+  profile `region_code`, but it must not change the selected profile or
+  credential source.
 - Every command should be usable by scripts and agents without
   terminal-specific assumptions.
 - Help must work as:
@@ -597,6 +601,8 @@ All tdc local state belongs under `~/.tdc/`.
 - Both files use profile sections such as `[default]` and `[stage]`.
 - The default profile name is `default`.
 - The global `--profile` flag selects a profile when explicitly provided.
+- The global `--region` flag selects command-scope placement when explicitly
+  provided and must reject an explicit empty value.
 - `tdc configure` writes canonical `region_code`, `tdc_public_key`, and
   `tdc_private_key`.
 - `tdc configure --non-interactive` must not prompt. It reads values from flags
@@ -687,18 +693,35 @@ profile's cloud provider and region against `tidb_cloud_native` entries. If the
 manifest does not contain the profile placement, return a clear unsupported
 endpoint error; do not add a user-facing raw server URL flag or config key.
 
-Credential lookup order for authenticated commands:
+Local profile namespace lookup order for authenticated commands:
 
-1. If `--profile <name>` is explicitly provided, read that profile from
-   `~/.tdc/config` and `~/.tdc/credentials`.
-2. If no profile is explicitly provided and any credential environment variable
-   is present, read environment credentials from `TDC_REGION_CODE`,
-   `TDC_PUBLIC_KEY`, and `TDC_PRIVATE_KEY`. All three are required in this mode.
-3. Otherwise read the `default` profile.
+1. If `--profile <name>` is explicitly provided, use that profile name.
+2. If `TDC_PROFILE` is set, use that profile name.
+3. Otherwise use `default`.
+
+TiDB Cloud API key lookup order:
+
+1. If either `TDC_PUBLIC_KEY` or `TDC_PRIVATE_KEY` is set, read the API key pair
+   from environment variables. Both are required in this mode.
+2. Otherwise read `tdc_public_key` and `tdc_private_key` from the selected
+   local profile in `~/.tdc/credentials`.
+
+Placement lookup order for authenticated commands:
+
+1. If `--region <canonical-region-code>` is explicitly provided, use it for
+   this command only.
+2. If `TDC_REGION_CODE` is set, use it for this command only.
+3. Otherwise use the selected profile's `region_code`.
+
+Environment credentials are a credential source only; they must not change the
+local profile namespace and must not cause tdc to write local `[env]` sections.
+Generated tdc fs state is always stored under the selected local profile:
+`--profile`, `TDC_PROFILE`, or `default`.
 
 When implementing command handlers, detect whether `--profile` was explicitly
 set before calling `config.Load`; the root flag has a default value, but that
-default must not suppress environment-variable fallback.
+default must not suppress `TDC_PROFILE`. Also pass the explicit `--region`
+value into profile loading so endpoint selection sees the override.
 
 Supported MVP placement values:
 

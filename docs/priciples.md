@@ -199,13 +199,32 @@ CLI v2 for TiDB Cloud \| Init Date: 2026\-05\-18 \|@Todd Bao
 
 
 
-### Credentials Priority Order
+### Profile And Credentials Priority Order
 
-|**Priority \(shortcut at first match\)**|**Credential Source**|**Description**|
-|---|---|---|
-|1 \(highest\)<br>|`--profile` flag in CLI\.<br>|Reads non\-sensitive data from `.tdc/config`<br>- `[<profile_name>]`<br>    - `region_code =` \(canonical, for example `aws-us-east-1`\)<br>Reads sensitive data from `.tdc/credentials`<br>- `[<profile_name>]`<br>    - `tdc_public_key =`<br>    - `tdc_private_key =`<br>    |
-|2|No `--profile` in CLI, but environment variables exist\.<br>|Reads from envs\.<br>- `TDC_REGION_CODE`<br>- `TDC_PUBLIC_KEY`<br>- `TDC_PRIVATE_KEY`|
-|3|No `--profile`, no environmental variables exist\.|Reads non\-sensitive data from `.tdc/config`<br>- `[default]`<br>    - `region_code =` \(canonical, for example `aws-us-east-1`\)<br>Reads sensitive data from `.tdc/credentials`<br>- `[default]`<br>    - `tdc_public_key =`<br>    - `tdc_private_key =`<br>    |
+Local profile namespace and TiDB Cloud API key source are separate. Local state is always scoped by the selected profile, while `TDC_PUBLIC_KEY` and `TDC_PRIVATE_KEY` only override the TiDB Cloud API key pair.
+
+|**Priority \(shortcut at first match\)**|**Local Profile Namespace**|
+|---|---|
+|1 \(highest\)|`--profile` flag in CLI|
+|2|`TDC_PROFILE` environment variable|
+|3|`default`|
+
+|**Priority \(shortcut at first match\)**|**TiDB Cloud API Key Source**|
+|---|---|
+|1 \(highest\)|`TDC_PUBLIC_KEY` and `TDC_PRIVATE_KEY` environment variables when either is set \(both are required\)|
+|2|`tdc_public_key` and `tdc_private_key` from `[<selected_profile>]` in `.tdc/credentials`|
+
+Environment credentials must not create or select a local `[env]` profile. Generated local state, such as `tdc fs` resource metadata and `fs_api_key`, is stored under the selected local profile.
+
+### Placement Priority Order
+
+`--region <canonical-region-code>` is a command-scope override with the highest placement priority. It changes only the region/provider used by endpoint routing for the current command; it does not persist config and does not change which profile or credentials are loaded.
+
+|**Priority \(shortcut at first match\)**|**Placement Source**|
+|---|---|
+|1 \(highest\)|`--region` flag in CLI|
+|2|`TDC_REGION_CODE` environment variable|
+|3|`region_code` from the selected profile|
 
 ### Cloud Provider and Region Selection
 
