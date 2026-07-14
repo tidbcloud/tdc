@@ -10,6 +10,7 @@ import (
 
 	"github.com/tidbcloud/tdc/internal/apperr"
 	"github.com/tidbcloud/tdc/internal/db/sqlcred"
+	"github.com/tidbcloud/tdc/internal/oplog"
 )
 
 func TestExecuteHTTP(t *testing.T) {
@@ -94,4 +95,45 @@ func TestExecuteHTTPErrorDoesNotEchoSQL(t *testing.T) {
 	if strings.Contains(apperr.MessageFor(err), "secret_table") {
 		t.Fatalf("error leaked SQL text: %q", apperr.MessageFor(err))
 	}
+}
+
+func TestExecuteHTTPRecordsSafeAPIEvent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"types":[],"rows":[]}`))
+	}))
+	defer server.Close()
+	recorder := &memoryRecorder{}
+
+	_, err := Execute(oplog.WithRecorder(context.Background(), recorder), Options{
+		ClusterID: "cluster-1",
+		Username:  "user",
+		Password:  "pass",
+		SQL:       "select secret from private_table",
+		BaseURL:   server.URL,
+	})
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if len(recorder.events) != 1 {
+		t.Fatalf("expected one event, got %#v", recorder.events)
+	}
+	event := recorder.events[0]
+	if event.Service != "tidb_cloud_sql" || event.Operation != "execute SQL statement" || event.Method != http.MethodPost || event.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected event: %#v", event)
+	}
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "private_table") || strings.Contains(string(data), "select secret") || strings.Contains(string(data), "pass") {
+		t.Fatalf("SQL event leaked sensitive data: %s", string(data))
+	}
+}
+
+type memoryRecorder struct {
+	events []oplog.Event
+}
+
+func (r *memoryRecorder) Record(_ context.Context, event oplog.Event) {
+	r.events = append(r.events, event)
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/tidbcloud/tdc/internal/authz"
 	"github.com/tidbcloud/tdc/internal/config/store"
 	"github.com/tidbcloud/tdc/internal/dryrun"
+	"github.com/tidbcloud/tdc/internal/oplog"
 	"github.com/tidbcloud/tdc/internal/version"
 )
 
@@ -114,6 +116,56 @@ func TestShortHelpFlagIsRejected(t *testing.T) {
 	}
 	if apperr.ExitCodeFor(err) != 2 {
 		t.Fatalf("expected exit code 2, got %d", apperr.ExitCodeFor(err))
+	}
+}
+
+func TestCommandOperationLogRecordsSafeSummary(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("TDC_LOGGING", "on")
+
+	_, _, err := executeForTest(
+		"configure",
+		"--profile", "ci",
+		"--region-code", "aws-us-east-1",
+		"--tdc-public-key", "public-secret",
+		"--tdc-private-key", "private-secret",
+		"--non-interactive",
+	)
+	if err != nil {
+		t.Fatalf("configure failed: %v", err)
+	}
+
+	data, err := os.ReadFile(store.LogPath(home))
+	if err != nil {
+		t.Fatalf("read operation log: %v", err)
+	}
+	if strings.Contains(string(data), "public-secret") || strings.Contains(string(data), "private-secret") {
+		t.Fatalf("operation log leaked secret values:\n%s", string(data))
+	}
+	var event oplog.Event
+	if err := json.Unmarshal(bytes.TrimSpace(data), &event); err != nil {
+		t.Fatalf("decode operation log: %v\n%s", err, string(data))
+	}
+	if event.Type != "command" || event.Command != "tdc configure" || event.Profile != "ci" || event.RegionCode != "aws-us-east-1" {
+		t.Fatalf("unexpected command event: %#v", event)
+	}
+	if !containsString(event.FlagNames, "tdc-private-key") || !containsString(event.FlagNames, "tdc-public-key") {
+		t.Fatalf("expected flag names only, got %#v", event.FlagNames)
+	}
+}
+
+func TestCommandOperationLogCanBeDisabled(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("TDC_LOGGING", "off")
+
+	_, _, err := executeForTest("help")
+	if err != nil {
+		t.Fatalf("help failed: %v", err)
+	}
+	if _, err := os.Stat(store.LogPath(home)); !os.IsNotExist(err) {
+		t.Fatalf("expected no operation log file, got err=%v", err)
 	}
 }
 
@@ -547,6 +599,10 @@ func writeConfigOnlyProfile(t *testing.T, profileName string) {
 }
 
 func executeForTest(args ...string) (string, string, error) {
+	if _, ok := os.LookupEnv("TDC_LOGGING"); !ok {
+		_ = os.Setenv("TDC_LOGGING", "off")
+		defer os.Unsetenv("TDC_LOGGING")
+	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	root := NewRootCommand(testVersion())

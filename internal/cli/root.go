@@ -16,7 +16,9 @@ import (
 	"github.com/tidbcloud/tdc/internal/auth"
 	"github.com/tidbcloud/tdc/internal/authz"
 	"github.com/tidbcloud/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/config/store"
 	"github.com/tidbcloud/tdc/internal/dryrun"
+	"github.com/tidbcloud/tdc/internal/oplog"
 	"github.com/tidbcloud/tdc/internal/output"
 	"github.com/tidbcloud/tdc/internal/version"
 )
@@ -42,6 +44,10 @@ func NewRootCommand(info version.Info) *cobra.Command {
 
 	root.SilenceErrors = true
 	root.SilenceUsage = true
+	root.Annotations = map[string]string{
+		"tdc.version": info.Version,
+		"tdc.commit":  info.Commit,
+	}
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.SetFlagErrorFunc(flagErrorFunc)
 	root.SetHelpTemplate(helpTemplate)
@@ -69,17 +75,117 @@ func NewRootCommand(info version.Info) *cobra.Command {
 }
 
 func Execute(ctx context.Context, root *cobra.Command, args []string, stdout, stderr io.Writer) error {
+	recorder := commandRecorder()
+	ctx = oplog.WithRecorder(ctx, recorder)
+	start := time.Now()
 	if err := rejectShortFlags(args); err != nil {
+		recorder.Record(ctx, commandEvent(root, root, err, time.Since(start)))
 		return err
 	}
 	root.SetArgs(args)
 	root.SetOut(stdout)
 	root.SetErr(stderr)
-	_, err := root.ExecuteContextC(ctx)
+	cmd, err := root.ExecuteContextC(ctx)
 	if err == nil {
+		recorder.Record(ctx, commandEvent(root, cmd, nil, time.Since(start)))
 		return nil
 	}
-	return normalizeError(err)
+	normalized := normalizeError(err)
+	recorder.Record(ctx, commandEvent(root, cmd, normalized, time.Since(start)))
+	return normalized
+}
+
+func commandRecorder() oplog.Recorder {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return oplog.NewRecorder(oplog.Config{Enabled: false})
+	}
+	cfg, err := oplog.LoadConfig(home, nil)
+	if err != nil {
+		return oplog.NewRecorder(oplog.Config{Enabled: false})
+	}
+	return oplog.NewRecorder(cfg)
+}
+
+func commandEvent(root, cmd *cobra.Command, err error, duration time.Duration) oplog.Event {
+	if cmd == nil {
+		cmd = root
+	}
+	profileName, regionCode := commandProfileSummary(cmd)
+	return oplog.Event{
+		Type:          "command",
+		Version:       rootAnnotation(root, "tdc.version"),
+		Commit:        rootAnnotation(root, "tdc.commit"),
+		Profile:       profileName,
+		RegionCode:    regionCode,
+		Command:       cmd.CommandPath(),
+		FlagNames:     changedFlagNames(cmd),
+		DurationMS:    duration.Milliseconds(),
+		ExitCode:      apperr.ExitCodeFor(err),
+		ErrorCode:     apperr.CodeFor(err),
+		ErrorCategory: apperr.CategoryFor(err),
+	}
+}
+
+func rootAnnotation(root *cobra.Command, key string) string {
+	if root == nil || root.Annotations == nil {
+		return ""
+	}
+	return root.Annotations[key]
+}
+
+func changedFlagNames(cmd *cobra.Command) []string {
+	if cmd == nil {
+		return nil
+	}
+	names := make([]string, 0)
+	visit := func(flag *pflag.Flag) {
+		if flag != nil {
+			names = append(names, flag.Name)
+		}
+	}
+	cmd.Flags().Visit(visit)
+	cmd.PersistentFlags().Visit(visit)
+	cmd.InheritedFlags().Visit(visit)
+	return oplog.SortedFlagNames(names)
+}
+
+func commandProfileSummary(cmd *cobra.Command) (string, string) {
+	profileName := config.DefaultProfile
+	profileExplicit := false
+	if flag := cmd.Flag("profile"); flag != nil {
+		if strings.TrimSpace(flag.Value.String()) != "" {
+			profileName = flag.Value.String()
+		}
+		profileExplicit = flag.Changed
+	}
+	if !profileExplicit {
+		if envProfile := strings.TrimSpace(os.Getenv("TDC_PROFILE")); envProfile != "" {
+			profileName = envProfile
+			profileExplicit = true
+		}
+	}
+	if !profileExplicit && envCredentialsMode() {
+		return "env", strings.TrimSpace(os.Getenv("TDC_REGION_CODE"))
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return profileName, ""
+	}
+	configDoc, err := store.ReadConfig(home)
+	if err != nil {
+		return profileName, ""
+	}
+	return profileName, configDoc[profileName].RegionCode
+}
+
+func envCredentialsMode() bool {
+	for _, key := range []string{"TDC_REGION_CODE", "TDC_PUBLIC_KEY", "TDC_PRIVATE_KEY"} {
+		if strings.TrimSpace(os.Getenv(key)) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func rejectShortFlags(args []string) error {

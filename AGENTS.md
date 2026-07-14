@@ -266,6 +266,7 @@ internal/db/sqlsingle/      one-statement validation
 internal/db/validate/       DB flag and request validation helpers
 internal/dryrun/            shared dry-run result envelope
 internal/fs/                tdc fs control-plane, data-plane, and mount use cases
+internal/oplog/             local JSONL operation log writer
 internal/output/            structured JSON/text/raw rendering
 internal/organization/      organization project command use cases
 internal/query/             JMESPath query application
@@ -717,6 +718,25 @@ this mapping centralized in `internal/config/region`.
 Do not store secrets in logs, telemetry, generated docs examples, or test
 fixtures.
 
+Local operation logs are enabled by default and live at
+`~/.tdc/logs/tdc.jsonl`. They are local audit/debug summaries, not telemetry.
+`TDC_LOGGING=off` disables them for the current process, and global config can
+disable them with:
+
+```toml
+[logging]
+enabled = false
+```
+
+Environment values `off`, `false`, `0`, and `no` disable logging; `on`,
+`true`, `1`, and `yes` enable it. The environment variable takes precedence
+over config. Do not add a `tdc logging status` command. The operation log may
+record command paths, flag names, profile names, region codes, duration, exit
+code, app error code/category, service name, HTTP method/status, operation, and
+request id. It must never record flag values, SQL text, SQL results, file
+contents, raw request/response bodies, connection strings, local paths, tdc fs
+raw paths, API keys, DB passwords, or tdc fs API keys.
+
 Generated DB SQL usernames and passwords live in
 `~/.tdc/db_users/<cluster-id>/credentials`, not in the main
 `~/.tdc/credentials` file. Do not add nested
@@ -910,6 +930,8 @@ Current expectations:
 - Unit tests should use temp home directories for config and credentials.
 - E2E tests should use temp `HOME` values and must not touch the user's real
   `~/.tdc/`.
+- Unit/e2e helpers should set `TDC_LOGGING=off` by default unless the test is
+  explicitly verifying operation logging.
 - API client tests should use mock HTTP servers once API specs are implemented.
 - Live cloud tests are opt-in, skipped by default, and run through
   `make live-e2e`. They must use the `live-e2e` profile and verify the real

@@ -83,6 +83,40 @@ func ExitCodeFor(err error) int {
 	return 1
 }
 
+func CodeFor(err error) string {
+	if err == nil {
+		return ""
+	}
+	var appErr *Error
+	if errors.As(err, &appErr) {
+		return appErr.Code
+	}
+	var converted appErrorer
+	if errors.As(err, &converted) {
+		if appErr := converted.AppError(); appErr != nil {
+			return appErr.Code
+		}
+	}
+	return ""
+}
+
+func CategoryFor(err error) string {
+	if err == nil {
+		return ""
+	}
+	var appErr *Error
+	if errors.As(err, &appErr) {
+		return appErr.Category
+	}
+	var converted appErrorer
+	if errors.As(err, &converted) {
+		if appErr := converted.AppError(); appErr != nil {
+			return appErr.Category
+		}
+	}
+	return ""
+}
+
 func MessageFor(err error) string {
 	if err == nil {
 		return ""

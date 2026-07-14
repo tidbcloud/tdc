@@ -11,6 +11,7 @@ import (
 	"github.com/tidbcloud/tdc/internal/api/endpoints"
 	"github.com/tidbcloud/tdc/internal/apperr"
 	"github.com/tidbcloud/tdc/internal/authz"
+	"github.com/tidbcloud/tdc/internal/oplog"
 )
 
 func TestClientDoJSON(t *testing.T) {
@@ -98,6 +99,50 @@ func TestClientMapsPaymentRequired(t *testing.T) {
 	}
 }
 
+func TestClientRecordsSafeAPIEvent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Request-Id", "request-1")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client, err := New(Options{
+		Endpoint: endpoints.Endpoint{
+			Service:    endpoints.ServiceFS,
+			BaseURL:    server.URL,
+			Provider:   "aws",
+			RegionCode: "us-east-1",
+		},
+		ProfileName: "stage",
+		Permission:  authz.FSFileRead,
+		Action:      "read tdc fs file",
+	})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	recorder := &memoryRecorder{}
+	ctx := oplog.WithRecorder(context.Background(), recorder)
+	req, err := client.NewRequest(ctx, http.MethodGet, "/v1/fs/secret/path?read=1", nil)
+	if err != nil {
+		t.Fatalf("NewRequest failed: %v", err)
+	}
+	var out map[string]bool
+	if err := client.DoJSON(req, &out); err != nil {
+		t.Fatalf("DoJSON failed: %v", err)
+	}
+
+	if len(recorder.events) != 1 {
+		t.Fatalf("expected one event, got %#v", recorder.events)
+	}
+	event := recorder.events[0]
+	if event.Service != "tdc_fs" || event.Operation != "read tdc fs file" || event.StatusCode != http.StatusOK || event.RequestID != "request-1" {
+		t.Fatalf("unexpected event: %#v", event)
+	}
+	if strings.Contains(event.Operation, "secret/path") || strings.Contains(event.Operation, "read=1") {
+		t.Fatalf("API event leaked raw path/query: %#v", event)
+	}
+}
+
 func statusError(t *testing.T, status int, body string, permission authz.Permission) error {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -113,6 +158,14 @@ func statusError(t *testing.T, status int, body string, permission authz.Permiss
 		t.Fatalf("NewRequest failed: %v", err)
 	}
 	return client.DoJSON(req, nil)
+}
+
+type memoryRecorder struct {
+	events []oplog.Event
+}
+
+func (r *memoryRecorder) Record(_ context.Context, event oplog.Event) {
+	r.events = append(r.events, event)
 }
 
 func testClient(t *testing.T, baseURL string, permission authz.Permission) *Client {

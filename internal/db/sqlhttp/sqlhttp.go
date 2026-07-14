@@ -16,6 +16,7 @@ import (
 	"github.com/tidbcloud/tdc/internal/apperr"
 	"github.com/tidbcloud/tdc/internal/db/sqlcred"
 	"github.com/tidbcloud/tdc/internal/db/sqlresult"
+	"github.com/tidbcloud/tdc/internal/oplog"
 )
 
 type Options struct {
@@ -66,7 +67,9 @@ func Execute(ctx context.Context, opts Options) (sqlresult.Result, error) {
 		_, _ = fmt.Fprintf(opts.DebugWriter, "tdc [DEBUG]: sql https api request id: %s\n", traceID)
 	}
 
+	start := time.Now()
 	res, err := client.Do(req)
+	recordSQLHTTPEvent(ctx, traceID, res, err, time.Since(start))
 	if err != nil {
 		return sqlresult.Result{}, apperr.Wrap("db.sql_http_network", "database", 1, "SQL HTTPS API request failed: check network connectivity and cluster endpoint", err)
 	}
@@ -91,6 +94,25 @@ func Execute(ctx context.Context, opts Options) (sqlresult.Result, error) {
 		ClusterID:    opts.ClusterID,
 		Session:      res.Header.Get("TiDB-Session"),
 	}, nil
+}
+
+func recordSQLHTTPEvent(ctx context.Context, traceID string, res *http.Response, requestErr error, duration time.Duration) {
+	event := oplog.Event{
+		Type:       "api",
+		Service:    "tidb_cloud_sql",
+		Operation:  "execute SQL statement",
+		Method:     http.MethodPost,
+		DurationMS: duration.Milliseconds(),
+		RequestID:  traceID,
+	}
+	if res != nil {
+		event.StatusCode = res.StatusCode
+	}
+	if requestErr != nil {
+		event.ErrorCode = "db.sql_http_network"
+		event.ErrorCategory = "database"
+	}
+	oplog.FromContext(ctx).Record(ctx, event)
 }
 
 func endpointURL(opts Options) (string, error) {

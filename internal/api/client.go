@@ -69,6 +69,7 @@ func New(opts Options) (*Client, error) {
 		if opts.Debug {
 			transport = apitransport.NewDebugRoundTripper(transport, opts.DebugWriter, opts.Redactor)
 		}
+		transport = newOplogRoundTripper(transport, opts)
 		httpClient = &http.Client{
 			Transport: transport,
 			Timeout:   opts.Timeout,

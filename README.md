@@ -223,6 +223,31 @@ Global flags:
 - `--help`
 - `--version`
 
+## Local Operation Logs
+
+tdc writes a local JSON Lines operation log by default:
+
+```text
+~/.tdc/logs/tdc.jsonl
+```
+
+The log is intended for local audit and debugging of agent/user activity. It records safe summaries such as command path, flag names, profile, region code, duration, exit code, tdc error code/category, remote service, HTTP method, HTTP status, and request id when available. It does not record flag values, SQL text, SQL results, file contents, raw request or response bodies, connection strings, local paths, tdc fs raw paths, API keys, DB passwords, or tdc fs API keys.
+
+Disable operation logging for the current process:
+
+```bash
+TDC_LOGGING=off tdc db list-db-clusters
+```
+
+Disable it in local config:
+
+```toml
+[logging]
+enabled = false
+```
+
+Supported `TDC_LOGGING` values are `on`, `true`, `1`, `yes`, `off`, `false`, `0`, and `no`. The environment variable takes precedence over `[logging].enabled`. Log rotation defaults to `10MB x 5` total files and can be tuned with `[logging].max_file_mb` and `[logging].max_files`.
+
 ## Commands
 
 ### Root
@@ -837,6 +862,7 @@ Environment variables:
 TDC_REGION_CODE=aws-us-east-1
 TDC_PUBLIC_KEY=...
 TDC_PRIVATE_KEY=...
+TDC_LOGGING=off
 ```
 
 When environment credentials are used, all three variables are required.

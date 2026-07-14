@@ -130,6 +130,16 @@ CLI v2 for TiDB Cloud \| Init Date: 2026\-05\-18 \|@Todd Bao
 
 - **NOT** credentials, file contents, or sensitive data
 
+### Local Operation Logs
+
+- Local operation logs are allowed for audit/debuggability and should be written under `~/.tdc/logs/`\.
+
+- Logs record safe summaries only: command path, flag names, profile, region, duration, exit code, app error code/category, service, HTTP status, and request id\.
+
+- Logs must not record flag values, SQL text/results, file contents, raw request/response bodies, connection strings, local paths, tdc fs raw paths, API keys, DB passwords, or tdc fs API keys\.
+
+- Users and CI must be able to disable local operation logs with `TDC_LOGGING=off` or `[logging].enabled = false`\.
+
 ### Global Flags
 
 1. `--profile` use which config/credentials, for FS it also decides the region\.

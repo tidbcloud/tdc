@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -287,6 +288,50 @@ func tdcBinary(t *testing.T) string {
 	return bin
 }
 
+func TestOperationLogWritesSafeJSONL(t *testing.T) {
+	bin := tdcBinary(t)
+	home := t.TempDir()
+
+	result := runTDCWithInput(t, bin, "", []string{
+		"HOME=" + home,
+		"TDC_LOGGING=on",
+		"TDC_REGION_CODE=aws-us-east-1",
+		"TDC_PUBLIC_KEY=ci-public-secret",
+		"TDC_PRIVATE_KEY=ci-private-secret",
+	}, "configure", "--profile", "ci", "--non-interactive")
+	result.wantExitCode(0)
+
+	logPath := filepath.Join(home, ".tdc", "logs", "tdc.jsonl")
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read operation log: %v", err)
+	}
+	if strings.Contains(string(data), "ci-public-secret") || strings.Contains(string(data), "ci-private-secret") {
+		t.Fatalf("operation log leaked secret values:\n%s", string(data))
+	}
+	var event map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(data), &event); err != nil {
+		t.Fatalf("decode operation log: %v\n%s", err, string(data))
+	}
+	if event["type"] != "command" || event["command"] != "tdc configure" || event["profile"] != "ci" {
+		t.Fatalf("unexpected operation log event: %#v", event)
+	}
+}
+
+func TestOperationLogCanBeDisabled(t *testing.T) {
+	bin := tdcBinary(t)
+	home := t.TempDir()
+
+	result := runTDCWithInput(t, bin, "", []string{
+		"HOME=" + home,
+		"TDC_LOGGING=off",
+	}, "help")
+	result.wantExitCode(0)
+	if _, err := os.Stat(filepath.Join(home, ".tdc", "logs", "tdc.jsonl")); !os.IsNotExist(err) {
+		t.Fatalf("expected no operation log file, got err=%v", err)
+	}
+}
+
 func runTDC(t *testing.T, bin string, args ...string) commandResult {
 	t.Helper()
 	return runTDCWithInput(t, bin, "", nil, args...)
@@ -303,8 +348,12 @@ func runTDCWithInput(t *testing.T, bin, stdin string, env []string, args ...stri
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
 	}
+	cmd.Env = append([]string{}, os.Environ()...)
+	if !envContains(env, "TDC_LOGGING") {
+		cmd.Env = append(cmd.Env, "TDC_LOGGING=off")
+	}
 	if len(env) > 0 {
-		cmd.Env = append(os.Environ(), env...)
+		cmd.Env = append(cmd.Env, env...)
 	}
 
 	err := cmd.Run()
@@ -324,6 +373,16 @@ func runTDCWithInput(t *testing.T, bin, stdin string, env []string, args ...stri
 		stdout:   stdout.String(),
 		stderr:   stderr.String(),
 	}
+}
+
+func envContains(env []string, key string) bool {
+	prefix := key + "="
+	for _, value := range env {
+		if strings.HasPrefix(value, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 type commandResult struct {
