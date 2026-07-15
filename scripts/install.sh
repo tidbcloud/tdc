@@ -168,6 +168,10 @@ ARTIFACT="tdc_${OS}_${ARCH}.tar.gz"
 ARCHIVE_URL="${RELEASE_BASE}/${ARTIFACT}"
 CHECKSUMS_URL="${RELEASE_BASE}/tdc_checksums.txt"
 TARGET="${INSTALL_DIR}/tdc"
+COMPANION_ARTIFACT="drive9-${OS}-${ARCH}"
+COMPANION_URL="https://drive9.ai/releases/${COMPANION_ARTIFACT}"
+COMPANION_CHECKSUMS_URL="https://drive9.ai/releases/checksums.txt"
+COMPANION_TARGET="${INSTALL_DIR}/tdc-drive9"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   cat <<EOF
@@ -177,6 +181,9 @@ artifact: ${ARTIFACT}
 archive_url: ${ARCHIVE_URL}
 checksums_url: ${CHECKSUMS_URL}
 target: ${TARGET}
+companion_artifact: ${COMPANION_ARTIFACT}
+companion_url: ${COMPANION_URL}
+companion_target: ${COMPANION_TARGET}
 EOF
   exit 0
 fi
@@ -226,6 +233,24 @@ install_binary() {
     command -v sudo >/dev/null 2>&1 || error "cannot write to ${INSTALL_DIR}; install to a user-writable directory with --install-dir"
     info "Installing to ${INSTALL_DIR} with sudo"
     sudo mv "$1" "$TARGET"
+  fi
+}
+
+install_companion_binary() {
+  if [ ! -d "$INSTALL_DIR" ]; then
+    mkdir -p "$INSTALL_DIR" 2>/dev/null || {
+      command -v sudo >/dev/null 2>&1 || error "cannot create ${INSTALL_DIR}; install to a user-writable directory with --install-dir"
+      info "Creating ${INSTALL_DIR} with sudo"
+      sudo mkdir -p "$INSTALL_DIR"
+    }
+  fi
+
+  if [ -w "$INSTALL_DIR" ]; then
+    mv "$1" "$COMPANION_TARGET"
+  else
+    command -v sudo >/dev/null 2>&1 || error "cannot write to ${INSTALL_DIR}; install to a user-writable directory with --install-dir"
+    info "Installing tdc-drive9 to ${INSTALL_DIR} with sudo"
+    sudo mv "$1" "$COMPANION_TARGET"
   fi
 }
 
@@ -320,9 +345,12 @@ printf "  ${DIM}─────────────────────�
 printf "\n"
 info "Platform: ${OS}/${ARCH}"
 info "Artifact: ${ARTIFACT}"
+info "Companion: ${COMPANION_ARTIFACT}"
 
 download "$ARCHIVE_URL" "${TMP_DIR}/${ARTIFACT}"
 download "$CHECKSUMS_URL" "${TMP_DIR}/tdc_checksums.txt"
+download "$COMPANION_URL" "${TMP_DIR}/${COMPANION_ARTIFACT}"
+download "$COMPANION_CHECKSUMS_URL" "${TMP_DIR}/drive9_checksums.txt"
 
 EXPECTED="$(awk -v name="$ARTIFACT" '$2 == name { print $1 }' "${TMP_DIR}/tdc_checksums.txt" | head -n 1)"
 if [ -z "$EXPECTED" ]; then
@@ -339,16 +367,34 @@ if [ "$EXPECTED" != "$ACTUAL" ]; then
   error "checksum mismatch for ${ARTIFACT}"
 fi
 
+COMPANION_EXPECTED="$(awk -v name="$COMPANION_ARTIFACT" '$2 == name { print $1 }' "${TMP_DIR}/drive9_checksums.txt" | head -n 1)"
+if [ -z "$COMPANION_EXPECTED" ]; then
+  error "checksum for ${COMPANION_ARTIFACT} not found"
+fi
+
+if command -v sha256sum >/dev/null 2>&1; then
+  COMPANION_ACTUAL="$(sha256sum "${TMP_DIR}/${COMPANION_ARTIFACT}" | awk '{ print $1 }')"
+else
+  COMPANION_ACTUAL="$(shasum -a 256 "${TMP_DIR}/${COMPANION_ARTIFACT}" | awk '{ print $1 }')"
+fi
+
+if [ "$COMPANION_EXPECTED" != "$COMPANION_ACTUAL" ]; then
+  error "checksum mismatch for ${COMPANION_ARTIFACT}"
+fi
+
 tar -xzf "${TMP_DIR}/${ARTIFACT}" -C "$TMP_DIR"
 FOUND="$(find "$TMP_DIR" -type f -name tdc | head -n 1)"
 if [ -z "$FOUND" ]; then
   error "archive did not contain tdc"
 fi
 chmod 0755 "$FOUND"
+chmod 0755 "${TMP_DIR}/${COMPANION_ARTIFACT}"
 install_binary "$FOUND"
+install_companion_binary "${TMP_DIR}/${COMPANION_ARTIFACT}"
 
 "$TARGET" --version
 success "tdc installed to ${TARGET}"
+success "tdc fs companion installed to ${COMPANION_TARGET}"
 bootstrap_config
 report_path_status
 print_regions

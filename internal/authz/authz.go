@@ -31,8 +31,6 @@ const (
 	FSVaultSecretCreate     Permission = "fs.vault.secret.create"
 	FSVaultSecretUpdate     Permission = "fs.vault.secret.update"
 	FSVaultSecretDelete     Permission = "fs.vault.secret.delete"
-	FSVaultTokenCreate      Permission = "fs.vault.token.create"
-	FSVaultTokenDelete      Permission = "fs.vault.token.delete"
 	FSVaultGrantCreate      Permission = "fs.vault.grant.create"
 	FSVaultGrantDelete      Permission = "fs.vault.grant.delete"
 	FSVaultAuditRead        Permission = "fs.vault.audit.read"
@@ -79,14 +77,7 @@ var commandPermissions = map[string]Permission{
 	"tdc fs list-layers":                    FSFileRead,
 	"tdc fs describe-layer":                 FSFileRead,
 	"tdc fs diff-layer":                     FSFileRead,
-	"tdc fs replay-layer":                   FSFileRead,
-	"tdc fs create-layer-entry":             FSFileWrite,
-	"tdc fs upload-layer-file":              FSFileWrite,
-	"tdc fs read-layer-file":                FSFileRead,
-	"tdc fs describe-layer-entry":           FSFileRead,
 	"tdc fs create-layer-checkpoint":        FSFileWrite,
-	"tdc fs describe-layer-checkpoint":      FSFileRead,
-	"tdc fs list-layer-events":              FSFileRead,
 	"tdc fs rollback-layer":                 FSFileWrite,
 	"tdc fs commit-layer":                   FSFileWrite,
 	"tdc fs pack-file-system":               FSFileWrite,
@@ -99,8 +90,6 @@ var commandPermissions = map[string]Permission{
 	"tdc fs-vault read-secret":              FSVaultSecretRead,
 	"tdc fs-vault list-secrets":             FSVaultSecretRead,
 	"tdc fs-vault delete-secret":            FSVaultSecretDelete,
-	"tdc fs-vault create-token":             FSVaultTokenCreate,
-	"tdc fs-vault delete-token":             FSVaultTokenDelete,
 	"tdc fs-vault create-grant":             FSVaultGrantCreate,
 	"tdc fs-vault delete-grant":             FSVaultGrantDelete,
 	"tdc fs-vault list-audit-events":        FSVaultAuditRead,
@@ -114,23 +103,8 @@ var commandPermissions = map[string]Permission{
 	"tdc fs-journal verify-journal":         FSJournalVerify,
 	"tdc fs-git clone-git-workspace":        FSGitWorkspaceWrite,
 	"tdc fs-git hydrate-git-workspace":      FSGitWorkspaceRead,
-	"tdc fs-git restore-git-workspace":      FSGitWorkspaceRead,
 	"tdc fs-git add-git-worktree":           FSGitWorkspaceWrite,
 	"tdc fs-git remove-git-worktree":        FSGitWorkspaceWrite,
-	"tdc fs-git create-git-workspace":       FSGitWorkspaceWrite,
-	"tdc fs-git list-git-workspaces":        FSGitWorkspaceRead,
-	"tdc fs-git describe-git-workspace":     FSGitWorkspaceRead,
-	"tdc fs-git delete-git-workspace":       FSGitWorkspaceWrite,
-	"tdc fs-git replace-git-tree":           FSGitWorkspaceWrite,
-	"tdc fs-git list-git-tree":              FSGitWorkspaceRead,
-	"tdc fs-git upsert-git-state":           FSGitWorkspaceWrite,
-	"tdc fs-git describe-git-state":         FSGitWorkspaceRead,
-	"tdc fs-git put-git-object-pack":        FSGitWorkspaceWrite,
-	"tdc fs-git list-git-object-packs":      FSGitWorkspaceRead,
-	"tdc fs-git describe-git-object-pack":   FSGitWorkspaceRead,
-	"tdc fs-git put-git-overlay-entry":      FSGitWorkspaceWrite,
-	"tdc fs-git describe-git-overlay-entry": FSGitWorkspaceRead,
-	"tdc fs-git list-git-overlay-entries":   FSGitWorkspaceRead,
 }
 
 func ForCommand(commandPath string) (Permission, error) {

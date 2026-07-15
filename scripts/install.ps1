@@ -142,6 +142,10 @@ $Artifact = "tdc_windows_amd64.zip"
 $ArchiveUrl = "$ReleaseBase/$Artifact"
 $ChecksumsUrl = "$ReleaseBase/tdc_checksums.txt"
 $Target = Join-Path $InstallDir "tdc.exe"
+$CompanionArtifact = "drive9-windows-amd64.exe"
+$CompanionUrl = "https://drive9.ai/releases/$CompanionArtifact"
+$CompanionChecksumsUrl = "https://drive9.ai/releases/checksums.txt"
+$CompanionTarget = Join-Path $InstallDir "tdc-drive9.exe"
 
 if ($DryRun) {
     Write-Output "tdc install dry-run"
@@ -150,6 +154,9 @@ if ($DryRun) {
     Write-Output "archive_url: $ArchiveUrl"
     Write-Output "checksums_url: $ChecksumsUrl"
     Write-Output "target: $Target"
+    Write-Output "companion_artifact: $CompanionArtifact"
+    Write-Output "companion_url: $CompanionUrl"
+    Write-Output "companion_target: $CompanionTarget"
     exit 0
 }
 
@@ -167,8 +174,12 @@ $TempDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetT
 try {
     $ArchivePath = Join-Path $TempDir.FullName $Artifact
     $ChecksumsPath = Join-Path $TempDir.FullName "tdc_checksums.txt"
+    $CompanionPath = Join-Path $TempDir.FullName $CompanionArtifact
+    $CompanionChecksumsPath = Join-Path $TempDir.FullName "drive9_checksums.txt"
     Invoke-WebRequest -Uri $ArchiveUrl -OutFile $ArchivePath
     Invoke-WebRequest -Uri $ChecksumsUrl -OutFile $ChecksumsPath
+    Invoke-WebRequest -Uri $CompanionUrl -OutFile $CompanionPath
+    Invoke-WebRequest -Uri $CompanionChecksumsUrl -OutFile $CompanionChecksumsPath
 
     $checksumLine = Get-Content $ChecksumsPath | Where-Object { $_ -match "\s+$([regex]::Escape($Artifact))$" } | Select-Object -First 1
     if (-not $checksumLine) {
@@ -180,6 +191,16 @@ try {
         Fail "checksum mismatch for $Artifact"
     }
 
+    $companionChecksumLine = Get-Content $CompanionChecksumsPath | Where-Object { $_ -match "\s+$([regex]::Escape($CompanionArtifact))$" } | Select-Object -First 1
+    if (-not $companionChecksumLine) {
+        Fail "checksum for $CompanionArtifact not found"
+    }
+    $CompanionExpected = ($companionChecksumLine -split "\s+")[0].ToLowerInvariant()
+    $CompanionActual = (Get-FileHash -Algorithm SHA256 -Path $CompanionPath).Hash.ToLowerInvariant()
+    if ($CompanionExpected -ne $CompanionActual) {
+        Fail "checksum mismatch for $CompanionArtifact"
+    }
+
     Expand-Archive -Path $ArchivePath -DestinationPath $TempDir.FullName -Force
     $Extracted = Get-ChildItem -Path $TempDir.FullName -Recurse -Filter "tdc.exe" | Select-Object -First 1
     if (-not $Extracted) {
@@ -187,8 +208,10 @@ try {
     }
 
     Move-Item -Force -Path $Extracted.FullName -Destination $Target
+    Move-Item -Force -Path $CompanionPath -Destination $CompanionTarget
     & $Target --version
     Write-Output "tdc installed to $Target"
+    Write-Output "tdc fs companion installed to $CompanionTarget"
     Bootstrap-Config
     Report-PathStatus
     Print-Regions

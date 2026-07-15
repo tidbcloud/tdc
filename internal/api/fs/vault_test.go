@@ -7,53 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/tidbcloud/tdc/internal/api"
 )
-
-func TestIssueVaultTokenUsesBearerAuthAndPayload(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/vault/tokens" {
-			t.Fatalf("unexpected request %s %s", r.Method, r.URL.RequestURI())
-		}
-		if got := r.Header.Get("Authorization"); got != "Bearer fs-secret" {
-			t.Fatalf("Authorization = %q", got)
-		}
-		var req struct {
-			AgentID    string   `json:"agent_id"`
-			TaskID     string   `json:"task_id"`
-			Scope      []string `json:"scope"`
-			TTLSeconds int      `json:"ttl_seconds"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			t.Fatalf("decode request: %v", err)
-		}
-		if req.AgentID != "deploy-agent" || req.TaskID != "task-123" || req.TTLSeconds != 3600 {
-			t.Fatalf("unexpected request: %#v", req)
-		}
-		if len(req.Scope) != 2 || req.Scope[0] != "db-prod" || req.Scope[1] != "db-prod/password" {
-			t.Fatalf("scope = %#v", req.Scope)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"token":      "vault-token",
-			"token_id":   "cap-123",
-			"expires_at": "2026-04-14T00:00:00Z",
-		})
-	}))
-	defer server.Close()
-
-	response, err := testBearerClient(t, server.URL).IssueVaultToken(context.Background(), "deploy-agent", "task-123", []string{"db-prod", "db-prod/password"}, time.Hour)
-	if err != nil {
-		t.Fatalf("IssueVaultToken failed: %v", err)
-	}
-	if response.Token != "vault-token" || response.TokenID != "cap-123" {
-		t.Fatalf("unexpected response: %#v", response)
-	}
-}
 
 func TestReadVaultSecretFieldUsesDelegatedBearerToken(t *testing.T) {
 	t.Parallel()

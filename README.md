@@ -26,7 +26,7 @@ iwr https://github.com/tidbcloud/tdc/releases/latest/download/install.ps1 -OutFi
 powershell -ExecutionPolicy Bypass -File $script -InstallDir "$HOME\bin" -Yes
 ```
 
-The installers download the matching archive, verify `tdc_checksums.txt`, install the binary, and run `tdc --version`. Without `--install-dir`, the macOS/Linux installer upgrades the active `tdc` binary found on `PATH`; when no active binary exists, it installs to `/usr/local/bin` and uses `sudo` when that directory is not writable. The Windows installer uses the active `tdc.exe` directory when one exists, otherwise `$HOME\bin`.
+The installers download the matching tdc archive, verify `tdc_checksums.txt`, install `tdc`, install the compatible Drive9 companion as `tdc-drive9`, and run `tdc --version`. Without `--install-dir`, the macOS/Linux installer upgrades the active `tdc` binary found on `PATH`; when no active binary exists, it installs to `/usr/local/bin` and uses `sudo` when that directory is not writable. The Windows installer uses the active `tdc.exe` directory when one exists, otherwise `$HOME\bin`. The companion is installed next to `tdc`; it does not replace or configure a standalone `drive9`.
 
 After installation, the scripts detect PATH shadowing, bootstrap `~/.tdc/config` with `[default] region_code = "aws-us-east-1"` only when that file is missing, print TiDB Cloud DB config regions, fetch and print the current tdc fs region manifest when available, and show next-step commands. Installers never write `~/.tdc/credentials`.
 
@@ -105,7 +105,7 @@ bin/tdc configure --profile live-e2e --non-interactive
 make live-e2e
 ```
 
-At the current implementation stage, `make live-e2e` validates the real binary, the `live-e2e` profile, real TiDB Cloud Digest-auth read-only API probes, `tdc organization list-projects`, the current command surface, mutating command dry-runs, read-only dry-run rejection, a full tdc fs data-plane lifecycle, and the full Starter DB cluster, SQL access, and branch lifecycles. If the `live-e2e` profile has no `fs_api_key`, the live suite creates a temporary tdc fs resource named by `TDC_LIVE_FS_NAME` or `workspace`, stores the generated flat `fs_*` metadata and `fs_api_key`, and deletes that auto-created resource when the test process exits. The live tdc fs lifecycle writes only under a unique `/tdc-e2e-*` path, uploads local files, verifies multipart upload, efficient append, upload resume, range reads, lists/describes/reads/searches/finds files, performs remote copy/move, verifies stdin/stdout copy, tags/descriptions, chmod, symlink, hardlink, pack/unpack, low-level Git workspace APIs, creates and commits a real tdc fs layer, creates/reads/replaces/deletes a real tdc fs-vault secret, verifies delegated grant/token reads, mounts the vault and reads a field through the mounted filesystem on macOS/Linux, lists vault audit events, creates/appends/reads/searches/verifies a real tdc fs-journal, downloads content back, and deletes the test path recursively. On macOS or Linux with FUSE available, live e2e also mounts a unique remote path through the default FUSE driver, reads and writes through the local mount, drains it, unmounts it, and cleans up the remote path. On macOS with `mount_webdav` available, live e2e also verifies the explicit `--driver webdav` fallback path. The live DB lifecycle creates one uniquely named `tdc-e2e-*` Starter cluster without a spending limit, prepares tdc-managed read-only/read-write/admin SQL users, creates connection strings, executes the HTTPS SQL API with all three access modes, creates one `tdc-e2e-branch-*` branch on that cluster, lists/describes/deletes the branch, updates the cluster, reads it again, deletes it, and verifies deletion. As TiDB Cloud API commands are implemented, their real live tests must be added to this same target.
+At the current implementation stage, `make live-e2e` validates the real binary, the `live-e2e` profile, real TiDB Cloud Digest-auth read-only API probes, `tdc organization list-projects`, the current command surface, mutating command dry-runs, read-only dry-run rejection, a full tdc fs data-plane lifecycle through the Drive9 companion, and the full Starter DB cluster, SQL access, and branch lifecycles. If the `live-e2e` profile has no `fs_api_key`, the live suite creates a temporary tdc fs resource named by `TDC_LIVE_FS_NAME` or `workspace`, stores the generated flat `fs_*` metadata and `fs_api_key`, and deletes that auto-created resource when the test process exits. The live tdc fs lifecycle writes only under a unique `/tdc-e2e-*` path, uploads local files, verifies append/resume/range reads, lists/describes/reads/searches/finds files, performs remote copy/move, verifies stdin/stdout copy, tags/descriptions, chmod, symlink, hardlink, pack/unpack, Drive9-exposed Git workspace workflows, creates and commits a real tdc fs layer, creates/reads/replaces/deletes a real tdc fs-vault secret, verifies delegated grant reads, mounts the vault and reads a field through the mounted filesystem on macOS/Linux, lists vault audit events, creates/appends/reads/searches/verifies a real tdc fs-journal, downloads content back, and deletes the test path recursively. On macOS or Linux with mount support available, live e2e also mounts a unique remote path through the companion-selected driver, reads and writes through the local mount, drains it when the actual driver is FUSE, unmounts it, and cleans up the remote path. On macOS with `mount_webdav` available, live e2e also verifies the explicit `--driver webdav` fallback path. The live DB lifecycle creates one uniquely named `tdc-e2e-*` Starter cluster without a spending limit, prepares tdc-managed read-only/read-write/admin SQL users, creates connection strings, executes the HTTPS SQL API with all three access modes, creates one `tdc-e2e-branch-*` branch on that cluster, lists/describes/deletes the branch, updates the cluster, reads it again, deletes it, and verifies deletion. As TiDB Cloud API commands are implemented, their real live tests must be added to this same target.
 
 ## GitHub Actions
 
@@ -200,7 +200,8 @@ The private key is not printed after entry. When stdin is a terminal, private ke
 `tdc` is designed for agents and scripts:
 
 - Use long flags only. Short flags such as `-h` are rejected.
-- Help is available as an explicit command, for example `tdc db help`.
+- Help is available as an explicit command, for example `tdc db help`, and through `--help`.
+- Help usage lines show required flags first and wrap optional flags in square brackets.
 - Successful structured command results render as JSON by default.
 - `--output json` and `--output text` are supported output modes.
 - `--query <jmespath-expression>` is applied after command execution and before rendering.
@@ -459,13 +460,13 @@ tdc fs grep --path /workspace --pattern "hello"
 tdc fs find --path /workspace --file-name-pattern "*.md"
 ```
 
-These commands use the active profile's stored `fs_api_key` as Bearer auth and call the tdc fs data-plane endpoint selected from the hosted region manifest. Run `tdc fs create-file-system` before using them, or configure the flat `fs_api_key` credential manually if the resource already exists.
+These commands use the active profile's stored `fs_api_key`, resolve the tdc fs endpoint from the hosted region manifest, and invoke the bundled `tdc-drive9` companion with isolated state under `~/.tdc/drive9-home`. Run `tdc fs create-file-system` before using them, or configure the flat `fs_api_key` credential manually if the resource already exists. `TDC_DRIVE9_BIN` can point at a compatible Drive9 binary for local debugging; normal users should rely on the installer-managed `tdc-drive9`.
 
-`read-file` writes raw file bytes to stdout and does not wrap the response in JSON. Do not combine `read-file` with `--query`; queries require structured output. `--offset` and `--length` perform a byte-range read and must be provided together. Metadata and search commands return structured JSON by default and support `--output text` for terminal tables.
+`read-file` writes raw file bytes to stdout and does not wrap the response in JSON. Do not combine `read-file` with `--query`; queries require structured output. Metadata and search commands return structured JSON by default and support `--output text` for terminal tables.
 
-`copy-file` supports exactly one explicit source/target pair: `--from-local` with `--to-remote`, `--from-remote` with `--to-local`, or `--from-remote` with `--to-remote`. Remote and local targets are not overwritten unless `--overwrite` is provided. `--create-parents` only applies when copying from tdc fs to a local path. Large local-to-remote copies use multipart upload, preferring the Drive9-compatible V2 presign-batch protocol and falling back to V1 when the backend does not expose V2. Multipart uploads use bounded concurrency, retry once with a fresh presigned URL after an expired V2 part URL, and return `upload_mode` such as `multipart_v2`, `multipart_v1`, or `resume_v1` when that path is used. `--append` appends a local file to a remote file by using the tdc fs append plan when the backend supports it, then falls back to conditional rewrite for compatible non-S3-backed files. `--resume` resumes either an active local-to-remote multipart upload or a partial remote-to-local download. Local-to-remote resume requires an existing active upload for the same remote path; omit `--resume` for a fresh upload. `--recursive` copies directory contents into the target for local-to-remote, remote-to-local, and remote-to-remote copies. Local recursive copy rejects symlinks instead of silently following them. `--from-stdin` and `--to-stdout` provide raw stream copy paths for agents. Local-to-remote writes accept repeatable `--tag key=value` and `--description`; tags and descriptions are sent to the backend when the selected upload path supports them.
+`copy-file` supports exactly one explicit source/target pair: `--from-local` with `--to-remote`, `--from-remote` with `--to-local`, or `--from-remote` with `--to-remote`. Append, resume, recursive copy, stdin/stdout copy, tags, descriptions, chmod, symlink, hardlink, mount behavior, and cache/writeback correctness follow the Drive9 external CLI semantics exposed through the companion.
 
-`chmod-file`, `create-symlink`, and `create-hardlink` map to the tdc fs POSIX-style metadata endpoints. tdc also stores client-side metadata for tdc-managed modes and symlink targets under `~/.tdc/fs_metadata`, so `describe-file` and FUSE can report those values even when remote stat metadata is sparse. Remote symlink creation is supported by the data-plane API; local overlay symlinks and tdc-created remote symlinks are readable through FUSE.
+`create-directory --mode` is accepted for compatibility and validates the octal mode, but Drive9's public `mkdir` command does not currently apply directory modes. Use `chmod-file` for regular file permission changes.
 
 ### tdc fs Layers
 
@@ -475,21 +476,14 @@ tdc fs list-layers
 tdc fs list-layers --output text
 tdc fs describe-layer --layer-id layer-1
 tdc fs diff-layer --layer-id layer-1
-tdc fs replay-layer --layer-id layer-1
-tdc fs create-layer-entry --layer-id layer-1 --path /workspace/inline.txt --content "hello" --mode 0644
-tdc fs upload-layer-file --layer-id layer-1 --from-local ./README.md --to-layer-path /workspace/README.md
-tdc fs read-layer-file --layer-id layer-1 --path /workspace/README.md
-tdc fs describe-layer-entry --layer-id layer-1 --path /workspace/README.md
 tdc fs create-layer-checkpoint --layer-id layer-1 --checkpoint-id cp-1 --label before-commit
-tdc fs describe-layer-checkpoint --checkpoint-id cp-1
-tdc fs list-layer-events --layer-id layer-1
 tdc fs rollback-layer --layer-id layer-1
 tdc fs commit-layer --layer-id layer-1
 ```
 
-Layer commands use the same tdc fs Bearer credentials as data-plane file commands. Mutating layer commands support `--dry-run`; read-only layer commands reject `--dry-run` like other read-only commands. `read-layer-file` writes raw file bytes to stdout and rejects `--query`.
+Layer commands use the same tdc fs credentials as data-plane file commands and are executed by `tdc-drive9 fs layer ...`. tdc exposes the Drive9 public layer operations: create, list, describe/status, diff, checkpoint, rollback, and commit. Low-level layer entry/object/event commands are not part of the public Drive9 CLI surface and are not exposed by tdc.
 
-`copy-file --layer-id` writes local-to-remote and remote-to-remote copy targets into a layer instead of mutating the base filesystem. It does not combine with `--append`, `--resume`, or `--recursive`. `search-file-content --layer-id` and `find-files --layer-id` search the layer overlay when the backend supports layer-aware search and find.
+`copy-file --layer-id` writes local-to-remote and remote-to-remote copy targets into a layer instead of mutating the base filesystem when the companion supports that path. It does not combine with `--append`, `--resume`, or `--recursive`. `search-file-content --layer-id` and `find-files --layer-id` search the layer overlay when the backend and companion support layer-aware search and find.
 
 ### tdc fs Pack And Unpack
 
@@ -517,27 +511,11 @@ When `--archive-path` is omitted, tdc writes to `/.tdc/packs/<mount-profile>-<ha
 tdc fs-git clone-git-workspace --repo-url https://github.com/pingcap/tidb.git --target-path ./workspace/tidb
 tdc fs-git clone-git-workspace --repo-url https://github.com/pingcap/tidb.git --target-path ./workspace/tidb --blobless --hydrate sync
 tdc fs-git hydrate-git-workspace --target-path ./workspace/tidb --timeout 30m
-tdc fs-git restore-git-workspace --target-path ./workspace/tidb
 tdc fs-git add-git-worktree --base-path ./workspace/tidb --worktree-path ./workspace/tidb-feature --branch-name feature-x
 tdc fs-git remove-git-worktree --worktree-path ./workspace/tidb-feature --force
 ```
 
-Git workspace commands are Drive9-style client workflows in tdc's explicit command naming. They require the target path to be inside a tdc fs mount with mount metadata. `clone-git-workspace` runs native `git clone --no-checkout`, registers a `/v1/git-workspaces` row, uploads the HEAD tree manifest with `/tree`, initializes the Git index with `git read-tree --reset`, and checkpoints lightweight `.git` state without the object database. `--blobless` adds `--filter=blob:none`; `--hydrate sync|background|off|auto` controls whether clean objects are prefetched after registration.
-
-FUSE recognizes registered Git workspaces. Clean tracked files are served from the Git tree manifest and the local `.git` object database instead of ordinary `/v1/fs` file rows. Edits, chmod, symlink creation, hardlink copies, rename, and delete under a Git workspace are written to `/v1/git-workspaces/<id>/overlay`. The local `.git` directory stays in the mount profile's local overlay. `restore-git-workspace` downloads the registered lightweight Git state and object packs, restores the local `.git` layout, and unpacks objects. The FUSE runtime uses the same restore path automatically when a clean Git file is requested but local Git state is missing.
-
-The lower-level API commands remain available for diagnostics and automation:
-
-```bash
-tdc fs-git create-git-workspace --root-path /workspace/repo --repo-url https://example.test/repo.git --mode fast
-tdc fs-git list-git-workspaces
-tdc fs-git describe-git-workspace --root-path /workspace/repo
-tdc fs-git replace-git-tree --workspace-id <id> --commit-sha <sha> --node-json '{"path":"README.md","name":"README.md","kind":"file","mode":"100644","object_sha":"..."}'
-tdc fs-git list-git-tree --workspace-id <id> --commit-sha <sha>
-tdc fs-git upsert-git-state --workspace-id <id> --checkpoint-commit <sha> --storage-type inline --content state
-tdc fs-git put-git-overlay-entry --workspace-id <id> --path README.md --operation upsert --resource-kind file --mode 100644 --content hello
-tdc fs-git delete-git-workspace --workspace-id <id>
-```
+Git workspace commands are Drive9-style client workflows in tdc's explicit command naming and are executed by the companion as `tdc-drive9 git ...`. They require the target path to be inside a tdc fs mount with mount metadata. tdc exposes the Drive9 public Git operations: clone, hydrate, add worktree, and remove worktree. Low-level workspace, tree, state, object-pack, and overlay commands are not part of the public Drive9 CLI surface and are not exposed by tdc.
 
 ### tdc Vault
 
@@ -551,11 +529,8 @@ tdc fs-vault list-secrets
 tdc fs-vault delete-secret --secret-name db-prod
 tdc fs-vault create-grant --agent-id deploy-agent --scope db-prod/DB_URL --permission read --ttl 10m
 tdc fs-vault delete-grant --grant-id <grant-id> --reason rotated
-tdc fs-vault create-token --agent-id deploy-agent --task-id deploy-123 --scope db-prod --ttl 10m
-tdc fs-vault delete-token --token-id <token-id>
 tdc fs-vault list-audit-events --secret-name db-prod --limit 20
 tdc fs-vault run-with-secret --secret-path /n/vault/db-prod -- env
-tdc fs-vault mount-vault --mount-path ./vault
 tdc fs-vault mount-vault --mount-path ./vault --vault-token "$TDC_VAULT_TOKEN"
 tdc fs-vault unmount-vault --mount-path ./vault
 ```
@@ -566,9 +541,9 @@ Vault commands use the active profile's tdc fs endpoint and stored `fs_api_key`;
 
 `read-secret` uses owner credentials by default. `--vault-token` or `TDC_VAULT_TOKEN` switches to delegated read endpoints. `--format raw` requires `--field` and prints the field bytes exactly. `--format env` emits dotenv-compatible `KEY=value` lines.
 
-`create-grant` is the preferred delegated access flow. It mints a scoped token for an agent and returns both `token` and `grant_id`. `create-token` exists for legacy Drive9-compatible scoped tokens and returns `token` and `token_id`. `run-with-secret` reads one secret and injects its fields into a child process environment. It rejects field names outside `[A-Z_][A-Z0-9_]*`, rejects control bytes in values except tabs, and removes tdc credential environment variables from the child process.
+`create-grant` is the delegated access flow. It mints a scoped token for an agent and returns both `token` and `grant_id`. `--scope` accepts tdc's short form such as `db-prod/DB_URL`; `/n/vault/db-prod/DB_URL` is also accepted and normalized before tdc invokes the companion. `run-with-secret` reads one secret and injects its fields into a child process environment. It rejects field names outside `[A-Z_][A-Z0-9_]*`, rejects control bytes in values except tabs, and removes tdc credential environment variables from the child process.
 
-`mount-vault` exposes readable secrets as a read-only FUSE filesystem: `<mount>/<secret>/<field>`. Owner mode uses the active profile's `fs_api_key`. Delegated mode uses `--vault-token` or `TDC_VAULT_TOKEN` and calls the delegated read endpoints. The default mode starts a background mount process and records state under `~/.tdc/mounts/`; `--foreground` keeps it attached to the current terminal. When a token is needed for the background process, tdc passes it through `TDC_VAULT_TOKEN` in the child environment instead of process arguments. `unmount-vault` stops the recorded mount process.
+`mount-vault` exposes delegated readable secrets as a read-only FUSE filesystem: `<mount>/<secret>/<field>`. It requires `--vault-token` or `TDC_VAULT_TOKEN`; use `create-grant` first when you need a token. Owner mode should use `read-secret`, `list-secrets`, or `run-with-secret` instead of vault mount. The default mode starts a background mount process and records state under `~/.tdc/mounts/`; `--foreground` keeps it attached to the current terminal. tdc passes the delegated token through the companion environment rather than persisting it in `~/.tdc/credentials`. `unmount-vault` stops the recorded mount process.
 
 ### tdc Journal
 
@@ -601,8 +576,8 @@ tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace -
 tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --local-root ~/.tdc/local/fs/demo
 tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --unpack-archive-path /workspace/packs/demo.tar.gz
 tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --no-auto-unpack
-tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --read-cache-size-mb 256 --read-cache-max-file-mb 16
-tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --cache-dir ~/.tdc/cache/workspace --write-back-cache=false
+tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --driver fuse --read-cache-size-mb 256 --read-cache-max-file-mb 16
+tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --driver fuse --cache-dir ~/.tdc/cache/workspace --write-back-cache=false
 tdc fs drain-file-system --mount-path ./workspace
 tdc fs drain-file-system --mount-path ./workspace --timeout 30s
 tdc fs unmount-file-system --mount-path ./workspace
@@ -613,15 +588,13 @@ tdc fs unmount-file-system --mount-path ./workspace --ignore-absent
 
 Mount runtime aliases are `tdc fs mount` for `tdc fs mount-file-system`, `tdc fs drain` for `tdc fs drain-file-system`, and `tdc fs umount` for `tdc fs unmount-file-system`.
 
-`mount-file-system` defaults to `--driver auto`, which prefers FUSE and falls back to WebDAV only when FUSE prerequisites are unavailable and WebDAV is supported. Use `--driver fuse` to require FUSE, or `--driver webdav` to force the compatibility bridge. The default background mode starts a foreground child process and records mount metadata under `~/.tdc/mounts/`; FUSE mounts also record a local control socket. `drain-file-system` connects to that socket and flushes dirty open handles plus pending write-back cache without unmounting. `unmount-file-system` reads the state and stops the mount process. `--foreground` keeps the mount runtime attached to the current terminal until interrupted.
+`mount-file-system` defaults to `--driver auto`, which asks the Drive9 companion to choose the best supported runtime. Use `--driver fuse` to require FUSE, or `--driver webdav` to force the compatibility bridge. The default background mode starts a companion-managed mount process and records mount metadata under `~/.tdc/mounts/`. FUSE mounts also record a local control socket; `drain-file-system` is a FUSE-only operation that connects to that socket and flushes dirty open handles plus pending write-back cache without unmounting. WebDAV mounts flush through normal file close semantics and do not support drain. `unmount-file-system` reads the state and stops the mount process. `--foreground` keeps the mount runtime attached to the current terminal until interrupted.
 
-FUSE mounts also record `mount_profile`, `local_root`, and `pack_paths` in mount state. When `--local-root` is omitted, tdc derives a stable local root under `~/.tdc/local/fs/<hash>` from the profile, fs resource, endpoint, remote root, and API key fingerprint. The `coding-agent` profile keeps VCS metadata, dependency directories, caches, build output, and common temporary paths in the local overlay. The `portable` profile defaults to pack path `/`, attempts to unpack the default archive on mount, and packs the local overlay back to tdc fs on unmount. Use `--no-auto-unpack` or `--no-auto-pack` to disable those automatic steps, or pass explicit archive paths when deterministic archive locations are required.
+Companion FUSE mounts also record `mount_profile`, `local_root`, and `pack_paths` in mount state. When `--local-root` is omitted, tdc derives a stable local root under `~/.tdc/local/fs/<hash>` from the profile, fs resource, endpoint, remote root, and API key fingerprint. The `coding-agent` profile keeps VCS metadata, dependency directories, caches, build output, and common temporary paths in the local overlay. The `portable` profile defaults to pack path `/`, attempts to unpack the default archive on mount, and packs the local overlay back to tdc fs on unmount. Use `--no-auto-unpack` or `--no-auto-pack` to disable those automatic steps, or pass explicit archive paths when deterministic archive locations are required.
 
-The FUSE driver uses `github.com/hanwen/go-fuse/v2` and the existing tdc fs data-plane API directly. It keeps a bounded in-memory read cache and, by default, persists pending writes under `~/.tdc/cache/mounts/<mount-hash>/` before uploading them on flush/release. The default cache identity includes the profile, fs resource name, tenant id, endpoint, remote root, mount path, and a fingerprint of the fs API key, so reusing the same local mount path for a different tdc fs resource gets a different cache directory. Pending write metadata is checked against that identity before recovery; mismatched pending writes are refused instead of uploaded to the wrong resource.
+The FUSE runtime is implemented by the bundled Drive9 companion. tdc passes the active profile, endpoint, resource credentials, cache options, mount profile, local overlay, and pack/unpack options into that companion instead of reimplementing FUSE in the tdc process. The companion owns read cache, writeback, pending-write recovery, open-handle correctness, and platform prerequisite handling. tdc keeps the wrapper path responsible for profile isolation, argument translation, redaction, and mount-state cleanup.
 
-FUSE reads use `revision` and `resource_id` from the tdc fs stat API when those fields are available, so cached file bytes are reused only for the same known remote object version. Open writable file handles keep their base version and return a stale-file error if tdc can verify that the remote object changed or was deleted before flush. Rename retargets open handles, and deleting an open file marks the handle deleted so a later close does not recreate it. Git workspace paths add a synthetic tree layer backed by `/v1/git-workspaces` and local `.git` objects, with dirty changes persisted through Git overlay endpoints. On macOS FUSE requires macFUSE; on Linux it requires `/dev/fuse` plus `fusermount3` or `fusermount`.
-
-The WebDAV driver starts a local loopback WebDAV bridge, supports WebDAV dead properties for client compatibility, and uses macOS `mount_webdav`/`umount`; Linux and Windows WebDAV mounts still return explicit unsupported-prerequisite errors. The CLI build remains cgo-free.
+On macOS FUSE requires macFUSE; on Linux it requires `/dev/fuse` plus `fusermount3` or `fusermount`. The WebDAV runtime starts a local loopback WebDAV bridge and uses the platform mount helpers exposed by the companion. The tdc CLI build remains cgo-free.
 
 ### All Commands
 
@@ -667,14 +640,7 @@ tdc fs create-layer
 tdc fs list-layers
 tdc fs describe-layer
 tdc fs diff-layer
-tdc fs replay-layer
-tdc fs create-layer-entry
-tdc fs upload-layer-file
-tdc fs read-layer-file
-tdc fs describe-layer-entry
 tdc fs create-layer-checkpoint
-tdc fs describe-layer-checkpoint
-tdc fs list-layer-events
 tdc fs rollback-layer
 tdc fs commit-layer
 tdc fs pack-file-system
@@ -702,8 +668,6 @@ tdc fs-vault replace-secret
 tdc fs-vault read-secret
 tdc fs-vault list-secrets
 tdc fs-vault delete-secret
-tdc fs-vault create-token
-tdc fs-vault delete-token
 tdc fs-vault create-grant
 tdc fs-vault delete-grant
 tdc fs-vault list-audit-events
@@ -717,23 +681,8 @@ tdc fs-journal search-journal-entries
 tdc fs-journal verify-journal
 tdc fs-git clone-git-workspace
 tdc fs-git hydrate-git-workspace
-tdc fs-git restore-git-workspace
 tdc fs-git add-git-worktree
 tdc fs-git remove-git-worktree
-tdc fs-git create-git-workspace
-tdc fs-git list-git-workspaces
-tdc fs-git describe-git-workspace
-tdc fs-git delete-git-workspace
-tdc fs-git replace-git-tree
-tdc fs-git list-git-tree
-tdc fs-git upsert-git-state
-tdc fs-git describe-git-state
-tdc fs-git put-git-object-pack
-tdc fs-git list-git-object-packs
-tdc fs-git describe-git-object-pack
-tdc fs-git put-git-overlay-entry
-tdc fs-git describe-git-overlay-entry
-tdc fs-git list-git-overlay-entries
 ```
 
 Help and version forms are also available at every command level:

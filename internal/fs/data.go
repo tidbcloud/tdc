@@ -170,6 +170,9 @@ type SearchFilesResult struct {
 }
 
 func (s Service) CopyFile(ctx context.Context, opts CopyFileOptions) (FileOperationResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9CopyFile(ctx, opts)
+	}
 	fromLocal := strings.TrimSpace(opts.FromLocal)
 	toLocal := strings.TrimSpace(opts.ToLocal)
 	fromRemote := strings.TrimSpace(opts.FromRemote)
@@ -279,7 +282,7 @@ func (s Service) CopyFile(ctx context.Context, opts CopyFileOptions) (FileOperat
 			return FileOperationResult{}, err
 		}
 		if layerID != "" {
-			return FileOperationResult{}, apperr.New("fs.invalid_copy_flags", "usage", 2, "--layer-id does not support remote-to-local copy; use read-layer-file instead")
+			return FileOperationResult{}, apperr.New("fs.invalid_copy_flags", "usage", 2, "--layer-id does not support remote-to-local copy through the Drive9-compatible command surface")
 		}
 		if opts.Append {
 			return FileOperationResult{}, apperr.New("fs.invalid_copy_flags", "usage", 2, "--append only supports --from-local with --to-remote")
@@ -356,6 +359,9 @@ func (s Service) CopyFile(ctx context.Context, opts CopyFileOptions) (FileOperat
 }
 
 func (s Service) ReadFile(ctx context.Context, opts ReadFileOptions) ([]byte, error) {
+	if s.UseDrive9Companion {
+		return s.drive9ReadFile(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "read tdc fs file")
 	if err != nil {
 		return nil, err
@@ -708,6 +714,9 @@ func copyRemoteTreeToRemote(ctx context.Context, client *apifs.Client, sourceRoo
 }
 
 func (s Service) ListFiles(ctx context.Context, opts ListFilesOptions) (ListFilesResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9ListFiles(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "list tdc fs files")
 	if err != nil {
 		return ListFilesResult{}, err
@@ -728,6 +737,9 @@ func (s Service) ListFiles(ctx context.Context, opts ListFilesOptions) (ListFile
 }
 
 func (s Service) DescribeFile(ctx context.Context, opts DescribeFileOptions) (DescribeFileResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9DescribeFile(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "describe tdc fs file")
 	if err != nil {
 		return DescribeFileResult{}, err
@@ -755,6 +767,9 @@ func (s Service) DescribeFile(ctx context.Context, opts DescribeFileOptions) (De
 }
 
 func (s Service) MoveFile(ctx context.Context, opts MoveFileOptions) (FileOperationResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9MoveFile(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "move tdc fs file")
 	if err != nil {
 		return FileOperationResult{}, err
@@ -782,6 +797,9 @@ func (s Service) MoveFile(ctx context.Context, opts MoveFileOptions) (FileOperat
 }
 
 func (s Service) DeleteFile(ctx context.Context, opts DeleteFileOptions) (FileOperationResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9DeleteFile(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "delete tdc fs file")
 	if err != nil {
 		return FileOperationResult{}, err
@@ -802,6 +820,9 @@ func (s Service) DeleteFile(ctx context.Context, opts DeleteFileOptions) (FileOp
 }
 
 func (s Service) CreateDirectory(ctx context.Context, opts CreateDirectoryOptions) (FileOperationResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9CreateDirectory(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "create tdc fs directory")
 	if err != nil {
 		return FileOperationResult{}, err
@@ -828,6 +849,9 @@ func (s Service) CreateDirectory(ctx context.Context, opts CreateDirectoryOption
 }
 
 func (s Service) ChmodFile(ctx context.Context, opts ChmodFileOptions) (FileOperationResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9ChmodFile(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "chmod tdc fs file")
 	if err != nil {
 		return FileOperationResult{}, err
@@ -852,6 +876,9 @@ func (s Service) ChmodFile(ctx context.Context, opts ChmodFileOptions) (FileOper
 }
 
 func (s Service) SymlinkFile(ctx context.Context, opts SymlinkFileOptions) (FileOperationResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9SymlinkFile(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "create tdc fs symlink")
 	if err != nil {
 		return FileOperationResult{}, err
@@ -875,6 +902,9 @@ func (s Service) SymlinkFile(ctx context.Context, opts SymlinkFileOptions) (File
 }
 
 func (s Service) HardlinkFile(ctx context.Context, opts HardlinkFileOptions) (FileOperationResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9HardlinkFile(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "create tdc fs hardlink")
 	if err != nil {
 		return FileOperationResult{}, err
@@ -899,6 +929,9 @@ func (s Service) HardlinkFile(ctx context.Context, opts HardlinkFileOptions) (Fi
 }
 
 func (s Service) SearchFileContent(ctx context.Context, opts SearchFileContentOptions) (SearchFilesResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9SearchFileContent(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "search tdc fs file content")
 	if err != nil {
 		return SearchFilesResult{}, err
@@ -919,6 +952,9 @@ func (s Service) SearchFileContent(ctx context.Context, opts SearchFileContentOp
 }
 
 func (s Service) FindFiles(ctx context.Context, opts FindFilesOptions) (SearchFilesResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9FindFiles(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "find tdc fs files")
 	if err != nil {
 		return SearchFilesResult{}, err

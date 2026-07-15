@@ -23,6 +23,12 @@ import (
 	"github.com/tidbcloud/tdc/internal/version"
 )
 
+const usageRequiredFlagAnnotation = "tdc_usage_required"
+
+func init() {
+	cobra.AddTemplateFunc("usageSynopsis", usageSynopsis)
+}
+
 type Options struct {
 	Profile string
 	Region  string
@@ -583,10 +589,95 @@ func findChildCommand(cmd *cobra.Command, name string) *cobra.Command {
 	return nil
 }
 
+func markUsageRequired(cmd *cobra.Command, names ...string) {
+	for _, name := range names {
+		flag := cmd.Flags().Lookup(name)
+		if flag == nil {
+			continue
+		}
+		if flag.Annotations == nil {
+			flag.Annotations = map[string][]string{}
+		}
+		flag.Annotations[usageRequiredFlagAnnotation] = []string{"true"}
+	}
+}
+
+func usageSynopsis(cmd *cobra.Command) string {
+	if cmd == nil {
+		return ""
+	}
+	lines := []string{"  " + usageCommandLine(cmd)}
+	lines = append(lines, usageFlagLines(cmd.LocalFlags())...)
+	lines = append(lines, usageFlagLines(cmd.InheritedFlags())...)
+	return strings.Join(lines, "\n")
+}
+
+func usageCommandLine(cmd *cobra.Command) string {
+	line := cmd.CommandPath()
+	if cmd.HasAvailableSubCommands() {
+		return line + " [command]"
+	}
+	return line
+}
+
+func usageFlagLines(flags *pflag.FlagSet) []string {
+	if flags == nil {
+		return nil
+	}
+	required := make([]string, 0)
+	optional := make([]string, 0)
+	flags.VisitAll(func(flag *pflag.Flag) {
+		if flag == nil || flag.Hidden {
+			return
+		}
+		line := "    " + usageFlagSegment(flag)
+		if usageFlagRequired(flag) {
+			required = append(required, line)
+			return
+		}
+		optional = append(optional, "    ["+strings.TrimSpace(line)+"]")
+	})
+	return append(required, optional...)
+}
+
+func usageFlagRequired(flag *pflag.Flag) bool {
+	if flag == nil || flag.Annotations == nil {
+		return false
+	}
+	values := flag.Annotations[usageRequiredFlagAnnotation]
+	return len(values) > 0 && values[0] == "true"
+}
+
+func usageFlagSegment(flag *pflag.Flag) string {
+	segment := "--" + flag.Name
+	if flag.NoOptDefVal != "" {
+		return segment
+	}
+	valueType := usageFlagValueType(flag)
+	if valueType == "" {
+		return segment
+	}
+	return segment + " <" + valueType + ">"
+}
+
+func usageFlagValueType(flag *pflag.Flag) string {
+	if flag == nil || flag.Value == nil {
+		return ""
+	}
+	switch flag.Value.Type() {
+	case "bool":
+		return ""
+	case "stringArray":
+		return "string"
+	default:
+		return flag.Value.Type()
+	}
+}
+
 const helpTemplate = `{{with (or .Long .Short)}}{{.}}
 
 {{end}}Usage:
-  {{.UseLine}}{{if .Aliases}}
+{{usageSynopsis .}}{{if .Aliases}}
 
 Aliases:
 {{range .Aliases}}  {{.}}
@@ -604,7 +695,7 @@ Global Flags:
 `
 
 const usageTemplate = `Usage:
-  {{.UseLine}}{{if .HasAvailableSubCommands}}
+{{usageSynopsis .}}{{if .HasAvailableSubCommands}}
   {{.CommandPath}} help [command]{{end}}{{if .HasAvailableLocalFlags}}
 
 Flags:

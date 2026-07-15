@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/tidbcloud/tdc/internal/api/endpoints"
@@ -140,6 +141,56 @@ func TestClientRecordsSafeAPIEvent(t *testing.T) {
 	}
 	if strings.Contains(event.Operation, "secret/path") || strings.Contains(event.Operation, "read=1") {
 		t.Fatalf("API event leaked raw path/query: %#v", event)
+	}
+}
+
+func TestClientRetriesSafeGETByDefault(t *testing.T) {
+	var calls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			http.Error(w, "temporary failure", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client := testClient(t, server.URL, authz.FSFileRead)
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/v1/fs/file.txt", nil)
+	if err != nil {
+		t.Fatalf("NewRequest failed: %v", err)
+	}
+	var out map[string]bool
+	if err := client.DoJSON(req, &out); err != nil {
+		t.Fatalf("DoJSON failed after safe retry: %v", err)
+	}
+	if !out["ok"] {
+		t.Fatalf("unexpected output: %#v", out)
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("calls = %d, want 2", got)
+	}
+}
+
+func TestClientDoesNotRetryUnsafePOSTByDefault(t *testing.T) {
+	var calls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		http.Error(w, "temporary failure", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := testClient(t, server.URL, authz.FSFileWrite)
+	req, err := client.NewRequest(context.Background(), http.MethodPost, "/v1/fs/file.txt", map[string]string{"value": "x"})
+	if err != nil {
+		t.Fatalf("NewRequest failed: %v", err)
+	}
+	err = client.DoJSON(req, nil)
+	if err == nil {
+		t.Fatal("expected POST 500 to fail")
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("calls = %d, want no unsafe retry", got)
 	}
 }
 

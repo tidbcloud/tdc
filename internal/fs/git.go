@@ -441,6 +441,9 @@ func (s Service) ListGitOverlayEntries(ctx context.Context, opts GitWorkspaceIDO
 }
 
 func (s Service) CloneGitWorkspace(ctx context.Context, opts GitWorkspaceCloneOptions) (GitWorkspaceCloneResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9GitCloneWorkspace(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "clone tdc fs-git workspace")
 	if err != nil {
 		return GitWorkspaceCloneResult{}, err
@@ -544,6 +547,9 @@ func (s Service) CloneGitWorkspace(ctx context.Context, opts GitWorkspaceCloneOp
 }
 
 func (s Service) HydrateGitWorkspace(ctx context.Context, opts GitWorkspaceHydrateOptions) (GitHydrateResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9GitHydrateWorkspace(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceRead, "hydrate tdc fs-git workspace")
 	if err != nil {
 		return GitHydrateResult{}, err
@@ -592,6 +598,9 @@ func (s Service) RestoreGitWorkspace(ctx context.Context, opts GitWorkspaceResto
 }
 
 func (s Service) AddGitWorktree(ctx context.Context, opts GitWorktreeAddOptions) (GitWorkspaceCloneResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9GitAddWorktree(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "add tdc fs-git worktree")
 	if err != nil {
 		return GitWorkspaceCloneResult{}, err
@@ -737,6 +746,9 @@ func (s Service) AddGitWorktree(ctx context.Context, opts GitWorktreeAddOptions)
 }
 
 func (s Service) RemoveGitWorktree(ctx context.Context, opts GitWorktreeRemoveOptions) (GitWorktreeRemoveResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9GitRemoveWorktree(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSGitWorkspaceWrite, "remove tdc fs-git worktree")
 	if err != nil {
 		return GitWorktreeRemoveResult{}, err
