@@ -151,48 +151,7 @@ type backgroundMountRequest struct {
 type backgroundMountStarter func(context.Context, backgroundMountRequest) (int, error)
 
 func (s Service) MountFileSystem(ctx context.Context, opts MountFileSystemOptions) (MountResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9MountFileSystem(ctx, opts)
-	}
-	inputs, err := s.mountInputs(opts)
-	if err != nil {
-		return MountResult{}, err
-	}
-	remote, err := inputs.client.Status(ctx)
-	if err != nil {
-		return MountResult{}, err
-	}
-	checks := []MountRuntimeCheck{
-		{Name: "config_and_credentials", Status: "passed", Message: fmt.Sprintf("profile %q loaded", inputs.profile.Name)},
-		{Name: "permission_requirement", Status: "passed", Message: string(authz.FSMount)},
-		{Name: "fs_resource_credentials", Status: "passed", Message: inputs.fileSystemName},
-		{Name: "endpoint_selection", Status: "passed", Message: fmt.Sprintf("%s %s", inputs.endpoint.Provider, inputs.endpoint.RegionCode)},
-		{Name: "remote_status", Status: "passed", Message: statusMessage(remote.Status)},
-	}
-	autoUnpack, err := s.autoUnpackMount(ctx, inputs)
-	if err != nil {
-		return MountResult{}, err
-	}
-	if autoUnpack != "" {
-		checks = append(checks, MountRuntimeCheck{Name: "auto_unpack", Status: "passed", Message: autoUnpack})
-	}
-	if err := inputs.driver.CheckPrerequisites(); err != nil {
-		return MountResult{}, apperr.Wrap("fs.mount_prerequisite", "runtime", 1, err.Error(), err)
-	}
-	checks = append(checks, MountRuntimeCheck{Name: "mount_driver", Status: "passed", Message: inputs.driver.Name()})
-
-	if opts.Foreground {
-		result, err := s.mountForeground(ctx, inputs, remote, checks)
-		if err != nil {
-			return MountResult{}, err
-		}
-		return result, nil
-	}
-	result, err := s.mountBackground(ctx, inputs, remote, checks)
-	if err != nil {
-		return MountResult{}, err
-	}
-	return result, nil
+	return s.drive9MountFileSystem(ctx, opts)
 }
 
 func (s Service) DryRunMountFileSystem(ctx context.Context, commandPath string, opts MountFileSystemOptions) (dryrun.Result, error) {
@@ -228,67 +187,7 @@ func (s Service) DryRunMountFileSystem(ctx context.Context, commandPath string, 
 }
 
 func (s Service) UnmountFileSystem(ctx context.Context, opts UnmountFileSystemOptions) (UnmountResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9UnmountFileSystem(ctx, opts)
-	}
-	homeDir, err := s.homeDir()
-	if err != nil {
-		return UnmountResult{}, err
-	}
-	mountPath, err := mountstate.CanonicalMountPath(opts.MountPath)
-	if err != nil {
-		return UnmountResult{}, apperr.New("fs.missing_mount_path", "usage", 2, "--mount-path is required")
-	}
-	state, stateFile, err := mountstate.Read(homeDir, mountPath)
-	if err != nil {
-		if os.IsNotExist(err) && opts.IgnoreAbsent {
-			return UnmountResult{
-				Status:    "not_mounted",
-				MountPath: mountPath,
-				Checks:    []MountRuntimeCheck{{Name: "mount_state", Status: "warning", Message: "no tdc fs mount state found"}},
-			}, nil
-		}
-		if os.IsNotExist(err) {
-			return UnmountResult{}, apperr.New("fs.mount_state_not_found", "runtime", 1, fmt.Sprintf("no tdc fs mount state found for %q", mountPath))
-		}
-		return UnmountResult{}, apperr.Wrap("fs.read_mount_state", "runtime", 1, fmt.Sprintf("read mount state for %q", mountPath), err)
-	}
-
-	checks := []MountRuntimeCheck{{Name: "mount_state", Status: "passed", Message: stateFile}}
-	if !mountprocess.Alive(state.PID) {
-		if err := mountstate.Remove(homeDir, mountPath); err != nil {
-			return UnmountResult{}, apperr.Wrap("fs.remove_stale_mount_state", "runtime", 1, fmt.Sprintf("remove stale mount state for %q", mountPath), err)
-		}
-		checks = append(checks, MountRuntimeCheck{Name: "mount_process", Status: "warning", Message: "mount process was not running; stale state removed"})
-		return UnmountResult{Status: "not_mounted", MountPath: mountPath, Driver: state.Driver, PID: state.PID, StateFile: stateFile, Checks: checks}, nil
-	}
-
-	if err := mountprocess.Terminate(state.PID); err != nil {
-		return UnmountResult{}, apperr.Wrap("fs.signal_mount_process", "runtime", 1, fmt.Sprintf("signal mount process %d for %q", state.PID, mountPath), err)
-	}
-	timeout := opts.Timeout
-	if timeout <= 0 {
-		timeout = 30 * time.Second
-	}
-	if !mountprocess.WaitExit(state.PID, timeout) {
-		if !opts.Force {
-			return UnmountResult{}, apperr.New("fs.unmount_timeout", "runtime", 1, fmt.Sprintf("mount process %d for %q did not exit within %s; retry with --force", state.PID, mountPath, timeout))
-		}
-		if err := mountprocess.Kill(state.PID); err != nil {
-			return UnmountResult{}, apperr.Wrap("fs.kill_mount_process", "runtime", 1, fmt.Sprintf("kill mount process %d for %q", state.PID, mountPath), err)
-		}
-		_ = mountprocess.WaitExit(state.PID, 5*time.Second)
-	}
-	autoPack, err := s.autoPackAfterUnmount(ctx, opts, state, mountPath)
-	if err != nil {
-		return UnmountResult{}, err
-	}
-	_ = mountstate.Remove(homeDir, mountPath)
-	checks = append(checks, MountRuntimeCheck{Name: "mount_process", Status: "passed", Message: fmt.Sprintf("process %d stopped", state.PID)})
-	if autoPack != "" {
-		checks = append(checks, MountRuntimeCheck{Name: "auto_pack", Status: "passed", Message: autoPack})
-	}
-	return UnmountResult{Status: "unmounted", MountPath: mountPath, Driver: state.Driver, PID: state.PID, StateFile: stateFile, Checks: checks}, nil
+	return s.drive9UnmountFileSystem(ctx, opts)
 }
 
 func (s Service) autoPackAfterUnmount(ctx context.Context, opts UnmountFileSystemOptions, state mountstate.State, mountPath string) (string, error) {
@@ -320,51 +219,7 @@ func (s Service) autoPackAfterUnmount(ctx context.Context, opts UnmountFileSyste
 }
 
 func (s Service) DrainFileSystem(ctx context.Context, opts DrainFileSystemOptions) (DrainResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9DrainFileSystem(ctx, opts)
-	}
-	state, stateFile, mountPath, checks, err := s.readDrainMountState(opts.MountPath)
-	if err != nil {
-		return DrainResult{}, err
-	}
-	if state.Driver != "fuse" {
-		return DrainResult{}, apperr.New("fs.drain_unsupported_driver", "usage", 2, fmt.Sprintf("tdc fs drain-file-system only supports FUSE mounts; %q is mounted with %s", mountPath, state.Driver))
-	}
-	if strings.TrimSpace(state.ControlSocket) == "" {
-		return DrainResult{}, apperr.New("fs.mount_control_missing", "runtime", 1, fmt.Sprintf("mount %q does not expose a control socket; unmount and mount again with a tdc version that supports drain", mountPath))
-	}
-	if !mountprocess.Alive(state.PID) {
-		return DrainResult{}, apperr.New("fs.mount_process_not_running", "runtime", 1, fmt.Sprintf("mount process %d for %q is not running", state.PID, mountPath))
-	}
-	timeout := opts.Timeout
-	if timeout <= 0 {
-		timeout = mountcontrol.DefaultDrainTimeout
-	}
-	requestCtx, cancel := context.WithTimeout(ctx, timeout+5*time.Second)
-	defer cancel()
-	response, err := mountcontrol.RequestDrain(requestCtx, state.ControlSocket, timeout)
-	if err != nil {
-		return DrainResult{}, apperr.Wrap("fs.request_mount_drain", "runtime", 1, fmt.Sprintf("request drain for %q", mountPath), err)
-	}
-	result := DrainResult{
-		Status:        "drained",
-		MountPath:     mountPath,
-		Driver:        state.Driver,
-		PID:           state.PID,
-		StateFile:     stateFile,
-		ControlSocket: state.ControlSocket,
-		Response:      response,
-		Checks:        append(checks, MountRuntimeCheck{Name: "mount_control", Status: "passed", Message: state.ControlSocket}),
-	}
-	if !response.OK {
-		result.Status = "failed"
-		message := response.Error
-		if message == "" {
-			message = "tdc fs mount drain failed"
-		}
-		return DrainResult{}, apperr.New("fs.mount_drain_failed", "runtime", 1, message)
-	}
-	return result, nil
+	return s.drive9DrainFileSystem(ctx, opts)
 }
 
 func (s Service) DryRunDrainFileSystem(ctx context.Context, commandPath string, opts DrainFileSystemOptions) (dryrun.Result, error) {

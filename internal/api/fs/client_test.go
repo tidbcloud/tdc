@@ -26,7 +26,10 @@ func TestProvisionAndDeleteTenant(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode provision body: %v", err)
 			}
-			if body["public_key"] != "public" || body["private_key"] != "private" || body["tidbcloud_spending_limit"] != float64(0) {
+			if body["public_key"] != "public" || body["private_key"] != "private" {
+				t.Fatalf("unexpected provision body: %#v", body)
+			}
+			if _, ok := body["tidbcloud_spending_limit"]; ok {
 				t.Fatalf("unexpected provision body: %#v", body)
 			}
 			_ = json.NewEncoder(w).Encode(ProvisionResponse{
@@ -51,11 +54,9 @@ func TestProvisionAndDeleteTenant(t *testing.T) {
 	defer server.Close()
 
 	client := testClient(t, server.URL)
-	spendingLimit := int64(0)
 	provision, err := client.Provision(context.Background(), ProvisionRequest{
-		PublicKey:              "public",
-		PrivateKey:             "private",
-		TiDBCloudSpendingLimit: &spendingLimit,
+		PublicKey:  "public",
+		PrivateKey: "private",
 	})
 	if err != nil {
 		t.Fatalf("Provision failed: %v", err)

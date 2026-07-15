@@ -2,7 +2,7 @@
 
 ## Goal
 
-Replace the native tdc implementation of `tdc fs`, `tdc fs-git`, `tdc fs-journal`, and `tdc fs-vault` with a wrapper around a pinned compatible Drive9 companion binary. tdc remains the TiDB Cloud Starter CLI and keeps the user-facing `tdc` command surface, while Drive9 owns filesystem data-plane behavior, FUSE/WebDAV mount runtime correctness, layers, journal, vault, git workspace, pack, and unpack semantics.
+Replace the native tdc implementation of `tdc fs`, `tdc fs-git`, `tdc fs-journal`, and `tdc fs-vault` with a wrapper around a pinned compatible Drive9 companion binary. tdc remains the TiDB Cloud Starter CLI and keeps the user-facing `tdc` command surface, while Drive9 owns filesystem data-plane behavior, FUSE/WebDAV mount runtime correctness, layers, journal, vault, git workspace, pack, and unpack semantics. There must be no hidden runtime fallback to the old tdc-native fs client.
 
 This spec supersedes the long-term native-client direction from `0010-tdc-fs-data-plane.md`, `0011-tdc-fs-mount-runtime.md`, `0011-ext01-fuse-cache-and-open-handle-correctness.md`, and `0014-tdc-fs-unix-command-aliases.md` for filesystem client behavior. Those completed specs remain useful as command-surface and test-history context, but the implementation target becomes wrapper parity with Drive9 instead of reimplementing Drive9 inside tdc.
 
@@ -112,6 +112,7 @@ The tdc command list must match Drive9's public external CLI surface, not Drive9
 - tdc installs and invokes a pinned Drive9 companion binary. The binary is the Drive9 CLI runtime, but tdc installs it under a tdc-managed name such as `tdc-drive9` by default so it does not shadow or mutate a user's standalone `drive9`.
 - tdc keeps `~/.tdc/` as the user-facing source of truth. Users must not be asked to edit `~/.drive9`.
 - The wrapper translates tdc profile, region, filesystem resource, and credential state into the environment and flags expected by Drive9.
+- If the companion is missing or incompatible, fs commands fail with an actionable tdc error. They must not silently fall back to a tdc-owned HTTP/FUSE/WebDAV implementation.
 - `tdc fs create-file-system` provisions the resource through the companion and persists the returned tdc fs resource metadata and API key back into the active tdc profile.
 - `tdc fs delete-file-system` deletes only the active tdc-managed resource and removes the active profile's fs metadata and `fs_api_key` after successful deletion.
 - `tdc fs check-file-system` verifies that the active profile has fs metadata and that the Drive9 companion can reach the resource.
@@ -170,8 +171,7 @@ tdc-drive9 create \
   --name <file-system-name> \
   --region-code <tdc-region-code> \
   --tidbcloud-public-key <redacted> \
-  --tidbcloud-private-key <redacted> \
-  [--tidbcloud-spending-limit <cents>]
+  --tidbcloud-private-key <redacted>
 ```
 
 The wrapper parses the JSON result, validates that it contains the resource API key, server, tenant/resource identity, and region, then writes tdc profile state. If Drive9's create output lacks a field tdc needs, tdc must fail without partially writing credentials.
@@ -242,9 +242,11 @@ Add a wrapper package, for example `internal/fswrap`, with these responsibilitie
 - Capture stdout/stderr only for commands that need JSON parsing or tdc state updates.
 - Redact secrets from returned errors and debug output.
 
-`internal/cli` should keep command registration and validation in tdc. Command handlers call `internal/fswrap` instead of native `internal/fs` client and mount runtime code.
+`internal/cli` should keep command registration and validation in tdc. Command handlers call the Drive9 wrapper path instead of native tdc HTTP client and mount runtime code.
 
-The native tdc fs implementation should be retired after the wrapper reaches feature parity. During migration, avoid two active production implementations behind implicit fallback. If a temporary fallback is needed for one command, it must be explicit, tested, and removed before this spec is moved to `done`.
+`internal/fs` may keep tdc-owned option/result types and thin service methods so the rest of the CLI does not need to know Drive9 details. Those service methods must route unconditionally to the wrapper implementation. Do not keep a production switch such as `UseDrive9Companion`, and do not keep a fallback path that executes tdc-native data-plane, FUSE, WebDAV, layer, journal, vault, git, pack, or upload logic when Drive9 is unavailable.
+
+Old native tests that asserted tdc's own HTTP/FUSE/WebDAV behavior should be removed or rewritten as wrapper tests. tdc unit tests should use a fake companion binary to verify argument translation, environment sanitization, profile writes, profile cleanup, output decoding, and missing-companion errors. Deep filesystem correctness tests belong to Drive9.
 
 The implementation must not import packages from `ref/drive9`, must not add `replace` entries pointing into `ref/`, and must not make tests depend on reference code or fixtures under `ref/`.
 
@@ -296,6 +298,7 @@ Unit and e2e coverage must focus on tdc wrapper behavior:
 - Raw streaming behavior for `read-file`.
 - `--query` rejection on raw commands and `--query` support on captured JSON commands.
 - No tests should be retained for tdc commands that are not part of the Drive9 public CLI surface. Low-level layer entry/object/event commands, low-level Git workspace/tree/state/object-pack/overlay commands, and legacy vault token commands should not appear in command-surface, e2e, or README examples.
+- No unit tests should assert tdc-native HTTP data-plane, FUSE, WebDAV, vault mount, pack, journal, layer, or Git runtime internals as product behavior. If such helpers remain temporarily in the tree, they are not the tdc fs contract and must not be reachable from CLI service methods.
 
 Live e2e must run real commands through the wrapper:
 
@@ -348,6 +351,8 @@ The user-facing experience remains tdc, but filesystem correctness and advanced 
 - `tdc fs-git`, `tdc fs-journal`, and `tdc fs-vault` route to Drive9 and expose the Drive9-backed workflows under tdc naming, including delegated-token vault mount.
 - Pack/unpack and layer commands are available through tdc.
 - Missing companion binary, incompatible companion version, missing fs profile state, unsupported region, and missing FUSE prerequisites return actionable errors.
+- `rg UseDrive9Companion internal` returns no matches, and there is no equivalent runtime switch that can select tdc-native fs behavior.
+- `make test` does not include native fs HTTP/FUSE/WebDAV behavior tests as tdc product-contract tests; it covers wrapper responsibilities with a fake companion.
 - Live e2e verifies the wrapper path and includes the overwrite-existing-file regression.
 - README, AGENTS.md, help text, and installer next steps match the wrapper-based behavior.
 

@@ -130,8 +130,7 @@ Command mapping:
      ```json
      {
        "public_key": "<tdc_public_key>",
-       "private_key": "<tdc_private_key>",
-       "tidbcloud_spending_limit": 0
+       "private_key": "<tdc_private_key>"
      }
      ```
 

@@ -149,99 +149,11 @@ type packDirTime struct {
 }
 
 func (s Service) PackFileSystem(ctx context.Context, opts PackFileSystemOptions) (PackFileSystemResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9PackFileSystem(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "pack tdc fs local overlay")
-	if err != nil {
-		return PackFileSystemResult{}, err
-	}
-	request, err := s.resolvePackFileSystemRequest(opts)
-	if err != nil {
-		return PackFileSystemResult{}, err
-	}
-	if strings.HasSuffix(request.ArchivePath, "/") || request.ArchivePath == "/" {
-		return PackFileSystemResult{}, apperr.New("fs.invalid_pack_archive_path", "usage", 2, "--archive-path must be a tdc fs file path")
-	}
-	previous, err := readExistingPackReplacePaths(ctx, client, request.ArchivePath, request.archiveOptions())
-	if err != nil {
-		return PackFileSystemResult{}, err
-	}
-	archiveOpts := request.archiveOptions()
-	archiveOpts.PreviousReplacePaths = previous
-	tmp, err := os.CreateTemp("", "tdc-pack-*.tar.gz")
-	if err != nil {
-		return PackFileSystemResult{}, apperr.Wrap("fs.pack_temp_archive", "runtime", 1, "create temporary tdc fs pack archive", err)
-	}
-	tmpPath := tmp.Name()
-	defer func() { _ = os.Remove(tmpPath) }()
-	manifest, err := writePackArchive(ctx, tmp, archiveOpts)
-	closeErr := tmp.Close()
-	if err == nil && closeErr != nil {
-		err = closeErr
-	}
-	if err != nil {
-		return PackFileSystemResult{}, err
-	}
-	operation, err := uploadLocalFileToRemote(ctx, client, tmpPath, request.ArchivePath, nil, "pack_file_system", "packed", packArchiveTags(request.MountProfile), "tdc fs pack archive")
-	if err != nil {
-		return PackFileSystemResult{}, err
-	}
-	info, err := os.Stat(tmpPath)
-	if err != nil {
-		return PackFileSystemResult{}, apperr.Wrap("fs.pack_stat_archive", "runtime", 1, "stat temporary tdc fs pack archive", err)
-	}
-	return PackFileSystemResult{
-		Status:           "packed",
-		ArchivePath:      request.ArchivePath,
-		LocalRoot:        request.LocalRoot,
-		RemoteRoot:       request.RemoteRoot,
-		MountProfile:     request.MountProfile,
-		Paths:            manifest.Paths,
-		ReplacePaths:     manifest.ReplacePaths,
-		Entries:          len(manifest.Entries),
-		ArchiveSizeBytes: info.Size(),
-		UploadedBytes:    operation.BytesTransferred,
-		UploadMode:       operation.UploadMode,
-		CreatedAt:        manifest.CreatedAt,
-	}, nil
+	return s.drive9PackFileSystem(ctx, opts)
 }
 
 func (s Service) UnpackFileSystem(ctx context.Context, opts UnpackFileSystemOptions) (UnpackFileSystemResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9UnpackFileSystem(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "unpack tdc fs local overlay")
-	if err != nil {
-		return UnpackFileSystemResult{}, err
-	}
-	request, err := s.resolveUnpackFileSystemRequest(opts)
-	if err != nil {
-		return UnpackFileSystemResult{}, err
-	}
-	data, err := client.ReadFile(ctx, request.ArchivePath)
-	if err != nil {
-		return UnpackFileSystemResult{}, err
-	}
-	manifest, err := extractPackArchive(ctx, bytes.NewReader(data), unpackArchiveOptions{
-		LocalRoot: request.LocalRoot,
-		Replace:   !opts.NoReplace,
-	})
-	if err != nil {
-		return UnpackFileSystemResult{}, err
-	}
-	return UnpackFileSystemResult{
-		Status:       "unpacked",
-		ArchivePath:  request.ArchivePath,
-		LocalRoot:    request.LocalRoot,
-		RemoteRoot:   request.RemoteRoot,
-		MountProfile: request.MountProfile,
-		Paths:        manifest.Paths,
-		ReplacePaths: manifestReplacePaths(*manifest),
-		Entries:      len(manifest.Entries),
-		Replaced:     !opts.NoReplace,
-		CreatedAt:    manifest.CreatedAt,
-	}, nil
+	return s.drive9UnpackFileSystem(ctx, opts)
 }
 
 func (s Service) DryRunPackFileSystem(ctx context.Context, commandPath string, opts PackFileSystemOptions) (dryrun.Result, error) {

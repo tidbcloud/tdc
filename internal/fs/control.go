@@ -30,11 +30,10 @@ type Service struct {
 	DebugWriter io.Writer
 	HomeDir     string
 
-	UseDrive9Companion bool
-	CompanionPath      string
-	Stdin              io.Reader
-	Stdout             io.Writer
-	Stderr             io.Writer
+	CompanionPath string
+	Stdin         io.Reader
+	Stdout        io.Writer
+	Stderr        io.Writer
 }
 
 type CreateFileSystemOptions struct {
@@ -85,156 +84,15 @@ type Check struct {
 }
 
 func (s Service) CreateFileSystem(ctx context.Context, opts CreateFileSystemOptions) (FileSystemResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9CreateFileSystem(ctx, opts)
-	}
-	request, name, endpoint, err := s.createRequestAndEndpoint(opts, true)
-	if err != nil {
-		return FileSystemResult{}, err
-	}
-	if existing := fscred.FromProfile(opts.Profile); existing.Name != "" && existing.TenantID != "" && existing.HasAPIKey {
-		if existing.Name != name {
-			return FileSystemResult{}, resourceMismatch(existing.Name, name)
-		}
-		return FileSystemResult{
-			FileSystemName:    existing.Name,
-			TenantID:          existing.TenantID,
-			CloudProvider:     existing.CloudProvider,
-			RegionCode:        existing.RegionCode,
-			Status:            "exists",
-			CredentialsStored: true,
-		}, nil
-	}
-
-	client, err := s.controlClient(opts.Profile, endpoint, authz.FSVolumeCreate, "create tdc fs resource")
-	if err != nil {
-		return FileSystemResult{}, err
-	}
-	response, err := client.Provision(ctx, request)
-	if err != nil {
-		return FileSystemResult{}, err
-	}
-	cloudProvider := response.CloudProvider
-	if cloudProvider == "" {
-		cloudProvider = opts.Profile.CloudProvider
-	}
-	regionCode := response.RegionCode
-	if regionCode == "" {
-		regionCode = response.Region
-	}
-	if regionCode == "" {
-		regionCode = opts.Profile.RegionCode
-	}
-	status := response.Status
-	if status == "" {
-		status = "provisioned"
-	}
-	homeDir, err := s.homeDir()
-	if err != nil {
-		return FileSystemResult{}, err
-	}
-	if err := fscred.Store(homeDir, opts.Profile, name, response.TenantID, cloudProvider, regionCode, response.APIKey); err != nil {
-		return FileSystemResult{}, err
-	}
-	return FileSystemResult{
-		FileSystemName:    name,
-		TenantID:          response.TenantID,
-		CloudProvider:     cloudProvider,
-		RegionCode:        regionCode,
-		Status:            status,
-		CredentialsStored: true,
-	}, nil
+	return s.drive9CreateFileSystem(ctx, opts)
 }
 
 func (s Service) DeleteFileSystem(ctx context.Context, opts DeleteFileSystemOptions) (DeleteResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9DeleteFileSystem(ctx, opts)
-	}
-	name, endpoint, err := s.deleteInputsAndEndpoint(opts, true)
-	if err != nil {
-		return DeleteResult{}, err
-	}
-	resource := fscred.FromProfile(opts.Profile)
-	request, err := deprovisionRequest(opts.Profile)
-	if err != nil {
-		return DeleteResult{}, err
-	}
-	client, err := s.bearerClient(opts.Profile, endpoint, authz.FSVolumeDelete, "delete tdc fs resource")
-	if err != nil {
-		return DeleteResult{}, err
-	}
-	response, err := client.DeleteTenant(ctx, request)
-	if err != nil {
-		return DeleteResult{}, err
-	}
-	status := response.Status
-	if status == "" {
-		status = "deleted"
-	}
-	homeDir, err := s.homeDir()
-	if err != nil {
-		return DeleteResult{}, err
-	}
-	if err := fscred.Clear(homeDir, opts.Profile); err != nil {
-		return DeleteResult{}, err
-	}
-	tenantID := response.TenantID
-	if tenantID == "" {
-		tenantID = resource.TenantID
-	}
-	return DeleteResult{
-		FileSystemName:      name,
-		TenantID:            tenantID,
-		Status:              "deleted",
-		CredentialsRemoved:  true,
-		RemoteDeletionState: status,
-	}, nil
+	return s.drive9DeleteFileSystem(ctx, opts)
 }
 
 func (s Service) CheckFileSystem(ctx context.Context, opts CheckFileSystemOptions) (CheckResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9CheckFileSystem(ctx, opts)
-	}
-	if err := validateProfile(opts.Profile); err != nil {
-		return CheckResult{}, err
-	}
-	checks := []Check{
-		{Name: "config_and_credentials", Status: "passed", Message: fmt.Sprintf("profile %q loaded", profileName(opts.Profile))},
-		{Name: "permission_requirement", Status: "passed", Message: string(authz.FSVolumeRead)},
-	}
-	resource := fscred.FromProfile(opts.Profile)
-	if resource.Name == "" || resource.TenantID == "" || !resource.HasAPIKey {
-		checks = append(checks, Check{Name: "fs_resource_credentials", Status: "warning", Message: "tdc fs resource credentials are not fully configured; run tdc fs create-file-system"})
-	} else {
-		checks = append(checks, Check{Name: "fs_resource_credentials", Status: "passed", Message: resource.Name})
-	}
-	endpoint, err := s.resolveFS(opts.Profile)
-	if err != nil {
-		checks = append(checks, Check{Name: "endpoint_selection", Status: "failed", Message: apperr.MessageFor(err)})
-		return checkResult(opts.Profile, resource, nil, nil, checks), nil
-	}
-	checks = append(checks, Check{Name: "endpoint_selection", Status: "passed", Message: fmt.Sprintf("%s %s", endpoint.Provider, endpoint.RegionCode)})
-	if !resource.HasAPIKey {
-		checks = append(checks, Check{Name: "remote_status", Status: "warning", Message: "remote status requires fs_api_key; run tdc fs create-file-system first"})
-		return checkResult(opts.Profile, resource, &endpoint, nil, checks), nil
-	}
-
-	client, err := s.statusClient(opts.Profile, endpoint, true, authz.FSVolumeRead, "check tdc fs resource")
-	if err != nil {
-		checks = append(checks, Check{Name: "remote_status", Status: "failed", Message: apperr.MessageFor(err)})
-		return checkResult(opts.Profile, resource, &endpoint, nil, checks), nil
-	}
-	remote, err := client.Status(ctx)
-	if err != nil {
-		checks = append(checks, Check{Name: "remote_status", Status: "failed", Message: apperr.MessageFor(err)})
-		return checkResult(opts.Profile, resource, &endpoint, nil, checks), nil
-	}
-	message := remote.Status
-	if message == "" {
-		message = "reachable"
-	}
-	checks = append(checks, Check{Name: "remote_status", Status: "passed", Message: message})
-	return checkResult(opts.Profile, resource, &endpoint, &remote, checks), nil
+	return s.drive9CheckFileSystem(ctx, opts)
 }
 
 func (s Service) DryRunCreateFileSystem(ctx context.Context, commandPath string, opts CreateFileSystemOptions) (dryrun.Result, error) {
@@ -317,11 +175,9 @@ func (s Service) createDryRunInputs(opts CreateFileSystemOptions) (apifs.Provisi
 		return apifs.ProvisionRequest{}, "", endpoints.Endpoint{}, nil, resourceMismatch(existing.Name, name)
 	}
 	endpoint, endpointErr := s.resolveFS(opts.Profile)
-	defaultSpendingLimit := int64(0)
 	request := apifs.ProvisionRequest{
-		PublicKey:              creds.PublicKey,
-		PrivateKey:             creds.PrivateKey,
-		TiDBCloudSpendingLimit: &defaultSpendingLimit,
+		PublicKey:  creds.PublicKey,
+		PrivateKey: creds.PrivateKey,
 	}
 	return request, name, endpoint, endpointErr, nil
 }
@@ -358,33 +214,8 @@ func (s Service) deleteDryRunInputs(opts DeleteFileSystemOptions) (string, endpo
 	return name, endpoint, endpointErr, nil
 }
 
-func (s Service) controlClient(profile *config.Profile, endpoint endpoints.Endpoint, permission authz.Permission, action string) (*apifs.Client, error) {
-	if _, err := auth.ValidateProfile(profile); err != nil {
-		return nil, err
-	}
-	client, err := api.New(api.Options{
-		Endpoint:    endpoint,
-		ProfileName: profileName(profile),
-		Permission:  permission,
-		Action:      action,
-		HTTPClient:  s.HTTPClient,
-		Transport:   s.Transport,
-		Timeout:     s.Timeout,
-		Debug:       s.Debug,
-		DebugWriter: s.DebugWriter,
-		UserAgent:   "tdc fs control",
-	})
-	if err != nil {
-		return nil, err
-	}
-	return apifs.New(client), nil
-}
-
-func (s Service) statusClient(profile *config.Profile, endpoint endpoints.Endpoint, useBearer bool, permission authz.Permission, action string) (*apifs.Client, error) {
-	if useBearer {
-		return s.bearerClient(profile, endpoint, permission, action)
-	}
-	return s.controlClient(profile, endpoint, permission, action)
+func (s Service) resolveFS(profile *config.Profile) (endpoints.Endpoint, error) {
+	return s.resolver().ResolveFS(profile.CloudProvider, profile.RegionCode)
 }
 
 func (s Service) bearerClient(profile *config.Profile, endpoint endpoints.Endpoint, permission authz.Permission, action string) (*apifs.Client, error) {
@@ -398,16 +229,12 @@ func (s Service) bearerClient(profile *config.Profile, endpoint endpoints.Endpoi
 		Timeout:     s.Timeout,
 		Debug:       s.Debug,
 		DebugWriter: s.DebugWriter,
-		UserAgent:   "tdc fs control",
+		UserAgent:   "tdc fs legacy helper",
 	})
 	if err != nil {
 		return nil, err
 	}
 	return apifs.New(client), nil
-}
-
-func (s Service) resolveFS(profile *config.Profile) (endpoints.Endpoint, error) {
-	return s.resolver().ResolveFS(profile.CloudProvider, profile.RegionCode)
 }
 
 func (s Service) resolver() endpoints.Resolver {
@@ -429,9 +256,8 @@ func deprovisionRequest(profile *config.Profile) (apifs.DeprovisionRequest, erro
 }
 
 type redactedProvisionBody struct {
-	PublicKey              string `json:"public_key,omitempty"`
-	PrivateKey             string `json:"private_key,omitempty"`
-	TiDBCloudSpendingLimit *int64 `json:"tidbcloud_spending_limit,omitempty"`
+	PublicKey  string `json:"public_key,omitempty"`
+	PrivateKey string `json:"private_key,omitempty"`
 }
 
 type redactedDeprovisionBody struct {
@@ -441,9 +267,8 @@ type redactedDeprovisionBody struct {
 
 func redactedProvisionRequest(request apifs.ProvisionRequest) redactedProvisionBody {
 	return redactedProvisionBody{
-		PublicKey:              redactedConfiguredValue(request.PublicKey),
-		PrivateKey:             redactedSecretValue(request.PrivateKey),
-		TiDBCloudSpendingLimit: request.TiDBCloudSpendingLimit,
+		PublicKey:  redactedConfiguredValue(request.PublicKey),
+		PrivateKey: redactedSecretValue(request.PrivateKey),
 	}
 }
 
