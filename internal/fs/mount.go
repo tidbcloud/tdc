@@ -151,6 +151,9 @@ type backgroundMountRequest struct {
 type backgroundMountStarter func(context.Context, backgroundMountRequest) (int, error)
 
 func (s Service) MountFileSystem(ctx context.Context, opts MountFileSystemOptions) (MountResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9MountFileSystem(ctx, opts)
+	}
 	inputs, err := s.mountInputs(opts)
 	if err != nil {
 		return MountResult{}, err
@@ -225,6 +228,9 @@ func (s Service) DryRunMountFileSystem(ctx context.Context, commandPath string, 
 }
 
 func (s Service) UnmountFileSystem(ctx context.Context, opts UnmountFileSystemOptions) (UnmountResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9UnmountFileSystem(ctx, opts)
+	}
 	homeDir, err := s.homeDir()
 	if err != nil {
 		return UnmountResult{}, err
@@ -314,6 +320,9 @@ func (s Service) autoPackAfterUnmount(ctx context.Context, opts UnmountFileSyste
 }
 
 func (s Service) DrainFileSystem(ctx context.Context, opts DrainFileSystemOptions) (DrainResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9DrainFileSystem(ctx, opts)
+	}
 	state, stateFile, mountPath, checks, err := s.readDrainMountState(opts.MountPath)
 	if err != nil {
 		return DrainResult{}, err

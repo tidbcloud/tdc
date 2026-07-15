@@ -149,6 +149,9 @@ type packDirTime struct {
 }
 
 func (s Service) PackFileSystem(ctx context.Context, opts PackFileSystemOptions) (PackFileSystemResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9PackFileSystem(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "pack tdc fs local overlay")
 	if err != nil {
 		return PackFileSystemResult{}, err
@@ -205,6 +208,9 @@ func (s Service) PackFileSystem(ctx context.Context, opts PackFileSystemOptions)
 }
 
 func (s Service) UnpackFileSystem(ctx context.Context, opts UnpackFileSystemOptions) (UnpackFileSystemResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9UnpackFileSystem(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "unpack tdc fs local overlay")
 	if err != nil {
 		return UnpackFileSystemResult{}, err

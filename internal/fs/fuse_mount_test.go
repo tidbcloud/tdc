@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -321,6 +322,473 @@ func TestRemoteFuseSetattrModeCallsRemoteChmod(t *testing.T) {
 	}
 	if !sawChmod {
 		t.Fatal("expected remote chmod request")
+	}
+}
+
+type fuseRemoteFileFixture struct {
+	content       []byte
+	revision      int64
+	resourceID    string
+	failWrites    bool
+	statCalls     int
+	readCalls     int
+	deleteCalls   int
+	renameCalls   int
+	movedContent  []byte
+	movedRevision int64
+	writeBodies   [][]byte
+}
+
+func newFuseRemoteFileFixture(t *testing.T, initial string) (*fuseRemoteFileFixture, *remoteFuseNode) {
+	t.Helper()
+	fixture := &fuseRemoteFileFixture{
+		content:    []byte(initial),
+		revision:   1,
+		resourceID: "resource-file",
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/v1/") && r.Header.Get("Authorization") != "Bearer fs-secret" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/fs/workspace/file.txt" && r.URL.Query().Get("stat") == "1":
+			fixture.statCalls++
+			_ = json.NewEncoder(w).Encode(apifs.StatMetadataResponse{
+				Size:       int64(len(fixture.content)),
+				IsDir:      false,
+				Revision:   fixture.revision,
+				ResourceID: fixture.resourceID,
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/fs/workspace/moved.txt" && r.URL.Query().Get("stat") == "1":
+			fixture.statCalls++
+			_ = json.NewEncoder(w).Encode(apifs.StatMetadataResponse{
+				Size:       int64(len(fixture.movedContent)),
+				IsDir:      false,
+				Revision:   fixture.movedRevision,
+				ResourceID: fixture.resourceID + "-moved",
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/fs/workspace/file.txt":
+			fixture.readCalls++
+			_, _ = w.Write(append([]byte(nil), fixture.content...))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/fs/workspace/moved.txt":
+			fixture.readCalls++
+			_, _ = w.Write(append([]byte(nil), fixture.movedContent...))
+		case r.Method == http.MethodPut && r.URL.Path == "/v1/fs/workspace/file.txt":
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read write body: %v", err)
+			}
+			fixture.writeBodies = append(fixture.writeBodies, append([]byte(nil), body...))
+			if fixture.failWrites {
+				http.Error(w, "injected write failure", http.StatusInternalServerError)
+				return
+			}
+			fixture.content = append([]byte(nil), body...)
+			fixture.revision++
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(apifs.WriteResponse{Revision: fixture.revision})
+		case r.Method == http.MethodPut && r.URL.Path == "/v1/fs/workspace/moved.txt":
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read moved write body: %v", err)
+			}
+			fixture.writeBodies = append(fixture.writeBodies, append([]byte(nil), body...))
+			if fixture.failWrites {
+				http.Error(w, "injected write failure", http.StatusInternalServerError)
+				return
+			}
+			fixture.movedContent = append([]byte(nil), body...)
+			fixture.movedRevision++
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(apifs.WriteResponse{Revision: fixture.movedRevision})
+		case r.Method == http.MethodDelete && r.URL.Path == "/v1/fs/workspace/file.txt":
+			fixture.deleteCalls++
+			fixture.content = nil
+			fixture.revision++
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/fs/workspace/moved.txt" && r.URL.Query().Has("rename"):
+			fixture.renameCalls++
+			if source := r.Header.Get("X-Dat9-Rename-Source"); source != "/workspace/file.txt" {
+				t.Fatalf("rename source = %q", source)
+			}
+			fixture.movedContent = append([]byte(nil), fixture.content...)
+			fixture.movedRevision = fixture.revision + 1
+			fixture.content = nil
+			fixture.revision++
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.RequestURI())
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	service := testService(t.TempDir(), server.URL)
+	client, err := service.dataClient(dataProfile(), authz.FSFileWrite, "FUSE overwrite existing file")
+	if err != nil {
+		t.Fatalf("create data client: %v", err)
+	}
+	runtime := &remoteFuseRuntime{
+		client:      client,
+		readCache:   newFuseReadCache(0, 0, 0),
+		openHandles: map[*remoteFuseFile]struct{}{},
+	}
+	return fixture, &remoteFuseNode{runtime: runtime, remotePath: "/workspace/file.txt"}
+}
+
+func fuseTestContext(pid uint32) context.Context {
+	return gofuse.NewContext(context.Background(), &gofuse.Caller{Pid: pid})
+}
+
+func TestRemoteFuseOverwriteExistingFileAfterNodeLevelTruncate(t *testing.T) {
+	fixture, node := newFuseRemoteFileFixture(t, "v1\n")
+	ctx := fuseTestContext(7001)
+
+	handle, _, errno := node.Open(ctx, uint32(os.O_WRONLY))
+	if errno != gofs.OK {
+		t.Fatalf("Open errno = %v", errno)
+	}
+	var out gofuse.AttrOut
+	errno = node.Setattr(ctx, nil, &gofuse.SetAttrIn{
+		SetAttrInCommon: gofuse.SetAttrInCommon{
+			Valid: gofuse.FATTR_SIZE,
+			Size:  0,
+		},
+	}, &out)
+	if errno != gofs.OK {
+		t.Fatalf("node-level truncate Setattr errno = %v", errno)
+	}
+	writer := handle.(gofs.FileWriter)
+	if _, errno := writer.Write(context.Background(), []byte("v2\n"), 0); errno != gofs.OK {
+		t.Fatalf("Write errno = %v", errno)
+	}
+	if errno := handle.(gofs.FileReleaser).Release(context.Background()); errno != gofs.OK {
+		t.Fatalf("Release errno = %v, remote content is now %q", errno, string(fixture.content))
+	}
+	if string(fixture.content) != "v2\n" {
+		t.Fatalf("remote content = %q, want v2", string(fixture.content))
+	}
+	if len(fixture.writeBodies) != 1 || string(fixture.writeBodies[0]) != "v2\n" {
+		t.Fatalf("write bodies = %q, want only final overwrite", fixture.writeBodies)
+	}
+}
+
+func TestRemoteFuseOpenTruncateThenNodeLevelTruncateOverwritesExistingFile(t *testing.T) {
+	fixture, node := newFuseRemoteFileFixture(t, "v1\n")
+	ctx := fuseTestContext(7001)
+
+	handle, _, errno := node.Open(ctx, uint32(os.O_WRONLY|os.O_TRUNC))
+	if errno != gofs.OK {
+		t.Fatalf("Open errno = %v", errno)
+	}
+	var out gofuse.AttrOut
+	errno = node.Setattr(ctx, nil, &gofuse.SetAttrIn{
+		SetAttrInCommon: gofuse.SetAttrInCommon{
+			Valid: gofuse.FATTR_SIZE,
+			Size:  0,
+		},
+	}, &out)
+	if errno != gofs.OK {
+		t.Fatalf("node-level truncate Setattr errno = %v", errno)
+	}
+	if string(fixture.content) != "v1\n" || len(fixture.writeBodies) != 0 {
+		t.Fatalf("node-level truncate wrote remote content=%q writes=%q", string(fixture.content), fixture.writeBodies)
+	}
+	writer := handle.(gofs.FileWriter)
+	if _, errno := writer.Write(context.Background(), []byte("overwrite"), 0); errno != gofs.OK {
+		t.Fatalf("Write errno = %v", errno)
+	}
+	if errno := handle.(gofs.FileReleaser).Release(context.Background()); errno != gofs.OK {
+		t.Fatalf("Release errno = %v, remote content is now %q", errno, string(fixture.content))
+	}
+	if string(fixture.content) != "overwrite" {
+		t.Fatalf("remote content = %q, want overwrite", string(fixture.content))
+	}
+}
+
+func TestRemoteFuseNodeLevelTruncateWithOpenHandleFailureKeepsRemoteContent(t *testing.T) {
+	fixture, node := newFuseRemoteFileFixture(t, "v1\n")
+	fixture.failWrites = true
+	ctx := fuseTestContext(7001)
+
+	handle, _, errno := node.Open(ctx, uint32(os.O_WRONLY))
+	if errno != gofs.OK {
+		t.Fatalf("Open errno = %v", errno)
+	}
+	var out gofuse.AttrOut
+	errno = node.Setattr(ctx, nil, &gofuse.SetAttrIn{
+		SetAttrInCommon: gofuse.SetAttrInCommon{
+			Valid: gofuse.FATTR_SIZE,
+			Size:  0,
+		},
+	}, &out)
+	if errno != gofs.OK {
+		t.Fatalf("node-level truncate Setattr errno = %v", errno)
+	}
+	if string(fixture.content) != "v1\n" || len(fixture.writeBodies) != 0 {
+		t.Fatalf("node-level truncate wrote remote content=%q writes=%q", string(fixture.content), fixture.writeBodies)
+	}
+	writer := handle.(gofs.FileWriter)
+	if _, errno := writer.Write(context.Background(), []byte("v2\n"), 0); errno != gofs.OK {
+		t.Fatalf("Write errno = %v", errno)
+	}
+	if errno := handle.(gofs.FileReleaser).Release(context.Background()); errno == gofs.OK {
+		t.Fatal("Release errno = OK, want injected write failure")
+	}
+	if string(fixture.content) != "v1\n" {
+		t.Fatalf("remote content = %q, want original v1", string(fixture.content))
+	}
+}
+
+func TestRemoteFuseNodeLevelTruncateDoesNotAdoptStaleWriterHandle(t *testing.T) {
+	fixture, node := newFuseRemoteFileFixture(t, "orig")
+	staleCtx := fuseTestContext(8001)
+	truncateCtx := fuseTestContext(8002)
+
+	handle, _, errno := node.Open(staleCtx, uint32(os.O_WRONLY))
+	if errno != gofs.OK {
+		t.Fatalf("stale Open errno = %v", errno)
+	}
+	var out gofuse.AttrOut
+	errno = node.Setattr(truncateCtx, nil, &gofuse.SetAttrIn{
+		SetAttrInCommon: gofuse.SetAttrInCommon{
+			Valid: gofuse.FATTR_SIZE,
+			Size:  0,
+		},
+	}, &out)
+	if errno != gofs.OK {
+		t.Fatalf("node-level truncate Setattr errno = %v", errno)
+	}
+	if string(fixture.content) != "" {
+		t.Fatalf("remote content after truncate = %q, want empty", string(fixture.content))
+	}
+	writer := handle.(gofs.FileWriter)
+	if _, errno := writer.Write(context.Background(), []byte("stale"), 0); errno != gofs.OK {
+		t.Fatalf("stale Write errno = %v", errno)
+	}
+	if errno := handle.(gofs.FileReleaser).Release(context.Background()); errno != syscall.ESTALE {
+		t.Fatalf("stale Release errno = %v, want ESTALE", errno)
+	}
+	if string(fixture.content) != "" {
+		t.Fatalf("remote content after stale release = %q, want empty", string(fixture.content))
+	}
+}
+
+func TestRemoteFuseNodeLevelTruncateRefreshesOnlyTruncateOpenHandle(t *testing.T) {
+	fixture, node := newFuseRemoteFileFixture(t, "orig")
+	staleCtx := fuseTestContext(9001)
+	truncateCtx := fuseTestContext(9002)
+
+	staleHandle, _, errno := node.Open(staleCtx, uint32(os.O_WRONLY))
+	if errno != gofs.OK {
+		t.Fatalf("stale Open errno = %v", errno)
+	}
+	truncateHandle, _, errno := node.Open(truncateCtx, uint32(os.O_WRONLY|os.O_TRUNC))
+	if errno != gofs.OK {
+		t.Fatalf("truncate Open errno = %v", errno)
+	}
+	var out gofuse.AttrOut
+	errno = node.Setattr(truncateCtx, nil, &gofuse.SetAttrIn{
+		SetAttrInCommon: gofuse.SetAttrInCommon{
+			Valid: gofuse.FATTR_SIZE,
+			Size:  0,
+		},
+	}, &out)
+	if errno != gofs.OK {
+		t.Fatalf("node-level truncate Setattr errno = %v", errno)
+	}
+	staleFile := staleHandle.(*remoteFuseFile)
+	truncateFile := truncateHandle.(*remoteFuseFile)
+	if staleFile.version.Revision != 1 {
+		t.Fatalf("stale writer revision = %d, want 1", staleFile.version.Revision)
+	}
+	if truncateFile.version.Revision != 2 {
+		t.Fatalf("truncate writer revision = %d, want 2", truncateFile.version.Revision)
+	}
+	if _, errno := staleHandle.(gofs.FileWriter).Write(context.Background(), []byte("stale"), 0); errno != gofs.OK {
+		t.Fatalf("stale Write errno = %v", errno)
+	}
+	if errno := staleHandle.(gofs.FileReleaser).Release(context.Background()); errno != syscall.ESTALE {
+		t.Fatalf("stale Release errno = %v, want ESTALE", errno)
+	}
+	if _, errno := truncateHandle.(gofs.FileWriter).Write(context.Background(), []byte("overwrite"), 0); errno != gofs.OK {
+		t.Fatalf("truncate Write errno = %v", errno)
+	}
+	if errno := truncateHandle.(gofs.FileReleaser).Release(context.Background()); errno != gofs.OK {
+		t.Fatalf("truncate Release errno = %v", errno)
+	}
+	if string(fixture.content) != "overwrite" {
+		t.Fatalf("remote content = %q, want overwrite", string(fixture.content))
+	}
+}
+
+func TestRemoteFuseNodeLevelTruncateWithoutOpenHandleWritesRemote(t *testing.T) {
+	fixture, node := newFuseRemoteFileFixture(t, "v1\n")
+
+	var out gofuse.AttrOut
+	errno := node.Setattr(context.Background(), nil, &gofuse.SetAttrIn{
+		SetAttrInCommon: gofuse.SetAttrInCommon{
+			Valid: gofuse.FATTR_SIZE,
+			Size:  0,
+		},
+	}, &out)
+	if errno != gofs.OK {
+		t.Fatalf("node-level truncate Setattr errno = %v", errno)
+	}
+	if string(fixture.content) != "" {
+		t.Fatalf("remote content = %q, want empty", string(fixture.content))
+	}
+	if len(fixture.writeBodies) != 1 || len(fixture.writeBodies[0]) != 0 {
+		t.Fatalf("write bodies = %q, want one zero-byte truncate", fixture.writeBodies)
+	}
+}
+
+func TestRemoteFuseOpenReadUsesDirtyOpenHandleBeforeRemote(t *testing.T) {
+	fixture, node := newFuseRemoteFileFixture(t, "remote")
+	ctx := fuseTestContext(10001)
+
+	writerHandle, _, errno := node.Open(ctx, uint32(os.O_RDWR|os.O_TRUNC))
+	if errno != gofs.OK {
+		t.Fatalf("writer Open errno = %v", errno)
+	}
+	if _, errno := writerHandle.(gofs.FileWriter).Write(context.Background(), []byte("dirty"), 0); errno != gofs.OK {
+		t.Fatalf("writer Write errno = %v", errno)
+	}
+	if fixture.readCalls != 0 {
+		t.Fatalf("read calls after truncate-open writer = %d, want 0", fixture.readCalls)
+	}
+
+	readerHandle, _, errno := node.Open(ctx, uint32(os.O_RDONLY))
+	if errno != gofs.OK {
+		t.Fatalf("reader Open errno = %v", errno)
+	}
+	if fixture.readCalls != 0 {
+		t.Fatalf("reader Open read remote %d times, want dirty handle data", fixture.readCalls)
+	}
+	result, errno := readerHandle.(gofs.FileReader).Read(context.Background(), make([]byte, 64), 0)
+	if errno != gofs.OK {
+		t.Fatalf("reader Read errno = %v", errno)
+	}
+	data, status := result.Bytes(nil)
+	if status != gofuse.OK {
+		t.Fatalf("ReadResult status = %v", status)
+	}
+	if string(data) != "dirty" {
+		t.Fatalf("reader saw %q, want dirty open-handle data", data)
+	}
+}
+
+func TestRemoteFuseOpenWritablePreloadsNewestDirtyOpenHandle(t *testing.T) {
+	fixture, node := newFuseRemoteFileFixture(t, "remote")
+	ctx := fuseTestContext(10002)
+
+	olderHandle, _, errno := node.Open(ctx, uint32(os.O_RDWR|os.O_TRUNC))
+	if errno != gofs.OK {
+		t.Fatalf("older Open errno = %v", errno)
+	}
+	if _, errno := olderHandle.(gofs.FileWriter).Write(context.Background(), []byte("older"), 0); errno != gofs.OK {
+		t.Fatalf("older Write errno = %v", errno)
+	}
+	newerHandle, _, errno := node.Open(ctx, uint32(os.O_RDWR))
+	if errno != gofs.OK {
+		t.Fatalf("newer Open errno = %v", errno)
+	}
+	if _, errno := newerHandle.(gofs.FileWriter).Write(context.Background(), []byte("fresh"), 0); errno != gofs.OK {
+		t.Fatalf("newer Write errno = %v", errno)
+	}
+	readerHandle, _, errno := node.Open(ctx, uint32(os.O_RDONLY))
+	if errno != gofs.OK {
+		t.Fatalf("reader Open errno = %v", errno)
+	}
+	if fixture.readCalls != 0 {
+		t.Fatalf("open path read remote %d times, want dirty open-handle preload", fixture.readCalls)
+	}
+	result, errno := readerHandle.(gofs.FileReader).Read(context.Background(), make([]byte, 64), 0)
+	if errno != gofs.OK {
+		t.Fatalf("reader Read errno = %v", errno)
+	}
+	data, status := result.Bytes(nil)
+	if status != gofuse.OK {
+		t.Fatalf("ReadResult status = %v", status)
+	}
+	if string(data) != "fresh" {
+		t.Fatalf("reader saw %q, want newest dirty handle data", data)
+	}
+}
+
+func TestRemoteFuseUnlinkPreservesOpenReadHandleSnapshot(t *testing.T) {
+	fixture, fileNode := newFuseRemoteFileFixture(t, "snapshot")
+	parent := &remoteFuseNode{runtime: fileNode.runtime, remotePath: "/workspace"}
+
+	readerHandle, _, errno := fileNode.Open(fuseTestContext(10003), uint32(os.O_RDONLY))
+	if errno != gofs.OK {
+		t.Fatalf("reader Open errno = %v", errno)
+	}
+	if errno := parent.Unlink(context.Background(), "file.txt"); errno != gofs.OK {
+		t.Fatalf("Unlink errno = %v", errno)
+	}
+	if fixture.deleteCalls != 1 {
+		t.Fatalf("delete calls = %d, want 1", fixture.deleteCalls)
+	}
+	result, errno := readerHandle.(gofs.FileReader).Read(context.Background(), make([]byte, 64), 0)
+	if errno != gofs.OK {
+		t.Fatalf("reader Read errno = %v", errno)
+	}
+	data, status := result.Bytes(nil)
+	if status != gofuse.OK {
+		t.Fatalf("ReadResult status = %v", status)
+	}
+	if string(data) != "snapshot" {
+		t.Fatalf("reader saw %q, want preserved open-handle snapshot", data)
+	}
+}
+
+func TestRemoteFuseUnlinkDropsDirtyWriteHandleWithoutUploading(t *testing.T) {
+	fixture, fileNode := newFuseRemoteFileFixture(t, "remote")
+	parent := &remoteFuseNode{runtime: fileNode.runtime, remotePath: "/workspace"}
+
+	writerHandle, _, errno := fileNode.Open(fuseTestContext(10004), uint32(os.O_WRONLY|os.O_TRUNC))
+	if errno != gofs.OK {
+		t.Fatalf("writer Open errno = %v", errno)
+	}
+	if _, errno := writerHandle.(gofs.FileWriter).Write(context.Background(), []byte("discarded"), 0); errno != gofs.OK {
+		t.Fatalf("writer Write errno = %v", errno)
+	}
+	if errno := parent.Unlink(context.Background(), "file.txt"); errno != gofs.OK {
+		t.Fatalf("Unlink errno = %v", errno)
+	}
+	if errno := writerHandle.(gofs.FileReleaser).Release(context.Background()); errno != gofs.OK {
+		t.Fatalf("Release deleted dirty handle errno = %v", errno)
+	}
+	if len(fixture.writeBodies) != 0 {
+		t.Fatalf("deleted dirty handle uploaded %q, want no write", fixture.writeBodies)
+	}
+	if fixture.deleteCalls != 1 {
+		t.Fatalf("delete calls = %d, want 1", fixture.deleteCalls)
+	}
+}
+
+func TestRemoteFuseRenameRetargetsOpenWriteHandle(t *testing.T) {
+	fixture, fileNode := newFuseRemoteFileFixture(t, "remote")
+	parent := &remoteFuseNode{runtime: fileNode.runtime, remotePath: "/workspace"}
+
+	writerHandle, _, errno := fileNode.Open(fuseTestContext(10005), uint32(os.O_WRONLY|os.O_TRUNC))
+	if errno != gofs.OK {
+		t.Fatalf("writer Open errno = %v", errno)
+	}
+	if _, errno := writerHandle.(gofs.FileWriter).Write(context.Background(), []byte("renamed"), 0); errno != gofs.OK {
+		t.Fatalf("writer Write errno = %v", errno)
+	}
+	if errno := parent.Rename(context.Background(), "file.txt", parent, "moved.txt", 0); errno != gofs.OK {
+		t.Fatalf("Rename errno = %v", errno)
+	}
+	if errno := writerHandle.(gofs.FileReleaser).Release(context.Background()); errno != gofs.OK {
+		t.Fatalf("Release renamed writer errno = %v", errno)
+	}
+	if fixture.renameCalls != 1 {
+		t.Fatalf("rename calls = %d, want 1", fixture.renameCalls)
+	}
+	if string(fixture.movedContent) != "renamed" {
+		t.Fatalf("moved content = %q, want renamed writer data", string(fixture.movedContent))
 	}
 }
 

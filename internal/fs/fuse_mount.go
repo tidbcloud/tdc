@@ -136,6 +136,7 @@ type remoteFuseRuntime struct {
 	readCache   *fuseReadCache
 	writeBack   *fuseWriteBackStore
 	openHandles map[*remoteFuseFile]struct{}
+	openSeq     uint64
 	openMu      sync.Mutex
 }
 
@@ -505,6 +506,8 @@ func (r *remoteFuseRuntime) registerOpenHandle(handle *remoteFuseFile) {
 	if r.openHandles == nil {
 		r.openHandles = map[*remoteFuseFile]struct{}{}
 	}
+	r.openSeq++
+	handle.openSeq = r.openSeq
 	r.openHandles[handle] = struct{}{}
 }
 
@@ -518,8 +521,12 @@ func (r *remoteFuseRuntime) unregisterOpenHandle(handle *remoteFuseFile) {
 }
 
 func (r *remoteFuseRuntime) retargetOpenHandles(source, target string) {
+	r.retargetOpenHandlesWithVersion(source, target, fuseObjectVersion{})
+}
+
+func (r *remoteFuseRuntime) retargetOpenHandlesWithVersion(source, target string, version fuseObjectVersion) {
 	for _, handle := range r.openHandleSnapshot() {
-		handle.retarget(source, target)
+		handle.retarget(source, target, version)
 	}
 }
 
@@ -540,6 +547,74 @@ func (r *remoteFuseRuntime) openHandleSnapshot() []*remoteFuseFile {
 		out = append(out, handle)
 	}
 	return out
+}
+
+func (r *remoteFuseRuntime) adoptSingleCallerPathSetattr(ctx context.Context, remotePath string, in *gofuse.SetAttrIn, out *gofuse.AttrOut) (bool, syscall.Errno) {
+	callerPID := fuseCallerPID(ctx)
+	if callerPID == 0 {
+		return false, gofs.OK
+	}
+	matching := r.writableOpenHandlesForPath(remotePath)
+	if len(matching) != 1 {
+		return false, gofs.OK
+	}
+	handle := matching[0]
+	handle.mu.Lock()
+	defer handle.mu.Unlock()
+	if handle.openPID != callerPID {
+		return false, gofs.OK
+	}
+	return true, handle.setattrLocked(in, out)
+}
+
+func (r *remoteFuseRuntime) refreshOpenHandlesAfterPathTruncate(remotePath string, version fuseObjectVersion) {
+	for _, handle := range r.writableOpenHandlesForPath(remotePath) {
+		handle.refreshAfterPathTruncate(remotePath, version)
+	}
+}
+
+func (r *remoteFuseRuntime) writableOpenHandlesForPath(remotePath string) []*remoteFuseFile {
+	var out []*remoteFuseFile
+	for _, handle := range r.openHandleSnapshot() {
+		handle.mu.Lock()
+		ok := !handle.closed && !handle.deleted && handle.writable && handle.remotePath == remotePath
+		handle.mu.Unlock()
+		if ok {
+			out = append(out, handle)
+		}
+	}
+	return out
+}
+
+func (r *remoteFuseRuntime) dirtyOpenHandleData(remotePath string) ([]byte, fuseObjectVersion, bool) {
+	var (
+		bestData []byte
+		bestVer  fuseObjectVersion
+		bestSeq  uint64
+		found    bool
+	)
+	for _, handle := range r.openHandleSnapshot() {
+		handle.mu.Lock()
+		ok := !handle.closed && !handle.deleted && handle.remotePath == remotePath && handle.dirty
+		if ok && (!found || handle.openSeq > bestSeq) {
+			bestData = append(bestData[:0], handle.data...)
+			bestVer = handle.version
+			bestSeq = handle.openSeq
+			found = true
+		}
+		handle.mu.Unlock()
+	}
+	if !found {
+		return nil, fuseObjectVersion{}, false
+	}
+	return bestData, bestVer, true
+}
+
+func fuseCallerPID(ctx context.Context) uint32 {
+	if caller, ok := gofuse.FromContext(ctx); ok && caller != nil {
+		return caller.Pid
+	}
+	return 0
 }
 
 var _ gofs.NodeGetattrer = (*remoteFuseNode)(nil)
@@ -792,7 +867,7 @@ func (n *remoteFuseNode) Create(ctx context.Context, name string, flags uint32, 
 		info := remoteFileInfo{name: path.Base(remotePath), mode: perm, modTime: time.Now()}
 		fillFuseAttr(&out.Attr, info)
 		child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
-		handle := newGitFuseFile(n.runtime, entry.workspace, remotePath, nil, true, true, perm)
+		handle := newGitFuseFile(n.runtime, entry.workspace, remotePath, nil, true, true, perm).withOpenContext(ctx, flags)
 		return n.NewInode(ctx, child, fuseStableAttr("git:"+remotePath, info)), handle, gofuse.FOPEN_DIRECT_IO, gofs.OK
 	}
 	if n.runtime.localParentExists(remotePath) {
@@ -838,7 +913,7 @@ func (n *remoteFuseNode) Create(ctx context.Context, name string, flags uint32, 
 	info := remoteFileInfo{name: path.Base(remotePath), mode: perm, modTime: time.Now()}
 	fillFuseAttr(&out.Attr, info)
 	child := &remoteFuseNode{runtime: n.runtime, remotePath: remotePath}
-	handle := newRemoteFuseFile(n.runtime, remotePath, nil, true, false, version)
+	handle := newRemoteFuseFile(n.runtime, remotePath, nil, true, false, version).withOpenContext(ctx, flags)
 	return n.NewInode(ctx, child, fuseStableAttr(remotePath, info)), handle, gofuse.FOPEN_DIRECT_IO, gofs.OK
 }
 
@@ -868,14 +943,18 @@ func (n *remoteFuseNode) Open(ctx context.Context, flags uint32) (gofs.FileHandl
 		}
 		data := []byte{}
 		if !writable || flags&uint32(syscall.O_TRUNC) == 0 {
-			readData, readErr := n.runtime.gitReadFile(ctx, entry)
-			if readErr != nil {
-				return nil, 0, fuseErrno(readErr)
+			if dirtyData, _, ok := n.runtime.dirtyOpenHandleData(n.remotePath); ok {
+				data = dirtyData
+			} else {
+				readData, readErr := n.runtime.gitReadFile(ctx, entry)
+				if readErr != nil {
+					return nil, 0, fuseErrno(readErr)
+				}
+				data = readData
 			}
-			data = readData
 		}
 		dirty := writable && flags&uint32(syscall.O_TRUNC) != 0
-		return newGitFuseFile(n.runtime, entry.workspace, n.remotePath, data, writable, dirty, entry.fileMode()), gofuse.FOPEN_DIRECT_IO, gofs.OK
+		return newGitFuseFile(n.runtime, entry.workspace, n.remotePath, data, writable, dirty, entry.fileMode()).withOpenContext(ctx, flags), gofuse.FOPEN_DIRECT_IO, gofs.OK
 	}
 	stat, err := n.runtime.statRemote(ctx, n.remotePath)
 	if err != nil {
@@ -886,14 +965,20 @@ func (n *remoteFuseNode) Open(ctx context.Context, flags uint32) (gofs.FileHandl
 		return nil, 0, syscall.EISDIR
 	}
 	data := []byte{}
+	version := stat.version
 	if !writable || flags&uint32(syscall.O_TRUNC) == 0 {
-		data, err = n.runtime.readFile(ctx, n.remotePath, stat.version)
-		if err != nil {
-			return nil, 0, fuseErrno(err)
+		if dirtyData, dirtyVersion, ok := n.runtime.dirtyOpenHandleData(n.remotePath); ok {
+			data = dirtyData
+			version = dirtyVersion
+		} else {
+			data, err = n.runtime.readFile(ctx, n.remotePath, stat.version)
+			if err != nil {
+				return nil, 0, fuseErrno(err)
+			}
 		}
 	}
 	dirty := writable && flags&uint32(syscall.O_TRUNC) != 0
-	return newRemoteFuseFile(n.runtime, n.remotePath, data, writable, dirty, stat.version), gofuse.FOPEN_DIRECT_IO, gofs.OK
+	return newRemoteFuseFile(n.runtime, n.remotePath, data, writable, dirty, version).withOpenContext(ctx, flags), gofuse.FOPEN_DIRECT_IO, gofs.OK
 }
 
 func (n *remoteFuseNode) Unlink(ctx context.Context, name string) syscall.Errno {
@@ -1060,12 +1145,16 @@ func (n *remoteFuseNode) Rename(ctx context.Context, name string, newParent gofs
 	if err := n.runtime.client.Rename(ctx, source, target); err != nil {
 		return fuseErrno(err)
 	}
+	targetVersion := fuseObjectVersion{}
+	if stat, err := statFuseRemoteVersion(ctx, n.runtime.client, target); err == nil {
+		targetVersion = stat.version
+	}
 	if n.runtime.metadata != nil {
 		_ = n.runtime.metadata.move(source, target)
 	}
 	n.runtime.invalidatePrefix(source)
 	n.runtime.invalidatePrefix(target)
-	n.runtime.retargetOpenHandles(source, target)
+	n.runtime.retargetOpenHandlesWithVersion(source, target, targetVersion)
 	return gofs.OK
 }
 
@@ -1118,6 +1207,11 @@ func (n *remoteFuseNode) Setattr(ctx context.Context, f gofs.FileHandle, in *gof
 		fillFuseAttr(&out.Attr, next)
 		return gofs.OK
 	}
+	if hasSize {
+		if ok, errno := n.runtime.adoptSingleCallerPathSetattr(ctx, n.remotePath, in, out); ok {
+			return errno
+		}
+	}
 	if entry, ok, err := n.runtime.gitEntry(ctx, n.remotePath); err != nil {
 		return fuseErrno(err)
 	} else if ok {
@@ -1167,9 +1261,11 @@ func (n *remoteFuseNode) Setattr(ctx context.Context, f gofs.FileHandle, in *gof
 		if errno != gofs.OK {
 			return errno
 		}
-		if _, err := n.runtime.writeFile(ctx, n.remotePath, resized, stat.version); err != nil {
+		version, err := n.runtime.writeFile(ctx, n.remotePath, resized, stat.version)
+		if err != nil {
 			return fuseErrno(err)
 		}
+		n.runtime.refreshOpenHandlesAfterPathTruncate(n.remotePath, version)
 	}
 	if mode, ok := in.GetMode(); ok {
 		if err := n.runtime.client.Chmod(ctx, n.remotePath, int64(mode)); err != nil {
@@ -1403,6 +1499,9 @@ type remoteFuseFile struct {
 	version          fuseObjectVersion
 	baseSize         int64
 	writable         bool
+	openSeq          uint64
+	openFlags        uint32
+	openPID          uint32
 	dirty            bool
 	dirtyRanges      []fuseDirtyRange
 	forceWholeUpload bool
@@ -1429,6 +1528,12 @@ func newRemoteFuseFile(runtime *remoteFuseRuntime, remotePath string, data []byt
 	}
 	runtime.registerOpenHandle(handle)
 	return handle
+}
+
+func (f *remoteFuseFile) withOpenContext(ctx context.Context, flags uint32) *remoteFuseFile {
+	f.openFlags = flags
+	f.openPID = fuseCallerPID(ctx)
+	return f
 }
 
 var _ gofs.FileReader = (*remoteFuseFile)(nil)
@@ -1504,6 +1609,22 @@ func (f *remoteFuseFile) Release(ctx context.Context) syscall.Errno {
 func (f *remoteFuseFile) Setattr(ctx context.Context, in *gofuse.SetAttrIn, out *gofuse.AttrOut) syscall.Errno {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	return f.setattrLocked(in, out)
+}
+
+func (f *remoteFuseFile) refreshAfterPathTruncate(remotePath string, version fuseObjectVersion) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.closed || f.deleted || !f.writable || f.remotePath != remotePath {
+		return
+	}
+	if f.openFlags&uint32(syscall.O_TRUNC) == 0 {
+		return
+	}
+	f.version = version
+}
+
+func (f *remoteFuseFile) setattrLocked(in *gofuse.SetAttrIn, out *gofuse.AttrOut) syscall.Errno {
 	size, ok := in.GetSize()
 	if ok {
 		if !f.writable {
@@ -1523,7 +1644,9 @@ func (f *remoteFuseFile) Setattr(ctx context.Context, in *gofuse.SetAttrIn, out 
 		f.dirty = true
 		f.forceWholeUpload = true
 	}
-	fillFuseAttrForHandle(&out.Attr, f.remotePath, f.data, f.mode)
+	if out != nil {
+		fillFuseAttrForHandle(&out.Attr, f.remotePath, f.data, f.mode)
+	}
 	return gofs.OK
 }
 
@@ -1578,14 +1701,20 @@ func (f *remoteFuseFile) markDirtyRange(start, end int64) {
 	f.dirtyRanges = mergeFuseDirtyRanges(append(f.dirtyRanges, fuseDirtyRange{Start: start, End: end}))
 }
 
-func (f *remoteFuseFile) retarget(source, target string) {
+func (f *remoteFuseFile) retarget(source, target string, version fuseObjectVersion) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	retargeted := false
 	switch {
 	case f.remotePath == source:
 		f.remotePath = target
+		retargeted = true
 	case strings.HasPrefix(f.remotePath, treePrefix(source)):
 		f.remotePath = target + strings.TrimPrefix(f.remotePath, source)
+		retargeted = true
+	}
+	if retargeted && version.known() {
+		f.version = version
 	}
 }
 

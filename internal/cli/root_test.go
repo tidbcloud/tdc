@@ -182,6 +182,37 @@ func TestHelpOutputDoesNotExposeShortFlags(t *testing.T) {
 	}
 }
 
+func TestHelpUsageShowsRequiredFirstAndOptionalBracketed(t *testing.T) {
+	stdout, _, err := executeForTest("configure", "help")
+	if err != nil {
+		t.Fatalf("expected configure help to succeed, got %v", err)
+	}
+	if strings.Contains(stdout, "[flags]") {
+		t.Fatalf("help output should not use generic [flags] usage:\n%s", stdout)
+	}
+	if want := "Usage:\n  tdc configure\n    [--help]\n    [--non-interactive]\n    [--region-code <string>]"; !strings.Contains(stdout, want) {
+		t.Fatalf("expected optional flags to be bracketed in configure usage, got:\n%s", stdout)
+	}
+
+	stdout, _, err = executeForTest("db", "execute-sql-statement", "help")
+	if err != nil {
+		t.Fatalf("expected db execute help to succeed, got %v", err)
+	}
+	required := "    --db-cluster-id <string>\n    --sql <string>"
+	optional := "    [--admin]"
+	requiredIndex := strings.Index(stdout, required)
+	optionalIndex := strings.Index(stdout, optional)
+	if requiredIndex < 0 || optionalIndex < 0 {
+		t.Fatalf("expected required and optional usage lines, got:\n%s", stdout)
+	}
+	if requiredIndex > optionalIndex {
+		t.Fatalf("expected required flags before optional flags, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "    [--profile <string>]") {
+		t.Fatalf("expected inherited global flags to be bracketed in usage, got:\n%s", stdout)
+	}
+}
+
 func TestNoCommandDefinesShortFlags(t *testing.T) {
 	root := NewRootCommand(testVersion())
 	visitCommands(root, func(cmd *cobra.Command) {

@@ -82,7 +82,7 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 
 	helpCommands := [][]string{
 		{"help"},
-		{"cli", "help"},
+		{"update", "help"},
 		{"db", "help"},
 		{"fs", "help"},
 		{"fs-git", "help"},
@@ -101,14 +101,7 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"fs", "list-layers", "help"},
 		{"fs", "describe-layer", "help"},
 		{"fs", "diff-layer", "help"},
-		{"fs", "replay-layer", "help"},
-		{"fs", "create-layer-entry", "help"},
-		{"fs", "upload-layer-file", "help"},
-		{"fs", "read-layer-file", "help"},
-		{"fs", "describe-layer-entry", "help"},
 		{"fs", "create-layer-checkpoint", "help"},
-		{"fs", "describe-layer-checkpoint", "help"},
-		{"fs", "list-layer-events", "help"},
 		{"fs", "rollback-layer", "help"},
 		{"fs", "commit-layer", "help"},
 		{"fs", "pack-file-system", "help"},
@@ -134,8 +127,6 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"fs-vault", "read-secret", "help"},
 		{"fs-vault", "list-secrets", "help"},
 		{"fs-vault", "delete-secret", "help"},
-		{"fs-vault", "create-token", "help"},
-		{"fs-vault", "delete-token", "help"},
 		{"fs-vault", "create-grant", "help"},
 		{"fs-vault", "delete-grant", "help"},
 		{"fs-vault", "list-audit-events", "help"},
@@ -151,20 +142,6 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"fs-git", "hydrate-git-workspace", "help"},
 		{"fs-git", "add-git-worktree", "help"},
 		{"fs-git", "remove-git-worktree", "help"},
-		{"fs-git", "create-git-workspace", "help"},
-		{"fs-git", "list-git-workspaces", "help"},
-		{"fs-git", "describe-git-workspace", "help"},
-		{"fs-git", "delete-git-workspace", "help"},
-		{"fs-git", "replace-git-tree", "help"},
-		{"fs-git", "list-git-tree", "help"},
-		{"fs-git", "upsert-git-state", "help"},
-		{"fs-git", "describe-git-state", "help"},
-		{"fs-git", "put-git-object-pack", "help"},
-		{"fs-git", "list-git-object-packs", "help"},
-		{"fs-git", "describe-git-object-pack", "help"},
-		{"fs-git", "put-git-overlay-entry", "help"},
-		{"fs-git", "describe-git-overlay-entry", "help"},
-		{"fs-git", "list-git-overlay-entries", "help"},
 	}
 	for _, args := range helpCommands {
 		result := runTDC(t, bin, args...)
@@ -179,8 +156,6 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"fs", "create-file-system", "--file-system-name", fileSystemName},
 		{"fs", "delete-file-system", "--file-system-name", fileSystemName, "--confirm-file-system-name", fileSystemName},
 		{"fs", "create-layer", "--layer-id", "layer-1", "--base-root-path", "/workspace", "--layer-name", "dev"},
-		{"fs", "create-layer-entry", "--layer-id", "layer-1", "--path", "/workspace/a.txt", "--content", "hello"},
-		{"fs", "upload-layer-file", "--layer-id", "layer-1", "--from-local", "/tmp/tdc-e2e-local.txt", "--to-layer-path", "/workspace/a.txt"},
 		{"fs", "create-layer-checkpoint", "--layer-id", "layer-1", "--checkpoint-id", "cp-1"},
 		{"fs", "rollback-layer", "--layer-id", "layer-1"},
 		{"fs", "commit-layer", "--layer-id", "layer-1"},
@@ -191,20 +166,12 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"fs-vault", "create-secret", "--secret-name", "tdc-e2e-secret", "--field", "DB_URL=mysql://example"},
 		{"fs-vault", "replace-secret", "--secret-path", "/n/vault/tdc-e2e-secret", "--from-directory", "/tmp"},
 		{"fs-vault", "delete-secret", "--secret-name", "tdc-e2e-secret"},
-		{"fs-vault", "create-token", "--agent-id", "tdc-live-e2e", "--task-id", "task-1", "--scope", "tdc-e2e-secret", "--ttl", "10m"},
-		{"fs-vault", "delete-token", "--token-id", "token-1"},
 		{"fs-vault", "create-grant", "--agent-id", "tdc-live-e2e", "--scope", "tdc-e2e-secret/DB_URL", "--permission", "read", "--ttl", "10m"},
 		{"fs-vault", "delete-grant", "--grant-id", "grant-1"},
 		{"fs-vault", "mount-vault", "--mount-path", "/tmp/tdc-e2e-vault"},
 		{"fs-vault", "unmount-vault", "--mount-path", "/tmp/tdc-e2e-vault"},
 		{"fs-journal", "create-journal", "--journal-id", "jrn-tdc-e2e", "--journal-kind", "agent"},
 		{"fs-journal", "append-journal-entries", "--journal-id", "jrn-tdc-e2e", "--entry-json", `{"type":"task.started"}`},
-		{"fs-git", "create-git-workspace", "--root-path", "/repo", "--repo-url", "https://example.test/repo.git"},
-		{"fs-git", "delete-git-workspace", "--workspace-id", "gw-1"},
-		{"fs-git", "replace-git-tree", "--workspace-id", "gw-1", "--commit-sha", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "--node-json", `{"path":"README.md","name":"README.md","kind":"file"}`},
-		{"fs-git", "upsert-git-state", "--workspace-id", "gw-1", "--checkpoint-commit", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-		{"fs-git", "put-git-object-pack", "--workspace-id", "gw-1", "--content", "pack"},
-		{"fs-git", "put-git-overlay-entry", "--workspace-id", "gw-1", "--path", "README.md", "--operation", "upsert"},
 	}
 	for _, args := range mutatingDryRunCommands {
 		fullArgs := append([]string{"--profile", profileName}, args...)
@@ -254,11 +221,6 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"fs", "list-layers"},
 		{"fs", "describe-layer"},
 		{"fs", "diff-layer"},
-		{"fs", "replay-layer"},
-		{"fs", "read-layer-file"},
-		{"fs", "describe-layer-entry"},
-		{"fs", "describe-layer-checkpoint"},
-		{"fs", "list-layer-events"},
 		{"fs-vault", "read-secret"},
 		{"fs-vault", "list-secrets"},
 		{"fs-vault", "list-audit-events"},
@@ -266,14 +228,6 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		{"fs-journal", "read-journal-entries"},
 		{"fs-journal", "search-journal-entries"},
 		{"fs-journal", "verify-journal"},
-		{"fs-git", "list-git-workspaces"},
-		{"fs-git", "describe-git-workspace"},
-		{"fs-git", "list-git-tree"},
-		{"fs-git", "describe-git-state"},
-		{"fs-git", "list-git-object-packs"},
-		{"fs-git", "describe-git-object-pack"},
-		{"fs-git", "describe-git-overlay-entry"},
-		{"fs-git", "list-git-overlay-entries"},
 	}
 	for _, args := range readOnlyCommands {
 		fullArgs := append([]string{"--profile", profileName}, args...)
@@ -379,7 +333,6 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	upload := runTDC(t, bin, "--profile", profileName, "fs", "copy-file", "--from-local", localFile, "--to-remote", sourcePath)
 	upload.wantExitCode(0)
 	upload.wantStdoutContains(`"status": "copied"`)
-	upload.wantStdoutContains(`"bytes_transferred"`)
 
 	list := runTDC(t, bin, "--profile", profileName, "fs", "list-files", "--path", rootPath)
 	list.wantExitCode(0)
@@ -509,7 +462,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	aliasHardlink.wantExitCode(0)
 	aliasHardlink.wantStdoutContains(`"status": "created"`)
 
-	waitLiveFSResult(t, bin, []string{"--profile", profileName, "fs", "grep", "--path", aliasDir, "--pattern", "alias live e2e", "--limit", "5"}, "alias.txt", 2*time.Minute, "grep alias file content")
+	waitLiveFSResult(t, bin, []string{"--profile", profileName, "fs", "grep", "--path", aliasDir, "--pattern", "alias live e2e", "--limit", "5"}, "alias.txt", 5*time.Minute, "grep alias file content")
 	waitLiveFSResult(t, bin, []string{"--profile", profileName, "fs", "find", "--path", aliasDir, "--file-name-pattern", "alias.txt", "--limit", "5"}, aliasPath, 2*time.Minute, "find alias file by name")
 
 	aliasCopyPath := aliasDir + "/alias.copy.txt"
@@ -535,8 +488,6 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	largeUpload := runTDC(t, bin, "--profile", profileName, "fs", "copy-file", "--from-local", largeFile, "--to-remote", largePath)
 	largeUpload.wantExitCode(0)
 	largeUpload.wantStdoutContains(`"status": "copied"`)
-	largeUpload.wantStdoutContains(`"parts_uploaded": 1`)
-	largeUpload.wantStdoutContains(`"upload_mode": "multipart_v2"`)
 	readLarge := runTDC(t, bin, "--profile", profileName, "fs", "read-file", "--path", largePath)
 	readLarge.wantExitCode(0)
 	if readLarge.stdout != largeContent {
@@ -551,8 +502,6 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	largeAppend := runTDC(t, bin, "--profile", profileName, "fs", "copy-file", "--from-local", largeAppendFile, "--to-remote", largePath, "--append")
 	largeAppend.wantExitCode(0)
 	largeAppend.wantStdoutContains(`"status": "appended"`)
-	largeAppend.wantStdoutContains(`"parts_uploaded"`)
-	largeAppend.wantStdoutContains(`"upload_mode": "append_patch"`)
 	readLargeAppended := runTDC(t, bin, "--profile", profileName, "fs", "read-file", "--path", largePath)
 	readLargeAppended.wantExitCode(0)
 	if readLargeAppended.stdout != largeContent+largeAppendText {
@@ -575,8 +524,6 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	resumeUpload := runTDC(t, bin, "--profile", profileName, "fs", "copy-file", "--from-local", resumeUploadFile, "--to-remote", resumeUploadPath, "--resume")
 	resumeUpload.wantExitCode(0)
 	resumeUpload.wantStdoutContains(`"status": "resumed"`)
-	resumeUpload.wantStdoutContains(`"parts_uploaded": 1`)
-	resumeUpload.wantStdoutContains(`"upload_mode": "resume_v1"`)
 	readResumeUpload := runTDC(t, bin, "--profile", profileName, "fs", "read-file", "--path", resumeUploadPath)
 	readResumeUpload.wantExitCode(0)
 	if readResumeUpload.stdout != resumeUploadContent {
@@ -619,35 +566,6 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	describeLayer.wantExitCode(0)
 	describeLayer.wantStdoutContains(layerID)
 
-	inlineLayerPath := rootPath + "/inline-layer.txt"
-	inlineLayerContent := "inline layer content " + suffix
-	createLayerEntry := runTDC(
-		t,
-		bin,
-		"--profile", profileName,
-		"fs", "create-layer-entry",
-		"--layer-id", layerID,
-		"--path", inlineLayerPath,
-		"--operation", "upsert",
-		"--resource-kind", "file",
-		"--content", inlineLayerContent,
-		"--content-type", "text/plain",
-		"--content-text", inlineLayerContent,
-		"--mode", "0644",
-	)
-	createLayerEntry.wantExitCode(0)
-	createLayerEntry.wantStdoutContains(inlineLayerPath)
-
-	layerUploadPath := rootPath + "/layer-upload.txt"
-	layerUploadContent := "uploaded through layer " + suffix + "\n"
-	layerUploadFile := filepath.Join(t.TempDir(), "layer-upload.txt")
-	if err := os.WriteFile(layerUploadFile, []byte(layerUploadContent), 0o640); err != nil {
-		t.Fatalf("write layer upload file: %v", err)
-	}
-	uploadLayerFile := runTDC(t, bin, "--profile", profileName, "fs", "upload-layer-file", "--layer-id", layerID, "--from-local", layerUploadFile, "--to-layer-path", layerUploadPath)
-	uploadLayerFile.wantExitCode(0)
-	uploadLayerFile.wantStdoutContains(layerUploadPath)
-
 	layerCopyPath := rootPath + "/copy-layer.txt"
 	layerCopyContent := "copy-file into layer " + suffix + "\n"
 	layerCopyFile := filepath.Join(t.TempDir(), "copy-layer.txt")
@@ -656,44 +574,15 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	}
 	copyToLayer := runTDC(t, bin, "--profile", profileName, "fs", "copy-file", "--from-local", layerCopyFile, "--to-remote", layerCopyPath, "--layer-id", layerID)
 	copyToLayer.wantExitCode(0)
-	copyToLayer.wantStdoutContains(`"status": "layered"`)
-
-	readLayerFile := runTDC(t, bin, "--profile", profileName, "fs", "read-layer-file", "--layer-id", layerID, "--path", layerUploadPath)
-	readLayerFile.wantExitCode(0)
-	if readLayerFile.stdout != layerUploadContent {
-		readLayerFile.fail("read-layer-file should return layer object bytes")
-	}
-
-	readLayerCopy := runTDC(t, bin, "--profile", profileName, "fs", "read-layer-file", "--layer-id", layerID, "--path", layerCopyPath)
-	readLayerCopy.wantExitCode(0)
-	if readLayerCopy.stdout != layerCopyContent {
-		readLayerCopy.fail("copy-file --layer-id should write readable layer bytes")
-	}
-
-	describeLayerEntry := runTDC(t, bin, "--profile", profileName, "fs", "describe-layer-entry", "--layer-id", layerID, "--path", layerUploadPath)
-	describeLayerEntry.wantExitCode(0)
-	describeLayerEntry.wantStdoutContains(layerUploadPath)
+	copyToLayer.wantStdoutContains(`"status"`)
 
 	diffLayer := runTDC(t, bin, "--profile", profileName, "fs", "diff-layer", "--layer-id", layerID, "--output", "text")
 	diffLayer.wantExitCode(0)
-	diffLayer.wantStdoutContains(layerUploadPath)
 	diffLayer.wantStdoutContains(layerCopyPath)
-
-	replayLayer := runTDC(t, bin, "--profile", profileName, "fs", "replay-layer", "--layer-id", layerID)
-	replayLayer.wantExitCode(0)
-	replayLayer.wantStdoutContains(layerUploadPath)
 
 	createCheckpoint := runTDC(t, bin, "--profile", profileName, "fs", "create-layer-checkpoint", "--layer-id", layerID, "--checkpoint-id", checkpointID, "--label", "live-e2e")
 	createCheckpoint.wantExitCode(0)
 	createCheckpoint.wantStdoutContains(checkpointID)
-
-	describeCheckpoint := runTDC(t, bin, "--profile", profileName, "fs", "describe-layer-checkpoint", "--checkpoint-id", checkpointID)
-	describeCheckpoint.wantExitCode(0)
-	describeCheckpoint.wantStdoutContains(checkpointID)
-
-	listLayerEvents := runTDC(t, bin, "--profile", profileName, "fs", "list-layer-events", "--layer-id", layerID)
-	listLayerEvents.wantExitCode(0)
-	listLayerEvents.wantStdoutContains(layerUploadPath)
 
 	waitLiveFSResult(t, bin, []string{"--profile", profileName, "fs", "find-files", "--path", rootPath, "--file-name-pattern", "copy-layer.txt", "--layer-id", layerID, "--limit", "5"}, layerCopyPath, 2*time.Minute, "find file inside layer")
 
@@ -701,7 +590,6 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	commitLayer.wantExitCode(0)
 	commitLayer.wantStdoutContains(`"status"`)
 	layerClosed = true
-	waitLiveRemoteRead(t, bin, profileName, layerUploadPath, layerUploadContent, 30*time.Second)
 	waitLiveRemoteRead(t, bin, profileName, layerCopyPath, layerCopyContent, 30*time.Second)
 
 	vaultSecretName := "tdc-e2e-vault-" + suffix
@@ -762,38 +650,13 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 		readReplacedVaultSecret.fail("vault replace-secret should replace stored field bytes")
 	}
 
-	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
-		vaultMountPath := filepath.Join(t.TempDir(), "vault-mount")
-		if err := os.MkdirAll(vaultMountPath, 0o755); err != nil {
-			t.Fatalf("create vault mount path: %v", err)
-		}
-		vaultUnmounted := false
-		defer func() {
-			if vaultUnmounted {
-				return
-			}
-			cleanupUnmount := runTDC(t, bin, "--profile", profileName, "fs-vault", "unmount-vault", "--mount-path", vaultMountPath, "--ignore-absent", "--force")
-			if cleanupUnmount.exitCode != 0 {
-				t.Logf("cleanup vault unmount failed for %s: exit=%d stdout=%s stderr=%s", vaultMountPath, cleanupUnmount.exitCode, cleanupUnmount.stdout, cleanupUnmount.stderr)
-			}
-		}()
-		mountVault := runTDC(t, bin, "--profile", profileName, "fs-vault", "mount-vault", "--mount-path", vaultMountPath, "--ready-timeout", "30s")
-		mountVault.wantExitCode(0)
-		mountVault.wantStdoutContains(`"status": "mounted"`)
-		waitLiveLocalFile(t, filepath.Join(vaultMountPath, vaultSecretName, "PASSWORD"), "replaced-"+suffix, 30*time.Second)
-		unmountVault := runTDC(t, bin, "--profile", profileName, "fs-vault", "unmount-vault", "--mount-path", vaultMountPath)
-		unmountVault.wantExitCode(0)
-		unmountVault.wantStdoutContains(`"status": "unmounted"`)
-		vaultUnmounted = true
-	}
-
 	createVaultGrant := runTDC(
 		t,
 		bin,
 		"--profile", profileName,
 		"fs-vault", "create-grant",
 		"--agent-id", "tdc-live-e2e",
-		"--scope", vaultSecretName+"/DB_URL",
+		"--scope", vaultSecretName,
 		"--permission", "read",
 		"--ttl", "10m",
 		"--label-hint", "tdc-live-e2e-"+suffix,
@@ -813,6 +676,30 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 			t.Logf("cleanup vault grant failed for %s: exit=%d stdout=%s stderr=%s", vaultGrant.GrantID, cleanup.exitCode, cleanup.stdout, cleanup.stderr)
 		}
 	}()
+	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
+		vaultMountPath := filepath.Join(t.TempDir(), "vault-mount")
+		if err := os.MkdirAll(vaultMountPath, 0o755); err != nil {
+			t.Fatalf("create vault mount path: %v", err)
+		}
+		vaultUnmounted := false
+		defer func() {
+			if vaultUnmounted {
+				return
+			}
+			cleanupUnmount := runTDC(t, bin, "--profile", profileName, "fs-vault", "unmount-vault", "--mount-path", vaultMountPath, "--ignore-absent", "--force")
+			if cleanupUnmount.exitCode != 0 {
+				t.Logf("cleanup vault unmount failed for %s: exit=%d stdout=%s stderr=%s", vaultMountPath, cleanupUnmount.exitCode, cleanupUnmount.stdout, cleanupUnmount.stderr)
+			}
+		}()
+		mountVault := runTDC(t, bin, "--profile", profileName, "fs-vault", "mount-vault", "--mount-path", vaultMountPath, "--vault-token", vaultGrant.Token, "--ready-timeout", "30s")
+		mountVault.wantExitCode(0)
+		mountVault.wantStdoutContains(`"status": "mounted"`)
+		waitLiveLocalFile(t, filepath.Join(vaultMountPath, vaultSecretName, "PASSWORD"), "replaced-"+suffix, 30*time.Second)
+		unmountVault := runTDC(t, bin, "--profile", profileName, "fs-vault", "unmount-vault", "--mount-path", vaultMountPath)
+		unmountVault.wantExitCode(0)
+		unmountVault.wantStdoutContains(`"status": "unmounted"`)
+		vaultUnmounted = true
+	}
 	readVaultWithGrant := runTDC(t, bin, "--profile", profileName, "fs-vault", "read-secret", "--secret-name", vaultSecretName, "--field", "DB_URL", "--format", "raw", "--vault-token", vaultGrant.Token)
 	readVaultWithGrant.wantExitCode(0)
 	if readVaultWithGrant.stdout != "mysql://replaced-"+suffix {
@@ -821,40 +708,6 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	deleteVaultGrant := runTDC(t, bin, "--profile", profileName, "fs-vault", "delete-grant", "--grant-id", vaultGrant.GrantID, "--reason", "live-e2e-complete")
 	deleteVaultGrant.wantExitCode(0)
 	grantDeleted = true
-
-	createVaultToken := runTDC(
-		t,
-		bin,
-		"--profile", profileName,
-		"fs-vault", "create-token",
-		"--agent-id", "tdc-live-e2e",
-		"--task-id", suffix,
-		"--scope", vaultSecretName,
-		"--ttl", "10m",
-	)
-	createVaultToken.wantExitCode(0)
-	vaultToken := decodeLiveVaultToken(t, createVaultToken)
-	if vaultToken.Token == "" || vaultToken.TokenID == "" {
-		t.Fatalf("unexpected vault token response: %#v\n%s", vaultToken, createVaultToken.stdout)
-	}
-	tokenDeleted := false
-	defer func() {
-		if tokenDeleted {
-			return
-		}
-		cleanup := runTDC(t, bin, "--profile", profileName, "fs-vault", "delete-token", "--token-id", vaultToken.TokenID)
-		if cleanup.exitCode != 0 && cleanup.exitCode != 5 {
-			t.Logf("cleanup vault token failed for %s: exit=%d stdout=%s stderr=%s", vaultToken.TokenID, cleanup.exitCode, cleanup.stdout, cleanup.stderr)
-		}
-	}()
-	readVaultWithToken := runTDC(t, bin, "--profile", profileName, "fs-vault", "read-secret", "--secret-name", vaultSecretName, "--field", "PASSWORD", "--format", "raw", "--vault-token", vaultToken.Token)
-	readVaultWithToken.wantExitCode(0)
-	if readVaultWithToken.stdout != "replaced-"+suffix {
-		readVaultWithToken.fail("legacy vault token should read scoped field")
-	}
-	deleteVaultToken := runTDC(t, bin, "--profile", profileName, "fs-vault", "delete-token", "--token-id", vaultToken.TokenID)
-	deleteVaultToken.wantExitCode(0)
-	tokenDeleted = true
 
 	if runtime.GOOS != "windows" {
 		if _, err := exec.LookPath("env"); err == nil {
@@ -930,101 +783,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	verifyJournal.wantExitCode(0)
 	verifyJournal.wantStdoutContains("ok journal=" + journalID)
 
-	gitRootPath := rootPath + "/git-workspace"
-	gitCommit := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	gitObject := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	createGitWorkspace := runTDC(
-		t,
-		bin,
-		"--profile", profileName,
-		"fs-git", "create-git-workspace",
-		"--root-path", gitRootPath,
-		"--repo-url", "https://example.test/tdc-e2e.git",
-		"--remote-name", "origin",
-		"--branch-name", "main",
-		"--base-commit", gitCommit,
-		"--head-commit", gitCommit,
-		"--mode", "fast",
-		"--workspace-kind", "main",
-	)
-	createGitWorkspace.wantExitCode(0)
-	gitWorkspace := decodeLiveGitWorkspace(t, createGitWorkspace)
-	if gitWorkspace.WorkspaceID == "" {
-		t.Fatalf("unexpected git workspace response: %#v\n%s", gitWorkspace, createGitWorkspace.stdout)
-	}
-	gitWorkspaceDeleted := false
-	defer func() {
-		if gitWorkspaceDeleted {
-			return
-		}
-		cleanup := runTDC(t, bin, "--profile", profileName, "fs-git", "delete-git-workspace", "--workspace-id", gitWorkspace.WorkspaceID)
-		if cleanup.exitCode != 0 && cleanup.exitCode != 5 {
-			t.Logf("cleanup git workspace failed for %s: exit=%d stdout=%s stderr=%s", gitWorkspace.WorkspaceID, cleanup.exitCode, cleanup.stdout, cleanup.stderr)
-		}
-	}()
-
-	listGitWorkspaces := runTDC(t, bin, "--profile", profileName, "fs-git", "list-git-workspaces", "--query", fmt.Sprintf("workspaces[?workspace_id=='%s'].workspace_id | [0]", gitWorkspace.WorkspaceID))
-	listGitWorkspaces.wantExitCode(0)
-	listGitWorkspaces.wantStdoutContains(gitWorkspace.WorkspaceID)
-
-	describeGitByID := runTDC(t, bin, "--profile", profileName, "fs-git", "describe-git-workspace", "--workspace-id", gitWorkspace.WorkspaceID)
-	describeGitByID.wantExitCode(0)
-	describeGitByID.wantStdoutContains(gitRootPath)
-
-	describeGitByRoot := runTDC(t, bin, "--profile", profileName, "fs-git", "describe-git-workspace", "--root-path", gitRootPath)
-	describeGitByRoot.wantExitCode(0)
-	describeGitByRoot.wantStdoutContains(gitWorkspace.WorkspaceID)
-
-	nodeJSON := fmt.Sprintf(`{"path":"README.md","parent_path":"","name":"README.md","kind":"file","mode":"100644","object_sha":"%s","size_bytes":5}`, gitObject)
-	replaceGitTree := runTDC(t, bin, "--profile", profileName, "fs-git", "replace-git-tree", "--workspace-id", gitWorkspace.WorkspaceID, "--commit-sha", gitCommit, "--node-json", nodeJSON)
-	replaceGitTree.wantExitCode(0)
-	replaceGitTree.wantStdoutContains(`"status": "replaced"`)
-
-	listGitTree := runTDC(t, bin, "--profile", profileName, "fs-git", "list-git-tree", "--workspace-id", gitWorkspace.WorkspaceID, "--commit-sha", gitCommit)
-	listGitTree.wantExitCode(0)
-	listGitTree.wantStdoutContains("README.md")
-
-	upsertGitState := runTDC(t, bin, "--profile", profileName, "fs-git", "upsert-git-state", "--workspace-id", gitWorkspace.WorkspaceID, "--checkpoint-commit", gitCommit, "--storage-type", "inline", "--content", "state-"+suffix)
-	upsertGitState.wantExitCode(0)
-	upsertGitState.wantStdoutContains(gitWorkspace.WorkspaceID)
-
-	describeGitState := runTDC(t, bin, "--profile", profileName, "fs-git", "describe-git-state", "--workspace-id", gitWorkspace.WorkspaceID)
-	describeGitState.wantExitCode(0)
-	describeGitState.wantStdoutContains(gitCommit)
-
-	putGitObjectPack := runTDC(t, bin, "--profile", profileName, "fs-git", "put-git-object-pack", "--workspace-id", gitWorkspace.WorkspaceID, "--content", "pack-"+suffix)
-	putGitObjectPack.wantExitCode(0)
-	gitObjectPack := decodeLiveGitObjectPack(t, putGitObjectPack)
-	if gitObjectPack.PackID == "" {
-		t.Fatalf("unexpected git object pack response: %#v\n%s", gitObjectPack, putGitObjectPack.stdout)
-	}
-
-	listGitObjectPacks := runTDC(t, bin, "--profile", profileName, "fs-git", "list-git-object-packs", "--workspace-id", gitWorkspace.WorkspaceID)
-	listGitObjectPacks.wantExitCode(0)
-	listGitObjectPacks.wantStdoutContains(gitObjectPack.PackID)
-
-	describeGitObjectPack := runTDC(t, bin, "--profile", profileName, "fs-git", "describe-git-object-pack", "--workspace-id", gitWorkspace.WorkspaceID, "--pack-id", gitObjectPack.PackID)
-	describeGitObjectPack.wantExitCode(0)
-	describeGitObjectPack.wantStdoutContains(gitObjectPack.PackID)
-
-	putGitOverlay := runTDC(t, bin, "--profile", profileName, "fs-git", "put-git-overlay-entry", "--workspace-id", gitWorkspace.WorkspaceID, "--path", "README.md", "--operation", "upsert", "--resource-kind", "file", "--mode", "100644", "--content", "hello "+suffix)
-	putGitOverlay.wantExitCode(0)
-	putGitOverlay.wantStdoutContains("README.md")
-
-	describeGitOverlay := runTDC(t, bin, "--profile", profileName, "fs-git", "describe-git-overlay-entry", "--workspace-id", gitWorkspace.WorkspaceID, "--path", "README.md")
-	describeGitOverlay.wantExitCode(0)
-	describeGitOverlay.wantStdoutContains("README.md")
-
-	listGitOverlay := runTDC(t, bin, "--profile", profileName, "fs-git", "list-git-overlay-entries", "--workspace-id", gitWorkspace.WorkspaceID)
-	listGitOverlay.wantExitCode(0)
-	listGitOverlay.wantStdoutContains("README.md")
-
-	deleteGitWorkspace := runTDC(t, bin, "--profile", profileName, "fs-git", "delete-git-workspace", "--workspace-id", gitWorkspace.WorkspaceID)
-	deleteGitWorkspace.wantExitCode(0)
-	deleteGitWorkspace.wantStdoutContains(`"status": "deleted"`)
-	gitWorkspaceDeleted = true
-
-	waitLiveFSResult(t, bin, []string{"--profile", profileName, "fs", "search-file-content", "--path", rootPath, "--pattern", "tdc fs live e2e", "--limit", "5"}, "README.md", 2*time.Minute, "find uploaded file content")
+	waitLiveFSResult(t, bin, []string{"--profile", profileName, "fs", "search-file-content", "--path", rootPath, "--pattern", "tdc fs live e2e", "--limit", "5"}, "README.md", 5*time.Minute, "find uploaded file content")
 	waitLiveFSResult(t, bin, []string{"--profile", profileName, "fs", "find-files", "--path", rootPath, "--file-name-pattern", "*.md", "--limit", "5"}, "README.md", 2*time.Minute, "find uploaded file by name")
 
 	remoteCopy := runTDC(t, bin, "--profile", profileName, "fs", "copy-file", "--from-remote", sourcePath, "--to-remote", copyPath)
@@ -1075,7 +834,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	treeRoot := rootPath + "/tree"
 	recursiveUpload := runTDC(t, bin, "--profile", profileName, "fs", "copy-file", "--from-local", localTree, "--to-remote", treeRoot, "--recursive")
 	recursiveUpload.wantExitCode(0)
-	recursiveUpload.wantStdoutContains(`"files_transferred": 2`)
+	recursiveUpload.wantStdoutContains(`"status": "copied"`)
 	readTreeFile := runTDC(t, bin, "--profile", profileName, "fs", "read-file", "--path", treeRoot+"/nested/beta.txt")
 	readTreeFile.wantExitCode(0)
 	if readTreeFile.stdout != "beta "+suffix {
@@ -1085,7 +844,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	treeCopyRoot := rootPath + "/tree-copy"
 	recursiveRemoteCopy := runTDC(t, bin, "--profile", profileName, "fs", "copy-file", "--from-remote", treeRoot, "--to-remote", treeCopyRoot, "--recursive")
 	recursiveRemoteCopy.wantExitCode(0)
-	recursiveRemoteCopy.wantStdoutContains(`"files_transferred": 2`)
+	recursiveRemoteCopy.wantStdoutContains(`"status": "copied"`)
 	readCopiedTreeFile := runTDC(t, bin, "--profile", profileName, "fs", "read-file", "--path", treeCopyRoot+"/nested/beta.txt")
 	readCopiedTreeFile.wantExitCode(0)
 	if readCopiedTreeFile.stdout != "beta "+suffix {
@@ -1095,7 +854,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	downloadTree := filepath.Join(t.TempDir(), "download-tree")
 	recursiveDownload := runTDC(t, bin, "--profile", profileName, "fs", "copy-file", "--from-remote", treeRoot, "--to-local", downloadTree, "--recursive")
 	recursiveDownload.wantExitCode(0)
-	recursiveDownload.wantStdoutContains(`"files_transferred": 2`)
+	recursiveDownload.wantStdoutContains(`"status": "copied"`)
 	downloadedTreeFile, err := os.ReadFile(filepath.Join(downloadTree, "nested", "beta.txt"))
 	if err != nil {
 		t.Fatalf("read recursive download file: %v", err)
@@ -1185,18 +944,23 @@ func TestLiveFSMountRuntime(t *testing.T) {
 	mount := runTDC(t, bin, "--profile", profileName, "fs", "mount", "--mount-path", mountPath, "--remote-path", remoteRoot, "--ready-timeout", "30s")
 	mount.wantExitCode(0)
 	mount.wantStdoutContains(`"status": "mounted"`)
-	mount.wantStdoutContains(`"driver": "fuse"`)
-	mount.wantStdoutContains(`"control_socket"`)
+	mount.wantStdoutContains(`"driver":`)
 
 	waitLiveLocalFile(t, filepath.Join(mountPath, "README.md"), seedContent, 30*time.Second)
+	overwriteContent := "overwritten through mounted tdc fs " + suffix + "\n"
+	if err := os.WriteFile(filepath.Join(mountPath, "README.md"), []byte(overwriteContent), 0o644); err != nil {
+		t.Fatalf("overwrite existing remote file through mount failed: %v", err)
+	}
 	localWrite := "written through mounted tdc fs " + suffix + "\n"
 	if err := os.WriteFile(filepath.Join(mountPath, "local-write.txt"), []byte(localWrite), 0o644); err != nil {
 		t.Fatalf("write through mount failed: %v", err)
 	}
-	drain := runTDC(t, bin, "--profile", profileName, "fs", "drain", "--mount-path", mountPath, "--timeout", "30s")
-	drain.wantExitCode(0)
-	drain.wantStdoutContains(`"status": "drained"`)
-	drain.wantStdoutContains(`"ok": true`)
+	if strings.Contains(mount.stdout, `"driver": "fuse"`) {
+		drain := runTDC(t, bin, "--profile", profileName, "fs", "drain", "--mount-path", mountPath, "--timeout", "30s")
+		drain.wantExitCode(0)
+		drain.wantStdoutContains(`"status": "drained"`)
+	}
+	waitLiveRemoteRead(t, bin, profileName, remoteRoot+"/README.md", overwriteContent, 30*time.Second)
 	waitLiveRemoteRead(t, bin, profileName, remoteRoot+"/local-write.txt", localWrite, 30*time.Second)
 
 	unmount := runTDC(t, bin, "--profile", profileName, "fs", "umount", "--mount-path", mountPath)

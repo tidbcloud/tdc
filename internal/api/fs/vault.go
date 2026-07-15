@@ -21,12 +21,6 @@ type VaultSecret struct {
 	UpdatedAt  time.Time `json:"updated_at,omitempty"`
 }
 
-type VaultTokenIssueResponse struct {
-	Token     string    `json:"token"`
-	TokenID   string    `json:"token_id"`
-	ExpiresAt time.Time `json:"expires_at"`
-}
-
 type VaultGrantIssueRequest struct {
 	Agent      string   `json:"agent"`
 	Scope      []string `json:"scope"`
@@ -100,28 +94,6 @@ func (c *Client) ListVaultSecrets(ctx context.Context) ([]VaultSecret, error) {
 		response.Secrets = []VaultSecret{}
 	}
 	return response.Secrets, nil
-}
-
-func (c *Client) IssueVaultToken(ctx context.Context, agentID, taskID string, scope []string, ttl time.Duration) (VaultTokenIssueResponse, error) {
-	body := map[string]any{
-		"agent_id":    agentID,
-		"task_id":     taskID,
-		"scope":       scope,
-		"ttl_seconds": int(ttl / time.Second),
-	}
-	var response VaultTokenIssueResponse
-	if err := c.doVaultJSON(ctx, http.MethodPost, "/v1/vault/tokens", body, &response); err != nil {
-		return VaultTokenIssueResponse{}, err
-	}
-	return response, nil
-}
-
-func (c *Client) RevokeVaultToken(ctx context.Context, tokenID string) error {
-	req, err := c.api.NewRequest(ctx, http.MethodDelete, "/v1/vault/tokens/"+url.PathEscape(tokenID), nil)
-	if err != nil {
-		return err
-	}
-	return c.api.DoJSON(req, nil)
 }
 
 func (c *Client) IssueVaultGrant(ctx context.Context, request VaultGrantIssueRequest) (VaultGrantIssueResponse, error) {

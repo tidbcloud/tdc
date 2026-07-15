@@ -21,6 +21,8 @@ import (
 
 const defaultUserAgent = "tdc"
 
+const defaultMaxRetries = 2
+
 type Client struct {
 	BaseURL     *url.URL
 	HTTPClient  *http.Client
@@ -76,6 +78,13 @@ func New(opts Options) (*Client, error) {
 		}
 	}
 
+	maxRetries := opts.MaxRetries
+	if maxRetries == 0 {
+		maxRetries = defaultMaxRetries
+	} else if maxRetries < 0 {
+		maxRetries = 0
+	}
+
 	return &Client{
 		BaseURL:     baseURL,
 		HTTPClient:  httpClient,
@@ -86,7 +95,7 @@ func New(opts Options) (*Client, error) {
 		RegionCode:  opts.Endpoint.RegionCode,
 		Service:     opts.Endpoint.Service,
 		UserAgent:   userAgent,
-		MaxRetries:  opts.MaxRetries,
+		MaxRetries:  maxRetries,
 	}, nil
 }
 
@@ -229,6 +238,7 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 	if attempts < 1 {
 		attempts = 1
 	}
+	canRetry := retryableRequest(req)
 	var lastRes *http.Response
 	var lastErr error
 	for attempt := 0; attempt < attempts; attempt++ {
@@ -247,9 +257,12 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 		res, err := c.HTTPClient.Do(nextReq)
 		if err != nil {
 			lastErr = err
+			if !canRetry {
+				return nil, err
+			}
 			continue
 		}
-		if !retryable(res.StatusCode) || attempt == attempts-1 {
+		if !canRetry || !retryable(res.StatusCode) || attempt == attempts-1 {
 			return res, nil
 		}
 		_, _ = io.Copy(io.Discard, res.Body)
@@ -264,6 +277,18 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 
 func retryable(statusCode int) bool {
 	return statusCode == http.StatusTooManyRequests || statusCode >= 500
+}
+
+func retryableRequest(req *http.Request) bool {
+	if req == nil {
+		return false
+	}
+	switch req.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Client) statusError(req *http.Request, res *http.Response) error {

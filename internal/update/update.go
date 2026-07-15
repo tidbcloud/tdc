@@ -28,6 +28,8 @@ import (
 const (
 	DefaultReleaseAPIBaseURL = "https://api.github.com/repos/tidbcloud/tdc"
 	checksumAssetName        = "tdc_checksums.txt"
+	drive9ReleaseBaseURL     = "https://drive9.ai/releases"
+	drive9ChecksumAssetName  = "checksums.txt"
 )
 
 var errNoComparableVersion = errors.New("version is not a comparable semver")
@@ -57,6 +59,8 @@ type CheckResult struct {
 	DownloadURL              string `json:"download_url"`
 	ReleaseURL               string `json:"release_url"`
 	ReleaseNotesURL          string `json:"release_notes_url"`
+	Drive9CompanionPath      string `json:"drive9_companion_path"`
+	Drive9CompanionInstalled bool   `json:"drive9_companion_installed"`
 }
 
 func (r CheckResult) Human() string {
@@ -75,22 +79,25 @@ func (r CheckResult) Human() string {
 	if r.ReleaseURL != "" {
 		fmt.Fprintf(&b, "Release: %s\n", r.ReleaseURL)
 	}
+	fmt.Fprintf(&b, "Drive9 companion: %s\n", companionStatusText(r.Drive9CompanionPath, r.Drive9CompanionInstalled))
 	return b.String()
 }
 
 type ApplyResult struct {
-	CurrentVersion  string `json:"current_version"`
-	TargetVersion   string `json:"target_version"`
-	Updated         bool   `json:"updated"`
-	DryRun          bool   `json:"dry_run"`
-	InstallSource   string `json:"install_source"`
-	ReleaseChannel  string `json:"release_channel"`
-	ArtifactName    string `json:"artifact_name"`
-	DownloadURL     string `json:"download_url"`
-	ChecksumSHA256  string `json:"checksum_sha256"`
-	TargetPath      string `json:"target_path"`
-	ReleaseURL      string `json:"release_url"`
-	ReleaseNotesURL string `json:"release_notes_url"`
+	CurrentVersion   string `json:"current_version"`
+	TargetVersion    string `json:"target_version"`
+	Updated          bool   `json:"updated"`
+	DryRun           bool   `json:"dry_run"`
+	InstallSource    string `json:"install_source"`
+	ReleaseChannel   string `json:"release_channel"`
+	ArtifactName     string `json:"artifact_name"`
+	DownloadURL      string `json:"download_url"`
+	ChecksumSHA256   string `json:"checksum_sha256"`
+	TargetPath       string `json:"target_path"`
+	ReleaseURL       string `json:"release_url"`
+	ReleaseNotesURL  string `json:"release_notes_url"`
+	CompanionPath    string `json:"drive9_companion_path"`
+	CompanionUpdated bool   `json:"drive9_companion_updated"`
 }
 
 func (r ApplyResult) Human() string {
@@ -106,6 +113,9 @@ func (r ApplyResult) Human() string {
 	fmt.Fprintf(&b, "Target path: %s\n", r.TargetPath)
 	if r.ArtifactName != "" {
 		fmt.Fprintf(&b, "Artifact: %s\n", r.ArtifactName)
+	}
+	if r.CompanionPath != "" {
+		fmt.Fprintf(&b, "Drive9 companion: %s\n", r.CompanionPath)
 	}
 	return b.String()
 }
@@ -142,6 +152,7 @@ func Check(ctx context.Context, info version.Info, opts CheckOptions) (CheckResu
 	if err != nil {
 		return CheckResult{}, err
 	}
+	companionPath := companionPathForExecutable("")
 
 	updateAvailable, comparable := updateAvailable(info.Version, rel.version())
 	return CheckResult{
@@ -155,6 +166,8 @@ func Check(ctx context.Context, info version.Info, opts CheckOptions) (CheckResu
 		DownloadURL:              artifact.BrowserDownloadURL,
 		ReleaseURL:               rel.HTMLURL,
 		ReleaseNotesURL:          rel.HTMLURL,
+		Drive9CompanionPath:      companionPath,
+		Drive9CompanionInstalled: fileExists(companionPath),
 	}, nil
 }
 
@@ -246,6 +259,7 @@ func Apply(ctx context.Context, info version.Info, opts ApplyOptions) (ApplyResu
 		TargetPath:      targetPath,
 		ReleaseURL:      rel.HTMLURL,
 		ReleaseNotesURL: rel.HTMLURL,
+		CompanionPath:   companionPathForExecutable(targetPath),
 	}
 	if opts.DryRun {
 		return result, nil
@@ -270,7 +284,11 @@ func Apply(ctx context.Context, info version.Info, opts ApplyOptions) (ApplyResu
 	if err := replaceBinary(ctx, extracted, targetPath); err != nil {
 		return ApplyResult{}, err
 	}
+	if err := c.installDrive9Companion(ctx, targetPath); err != nil {
+		return ApplyResult{}, err
+	}
 	result.Updated = true
+	result.CompanionUpdated = true
 	return result, nil
 }
 
@@ -613,6 +631,159 @@ func validateInstalledBinary(ctx context.Context, targetPath string) error {
 			fmt.Sprintf("new tdc binary failed --version validation: %s", strings.TrimSpace(string(output))),
 			err,
 		)
+	}
+	return nil
+}
+
+func (c client) installDrive9Companion(ctx context.Context, tdcPath string) error {
+	artifactName, err := drive9ArtifactName(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return err
+	}
+	checksumBytes, err := c.download(ctx, drive9ReleaseBaseURL+"/"+drive9ChecksumAssetName)
+	if err != nil {
+		return err
+	}
+	expectedSHA, err := checksumFor(checksumBytes, artifactName)
+	if err != nil {
+		return err
+	}
+	binaryBytes, err := c.download(ctx, drive9ReleaseBaseURL+"/"+artifactName)
+	if err != nil {
+		return err
+	}
+	if err := verifyChecksum(binaryBytes, expectedSHA, artifactName); err != nil {
+		return err
+	}
+	companionPath := companionPathForExecutable(tdcPath)
+	if err := ensureWritableDirectory(filepath.Dir(companionPath)); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(filepath.Dir(companionPath), ".tdc-drive9-update-*")
+	if err != nil {
+		return apperr.Wrap("update.permission_denied", "runtime", 1, "create temporary tdc-drive9 binary", err)
+	}
+	tempPath := temp.Name()
+	installed := false
+	defer func() {
+		if !installed {
+			_ = os.Remove(tempPath)
+		}
+	}()
+	if _, err := temp.Write(binaryBytes); err != nil {
+		_ = temp.Close()
+		return apperr.Wrap("update.extract_artifact", "runtime", 1, "write temporary tdc-drive9 binary", err)
+	}
+	if err := temp.Close(); err != nil {
+		return apperr.Wrap("update.extract_artifact", "runtime", 1, "close temporary tdc-drive9 binary", err)
+	}
+	if err := os.Chmod(tempPath, 0o755); err != nil {
+		return apperr.Wrap("update.extract_artifact", "runtime", 1, "make tdc-drive9 executable", err)
+	}
+	if err := replaceFile(tempPath, companionPath); err != nil {
+		return err
+	}
+	installed = true
+	return nil
+}
+
+func drive9ArtifactName(goos, goarch string) (string, error) {
+	if goos == "" {
+		goos = runtime.GOOS
+	}
+	if goarch == "" {
+		goarch = runtime.GOARCH
+	}
+	switch goos {
+	case "darwin", "linux":
+		if goarch != "amd64" && goarch != "arm64" {
+			return "", unsupportedTarget(goos, goarch)
+		}
+		return fmt.Sprintf("drive9-%s-%s", goos, goarch), nil
+	case "windows":
+		if goarch != "amd64" && goarch != "arm64" {
+			return "", unsupportedTarget(goos, goarch)
+		}
+		return fmt.Sprintf("drive9-%s-%s.exe", goos, goarch), nil
+	default:
+		return "", unsupportedTarget(goos, goarch)
+	}
+}
+
+func companionPathForExecutable(tdcPath string) string {
+	path := strings.TrimSpace(tdcPath)
+	if path == "" {
+		current, err := os.Executable()
+		if err == nil {
+			path = current
+		}
+	}
+	if path == "" {
+		return companionBinaryName()
+	}
+	return filepath.Join(filepath.Dir(path), companionBinaryName())
+}
+
+func companionBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "tdc-drive9.exe"
+	}
+	return "tdc-drive9"
+}
+
+func companionStatusText(path string, installed bool) string {
+	if installed {
+		return path
+	}
+	return "missing at " + path
+}
+
+func fileExists(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+func ensureWritableDirectory(dir string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return apperr.Wrap("update.permission_denied", "runtime", 1, fmt.Sprintf("create %s", dir), err)
+	}
+	temp, err := os.CreateTemp(dir, ".tdc-update-write-test-*")
+	if err != nil {
+		return apperr.Wrap("update.permission_denied", "runtime", 1, fmt.Sprintf("tdc cannot write to %s", dir), err)
+	}
+	name := temp.Name()
+	_ = temp.Close()
+	_ = os.Remove(name)
+	return nil
+}
+
+func replaceFile(sourcePath, targetPath string) error {
+	backupPath := targetPath + ".tdc-backup"
+	_ = os.Remove(backupPath)
+	hadTarget := false
+	if _, err := os.Stat(targetPath); err == nil {
+		hadTarget = true
+		if err := os.Rename(targetPath, backupPath); err != nil {
+			return apperr.Wrap("update.permission_denied", "runtime", 1, "move current tdc-drive9 binary aside", err)
+		}
+	}
+	installed := false
+	defer func() {
+		if installed || !hadTarget {
+			return
+		}
+		_ = os.Remove(targetPath)
+		_ = os.Rename(backupPath, targetPath)
+	}()
+	if err := os.Rename(sourcePath, targetPath); err != nil {
+		return apperr.Wrap("update.permission_denied", "runtime", 1, "install tdc-drive9 binary", err)
+	}
+	installed = true
+	if hadTarget {
+		_ = os.Remove(backupPath)
 	}
 	return nil
 }

@@ -80,14 +80,7 @@ Implemented:
 - `tdc fs list-layers`
 - `tdc fs describe-layer`
 - `tdc fs diff-layer`
-- `tdc fs replay-layer`
-- `tdc fs create-layer-entry`
-- `tdc fs upload-layer-file`
-- `tdc fs read-layer-file`
-- `tdc fs describe-layer-entry`
 - `tdc fs create-layer-checkpoint`
-- `tdc fs describe-layer-checkpoint`
-- `tdc fs list-layer-events`
 - `tdc fs rollback-layer`
 - `tdc fs commit-layer`
 - `tdc fs mount-file-system`
@@ -101,8 +94,6 @@ Implemented:
 - `tdc fs-vault read-secret`
 - `tdc fs-vault list-secrets`
 - `tdc fs-vault delete-secret`
-- `tdc fs-vault create-token`
-- `tdc fs-vault delete-token`
 - `tdc fs-vault create-grant`
 - `tdc fs-vault delete-grant`
 - `tdc fs-vault list-audit-events`
@@ -119,28 +110,12 @@ Implemented:
 - `--dry-run` on mutating control-plane commands
 - TiDB Cloud Digest-auth API client foundation and auth/authz error mapping
 - flat `fs_*` config/credential storage for tdc fs control-plane resources
-- default tdc fs FUSE mount runtime with version-aware read cache, local
-  pending-write recovery, cache identity validation, local mount drain control
-  socket, and WebDAV compatibility fallback
-- tdc fs range reads, V2-first multipart upload with V1 fallback,
-  local-to-remote upload resume, efficient append with fallback,
-  remote-to-local download resume, FUSE dirty-range patch upload, and recursive
-  local/remote copy
-- tdc fs layer client and command coverage for create/list/describe/diff/replay,
-  layer entry/object read-write, checkpoints, events, rollback, commit, and
-  layer-aware copy/search/find flows
-- tdc fs-vault client and command coverage for secret create/read/replace/delete,
-  delegated grants/tokens, audit listing, command environment injection, and a
-  read-only vault mount filesystem view
-- tdc fs-journal client and command coverage for create/append/read/search/verify
-  against the Drive9-compatible journal endpoints
-- tdc fs pack/unpack workflows, mount-profile local overlays, portable
-  auto-pack/auto-unpack, POSIX-style chmod/symlink/hardlink, stdin/stdout copy,
-  tags, and descriptions
-- tdc fs-git workspace workflows for fast clone, hydrate, restore, linked worktree
-  add/remove, low-level git workspace/tree/state/object-pack/overlay commands,
-  and FUSE synthetic Git tree/overlay handling with restore of missing local
-  Git state
+- tdc fs/fs-git/fs-journal/fs-vault commands routed through the bundled
+  `tdc-drive9` companion, with tdc-owned profile loading, credential storage,
+  region resolution, and output/error handling
+- Drive9 public CLI coverage for tdc fs data-plane operations, FUSE/WebDAV
+  mount, mount drain, layers, pack/unpack, vault, journal, and Git clone,
+  hydrate, add-worktree, and remove-worktree workflows
 - GoReleaser/GitHub Releases install and update workflow
 - Makefile build/test/e2e workflow
 
@@ -205,16 +180,14 @@ connection string output, and executes the HTTPS SQL API with all three access
 modes.
 For tdc fs data-plane and mount runtime, the live suite creates uniquely named
 remote paths, exercises real file create/read/list/copy/move/delete flows,
-range reads, V2-first multipart upload, efficient append, upload resume,
-remote-to-local resume, recursive local/remote copy, stdin/stdout copy,
-tags/descriptions, chmod, symlink, hardlink, pack/unpack, real layer
-create/read/diff/replay/checkpoint/events/commit flows, layer-aware copy/find,
-vault create/read/replace/delete, delegated vault grant/token reads, vault
-mount read on macOS/Linux FUSE hosts, journal create/append/read/search/verify,
-low-level Git workspace API CRUD, mounts with the default FUSE driver when
-platform prerequisites exist, verifies `tdc fs drain-file-system` against the
-mounted runtime control socket, and also verifies explicit WebDAV fallback on
-macOS when `mount_webdav` is available.
+range reads, append, resume, recursive local/remote copy, stdin/stdout copy,
+tags/descriptions, chmod, symlink, hardlink, pack/unpack, real public layer
+create/list/describe/diff/checkpoint/rollback/commit flows, layer-aware
+copy/find where Drive9 exposes it, vault create/read/replace/delete, delegated
+vault grant reads, vault mount read on macOS/Linux hosts when available,
+journal create/append/read/search/verify, public Git clone/hydrate/worktree
+flows, mount and drain through the companion runtime, and explicit WebDAV
+fallback when the platform supports it.
 If the live profile has no `fs_api_key`, the suite creates a temporary tdc fs
 resource named by `TDC_LIVE_FS_NAME` or `workspace`, stores the generated flat
 `fs_*` metadata and `fs_api_key`, and deletes that auto-created resource when
@@ -424,15 +397,8 @@ Implemented command behavior:
 - `tdc fs list-layers --output text`
 - `tdc fs describe-layer --layer-id layer-1`
 - `tdc fs diff-layer --layer-id layer-1`
-- `tdc fs replay-layer --layer-id layer-1`
-- `tdc fs create-layer-entry --layer-id layer-1 --path /workspace/inline.txt --content "hello" --mode 0644`
-- `tdc fs upload-layer-file --layer-id layer-1 --from-local ./README.md --to-layer-path /workspace/README.md`
 - `tdc fs copy-file --from-local ./README.md --to-remote /workspace/layered.md --layer-id layer-1`
-- `tdc fs read-layer-file --layer-id layer-1 --path /workspace/README.md`
-- `tdc fs describe-layer-entry --layer-id layer-1 --path /workspace/README.md`
 - `tdc fs create-layer-checkpoint --layer-id layer-1 --checkpoint-id cp-1 --label before-commit`
-- `tdc fs describe-layer-checkpoint --checkpoint-id cp-1`
-- `tdc fs list-layer-events --layer-id layer-1`
 - `tdc fs rollback-layer --layer-id layer-1`
 - `tdc fs commit-layer --layer-id layer-1`
 - `tdc fs pack-file-system --local-root ~/.tdc/local/fs/demo --remote-root /workspace --mount-profile portable`
@@ -443,8 +409,8 @@ Implemented command behavior:
 - `tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --driver webdav`
 - `tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --mount-profile coding-agent`
 - `tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --mount-profile portable --pack-path /`
-- `tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --read-cache-size-mb 256 --read-cache-max-file-mb 16`
-- `tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --cache-dir ~/.tdc/cache/workspace --write-back-cache=false`
+- `tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --driver fuse --read-cache-size-mb 256 --read-cache-max-file-mb 16`
+- `tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace --driver fuse --cache-dir ~/.tdc/cache/workspace --write-back-cache=false`
 - `tdc fs drain-file-system --mount-path ./workspace`
 - `tdc fs drain-file-system --mount-path ./workspace --timeout 30s`
 - `tdc fs unmount-file-system --mount-path ./workspace`
@@ -458,11 +424,8 @@ Implemented command behavior:
 - `tdc fs-vault delete-secret --secret-name db-prod`
 - `tdc fs-vault create-grant --agent-id deploy-agent --scope db-prod/DB_URL --permission read --ttl 10m`
 - `tdc fs-vault delete-grant --grant-id <grant-id> --reason rotated`
-- `tdc fs-vault create-token --agent-id deploy-agent --task-id deploy-123 --scope db-prod --ttl 10m`
-- `tdc fs-vault delete-token --token-id <token-id>`
 - `tdc fs-vault list-audit-events --secret-name db-prod --limit 20`
 - `tdc fs-vault run-with-secret --secret-path /n/vault/db-prod -- env`
-- `tdc fs-vault mount-vault --mount-path ./vault`
 - `tdc fs-vault mount-vault --mount-path ./vault --vault-token "$TDC_VAULT_TOKEN"`
 - `tdc fs-vault unmount-vault --mount-path ./vault`
 - `tdc fs-journal create-journal --journal-id jrn-demo --journal-kind agent --title "demo task" --actor agent:tdc --label env=dev`
@@ -473,17 +436,8 @@ Implemented command behavior:
 - `tdc fs-git clone-git-workspace --repo-url https://github.com/pingcap/tidb.git --target-path ./workspace/tidb`
 - `tdc fs-git clone-git-workspace --repo-url https://github.com/pingcap/tidb.git --target-path ./workspace/tidb --blobless --hydrate sync`
 - `tdc fs-git hydrate-git-workspace --target-path ./workspace/tidb --timeout 30m`
-- `tdc fs-git restore-git-workspace --target-path ./workspace/tidb`
 - `tdc fs-git add-git-worktree --base-path ./workspace/tidb --worktree-path ./workspace/tidb-feature --branch-name feature-x`
 - `tdc fs-git remove-git-worktree --worktree-path ./workspace/tidb-feature --force`
-- `tdc fs-git create-git-workspace --root-path /workspace/repo --repo-url https://example.test/repo.git --mode fast`
-- `tdc fs-git list-git-workspaces`
-- `tdc fs-git describe-git-workspace --root-path /workspace/repo`
-- `tdc fs-git replace-git-tree --workspace-id <id> --commit-sha <sha> --node-json '{"path":"README.md","name":"README.md","kind":"file","mode":"100644","object_sha":"..."}'`
-- `tdc fs-git list-git-tree --workspace-id <id> --commit-sha <sha>`
-- `tdc fs-git upsert-git-state --workspace-id <id> --checkpoint-commit <sha> --storage-type inline --content state`
-- `tdc fs-git put-git-overlay-entry --workspace-id <id> --path README.md --operation upsert --resource-kind file --mode 100644 --content hello`
-- `tdc fs-git delete-git-workspace --workspace-id <id>`
 
 Registered command surface:
 
@@ -521,14 +475,7 @@ Registered command surface:
 - `tdc fs list-layers`
 - `tdc fs describe-layer`
 - `tdc fs diff-layer`
-- `tdc fs replay-layer`
-- `tdc fs create-layer-entry`
-- `tdc fs upload-layer-file`
-- `tdc fs read-layer-file`
-- `tdc fs describe-layer-entry`
 - `tdc fs create-layer-checkpoint`
-- `tdc fs describe-layer-checkpoint`
-- `tdc fs list-layer-events`
 - `tdc fs rollback-layer`
 - `tdc fs commit-layer`
 - `tdc fs pack-file-system`
@@ -556,8 +503,6 @@ Registered command surface:
 - `tdc fs-vault read-secret`
 - `tdc fs-vault list-secrets`
 - `tdc fs-vault delete-secret`
-- `tdc fs-vault create-token`
-- `tdc fs-vault delete-token`
 - `tdc fs-vault create-grant`
 - `tdc fs-vault delete-grant`
 - `tdc fs-vault list-audit-events`
@@ -571,23 +516,8 @@ Registered command surface:
 - `tdc fs-journal verify-journal`
 - `tdc fs-git clone-git-workspace`
 - `tdc fs-git hydrate-git-workspace`
-- `tdc fs-git restore-git-workspace`
 - `tdc fs-git add-git-worktree`
 - `tdc fs-git remove-git-worktree`
-- `tdc fs-git create-git-workspace`
-- `tdc fs-git list-git-workspaces`
-- `tdc fs-git describe-git-workspace`
-- `tdc fs-git delete-git-workspace`
-- `tdc fs-git replace-git-tree`
-- `tdc fs-git list-git-tree`
-- `tdc fs-git upsert-git-state`
-- `tdc fs-git describe-git-state`
-- `tdc fs-git put-git-object-pack`
-- `tdc fs-git list-git-object-packs`
-- `tdc fs-git describe-git-object-pack`
-- `tdc fs-git put-git-overlay-entry`
-- `tdc fs-git describe-git-overlay-entry`
-- `tdc fs-git list-git-overlay-entries`
 
 Do not rename commands without updating specs, README, e2e tests, and AGENTS.
 Any code change that changes user-visible behavior must keep README.md in sync.
@@ -773,114 +703,45 @@ users for a cluster instead of creating a new group every time.
 Generated `tdc fs` resource API keys also live in `~/.tdc/credentials`.
 User-facing docs and commands must call these `tdc fs` API keys or resource
 credentials, never reference implementation API keys. Filesystem data-plane
-requests authenticate with `Authorization: Bearer <tdc-fs-api-key>` after the
-resource is created. Native tdc fs provision/delete requests send the profile's
-TiDB Cloud API key pair in the HTTPS JSON body expected by the backend; dry-run
-and debug output must redact those credential values.
+commands route through the installer-managed Drive9 companion binary named
+`tdc-drive9`. tdc owns profile loading, region resolution, credential storage,
+preflight errors, output/query handling, and command naming; Drive9 owns the
+filesystem runtime semantics for data-plane file operations, FUSE/WebDAV mount,
+FUSE mount drain, layer behavior, pack/unpack, Git workflows, journal, and vault.
+The companion runs with isolated state under `~/.tdc/drive9-home`; do not write
+or require user edits to `~/.drive9`.
 
-`tdc fs read-file --offset N --length M` is the byte-range read contract.
-Both flags must be provided together. Large local-to-remote `copy-file` uses
-V2-first multipart upload with V1 fallback, bounded concurrent part workers,
-one fresh-presign retry for expired V2 part URLs, and complete-time tag
-propagation in the internal fs client. `tdc fs copy-file --append` supports
-only local-to-remote append and should use the tdc fs append plan when
-available, with conditional rewrite only as a compatibility fallback. `tdc fs
-copy-file --resume` supports both local-to-remote upload resume for an active
-multipart upload and remote-to-local download resume for an existing partial
-local file.
-FUSE/writeback flushes should use dirty-range `PATCH /v1/fs/<path>` for
-same-size writes with a known base revision and fall back to whole upload only
-for unsupported backends, size-changing writes, or unknown base versions.
-`tdc fs copy-file --recursive` copies directory contents into the target for
-local-to-remote, remote-to-local, and remote-to-remote flows. Local recursive
-copy must reject symlinks instead of silently following them.
-`tdc fs copy-file --from-stdin` and `--to-stdout` are raw stream paths for
-agents and must not wrap bytes in JSON. Local-to-remote writes accept
-repeatable `--tag key=value` and `--description`; propagate those values
-through multipart completion and ordinary write paths when the backend supports
-them. `chmod-file`, `create-symlink`, and `create-hardlink` map to explicit tdc
-fs data-plane endpoints. tdc persists client-side metadata for tdc-managed
-modes and symlink targets under `~/.tdc/fs_metadata`, so `describe-file` and
-FUSE can report those values when remote stat metadata is sparse. Local overlay
-symlinks and tdc-created remote symlinks support readlink through FUSE.
+Do not implement or expose tdc commands for Drive9 internal APIs that are not
+part of Drive9's public CLI. In particular, do not reintroduce low-level layer
+entry/object/event commands, low-level Git workspace/tree/state/object-pack/
+overlay commands, or legacy vault token commands unless Drive9 exposes a
+matching public command and the tdc command surface is intentionally updated in
+README, specs, tests, and AGENTS. Use `TDC_DRIVE9_BIN` only as a developer/test
+override for a compatible companion; normal installs should rely on the
+installer-managed `tdc-drive9`.
 
-`tdc fs` layer commands wrap the Drive9-compatible `/v1/layers`,
-`/v1/layers/<layer_id>/*`, and `/v1/layer-checkpoints/<checkpoint_id>`
-endpoints in tdc's two-level command style. Use `--layer-id`, not `--layer`.
-`read-layer-file` returns raw bytes and rejects `--query`. The layer-aware copy
-path, `copy-file --layer-id`, writes local-to-remote and remote-to-remote
-targets into the layer. It must reject `--append`, `--resume`, and
-`--recursive`.
-`search-file-content --layer-id` and `find-files --layer-id` pass the layer
-overlay selector to the backend.
+`tdc fs create-directory --mode` is a compatibility flag only in the Drive9
+companion path: validate the octal value, but do not emulate directory chmod
+with a non-public backend call. `tdc fs chmod-file` remains the explicit chmod
+command and should follow Drive9 public CLI behavior.
 
-`tdc fs-vault` commands use the active profile's resolved tdc fs endpoint and
-stored `fs_api_key`; do not add a raw vault server URL. Management and owner
-read paths authenticate with `Authorization: Bearer <tdc-fs-api-key>`.
-Delegated reads use `--vault-token` or `TDC_VAULT_TOKEN` with the same Bearer
-scheme against `/v1/vault/read/*`. Mutating vault commands support `--dry-run`;
-read-only vault commands reject it. `create-secret` accepts repeatable
-`--field key=value`, `key=@file`, and `key=-` assignments. `replace-secret`
-uses the strict path shape `/n/vault/<secret>` and reads fields from files in a
-directory. `read-secret --format raw` requires `--field` and returns raw bytes;
-`--format env` emits dotenv-compatible lines. `create-grant` is the preferred
-delegated access command. `create-token` remains for Drive9-compatible legacy
-scoped tokens. `run-with-secret` must reject environment keys outside
-`[A-Z_][A-Z0-9_]*`, reject control bytes in values except tab, and scrub tdc
-credential variables from the child process environment. `mount-vault` exposes
-readable vault secrets as a read-only FUSE filesystem at
-`<mount>/<secret>/<field>` and records shared mount state under
-`~/.tdc/mounts/`. Owner mounts use `fs_api_key`; delegated mounts use
-`--vault-token` or `TDC_VAULT_TOKEN`. For background delegated mounts, pass the
-token through the child environment rather than process arguments.
+`tdc fs-vault mount-vault` requires a delegated vault token from
+`tdc fs-vault create-grant`; owner `fs_api_key` is used for
+`create-secret`, `read-secret`, `list-secrets`, `replace-secret`,
+`delete-secret`, grants, audit, and `run-with-secret`, but not for the vault
+mount consumption path.
 
-`tdc fs-journal` commands use the active profile's resolved tdc fs endpoint and
-stored `fs_api_key`; do not add a raw journal server URL. They wrap
-Drive9-compatible `/v1/journals`, `/v1/journals/<journal_id>/entries`,
-`/v1/journals/<journal_id>/verify`, and `/v1/journal-entries`. Mutating
-commands support `--dry-run`; read-only commands reject it.
-`append-journal-entries` sends `--idempotency-key` as the `Idempotency-Key`
-header, accepts repeatable `--entry-json` objects or JSONL stdin, and requires
-every entry to have a type from the entry JSON or `--entry-type`.
-`search-journal-entries` must preserve repeated `--label key=value` filters as
-repeated `meta=key=value` query parameters.
+`tdc fs drain-file-system` is meaningful only for FUSE mounts where the
+companion records a drain control socket. WebDAV mounts flush through normal
+file close semantics and should not be expected to support drain.
 
-`tdc fs mount-file-system` defaults to `--driver auto`, which prefers the FUSE
-runtime and falls back to WebDAV only when FUSE prerequisites are unavailable
-and WebDAV is supported. `--driver fuse` and `--driver webdav` are explicit
-concrete selections. The FUSE runtime uses `github.com/hanwen/go-fuse/v2` and
-the existing tdc fs data-plane client directly. It includes a bounded in-memory
-read cache that validates known `revision`/`resource_id` metadata and a local
-pending-write cache under `~/.tdc/cache/` that records mount identity before
-recovery. FUSE mounts expose a local control socket recorded in mount state;
-`tdc fs drain-file-system` must connect to that socket and flush dirty open
-handles plus pending write-back cache without unmounting. WebDAV fallback
-supports WebDAV dead properties for client compatibility. The implementation
-must not import or depend on `ref/drive9`; copy or adapt concepts into
-`internal/fs` instead. macOS FUSE requires macFUSE, Linux FUSE requires
-`/dev/fuse` plus `fusermount3` or `fusermount`, and WebDAV fallback currently
-uses macOS `mount_webdav`/`umount`. The CLI build must remain cgo-free.
-Mount state stores `mount_profile`, `local_root`, and `pack_paths`. The default
-mount profile is `coding-agent`; it routes `.git`, dependency directories,
-caches, build output, and common temporary paths to the local overlay. The
-`portable` profile defaults to pack path `/`, unpacks the default archive on
-mount, and packs the local overlay on unmount unless the user passes
-`--no-auto-unpack` or `--no-auto-pack`. Default local roots live under
-`~/.tdc/local/fs/<hash>` and must not depend on the mount path alone.
-
-`tdc fs-git clone-git-workspace`, `hydrate-git-workspace`,
-`restore-git-workspace`, `add-git-worktree`, and `remove-git-worktree` are
-Drive9-style client workflows using tdc command names. They require a target
-path inside a tdc fs mount with readable mount metadata. Fast clone/worktree
-commands run native `git` with no checkout, register `/v1/git-workspaces`,
-replace `/tree`, initialize the Git index, and checkpoint lightweight `.git`
-state plus object packs. `restore-git-workspace` downloads registered Git
-state and object packs, restores local `.git`, and runs
-`git unpack-objects -r`. FUSE must serve registered clean Git files from the
-Git tree manifest plus local `.git` object database, automatically restore
-missing local Git state when possible, and persist dirty Git workspace changes
-through `/v1/git-workspaces/<id>/overlay` rather than ordinary `/v1/fs` file
-rows.
+When invoking the companion, build a sanitized environment from the active tdc
+profile: `DRIVE9_SERVER` from the tdc fs endpoint resolver, `DRIVE9_REGION_CODE`
+from the canonical profile region, `DRIVE9_API_KEY` from `fs_api_key`, and
+TiDB Cloud public/private keys only for provision/delete flows. Strip inherited
+`DRIVE9_*` values so user shell state cannot override tdc profile values. Debug
+and error output must redact TiDB Cloud keys, `fs_api_key`, vault tokens, SQL
+credentials, file contents, and secret values.
 
 `tdc db format-db-connection-string` and `tdc db execute-sql-statement` use
 read-write credentials by default. `--read-write`, `--read-only`, and `--admin`

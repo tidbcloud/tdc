@@ -29,6 +29,12 @@ type Service struct {
 	Debug       bool
 	DebugWriter io.Writer
 	HomeDir     string
+
+	UseDrive9Companion bool
+	CompanionPath      string
+	Stdin              io.Reader
+	Stdout             io.Writer
+	Stderr             io.Writer
 }
 
 type CreateFileSystemOptions struct {
@@ -79,6 +85,9 @@ type Check struct {
 }
 
 func (s Service) CreateFileSystem(ctx context.Context, opts CreateFileSystemOptions) (FileSystemResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9CreateFileSystem(ctx, opts)
+	}
 	request, name, endpoint, err := s.createRequestAndEndpoint(opts, true)
 	if err != nil {
 		return FileSystemResult{}, err
@@ -138,6 +147,9 @@ func (s Service) CreateFileSystem(ctx context.Context, opts CreateFileSystemOpti
 }
 
 func (s Service) DeleteFileSystem(ctx context.Context, opts DeleteFileSystemOptions) (DeleteResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9DeleteFileSystem(ctx, opts)
+	}
 	name, endpoint, err := s.deleteInputsAndEndpoint(opts, true)
 	if err != nil {
 		return DeleteResult{}, err
@@ -180,6 +192,9 @@ func (s Service) DeleteFileSystem(ctx context.Context, opts DeleteFileSystemOpti
 }
 
 func (s Service) CheckFileSystem(ctx context.Context, opts CheckFileSystemOptions) (CheckResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9CheckFileSystem(ctx, opts)
+	}
 	if err := validateProfile(opts.Profile); err != nil {
 		return CheckResult{}, err
 	}

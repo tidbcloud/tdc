@@ -149,6 +149,9 @@ type LayerCommitResult struct {
 }
 
 func (s Service) CreateLayer(ctx context.Context, opts CreateLayerOptions) (LayerResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9CreateLayer(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "create tdc fs layer")
 	if err != nil {
 		return LayerResult{}, err
@@ -176,6 +179,9 @@ func (s Service) CreateLayer(ctx context.Context, opts CreateLayerOptions) (Laye
 }
 
 func (s Service) ListLayers(ctx context.Context, opts ListLayersOptions) (LayerListResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9ListLayers(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "list tdc fs layers")
 	if err != nil {
 		return LayerListResult{}, err
@@ -188,6 +194,9 @@ func (s Service) ListLayers(ctx context.Context, opts ListLayersOptions) (LayerL
 }
 
 func (s Service) DescribeLayer(ctx context.Context, opts DescribeLayerOptions) (LayerResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9DescribeLayer(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "describe tdc fs layer")
 	if err != nil {
 		return LayerResult{}, err
@@ -200,6 +209,9 @@ func (s Service) DescribeLayer(ctx context.Context, opts DescribeLayerOptions) (
 }
 
 func (s Service) DiffLayer(ctx context.Context, opts LayerEntriesOptions) (LayerEntriesResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9DiffLayer(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "diff tdc fs layer")
 	if err != nil {
 		return LayerEntriesResult{}, err
@@ -301,6 +313,9 @@ func (s Service) DescribeLayerEntry(ctx context.Context, opts DescribeLayerEntry
 }
 
 func (s Service) CreateLayerCheckpoint(ctx context.Context, opts CreateLayerCheckpointOptions) (LayerCheckpointResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9CreateLayerCheckpoint(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "checkpoint tdc fs layer")
 	if err != nil {
 		return LayerCheckpointResult{}, err
@@ -341,6 +356,9 @@ func (s Service) ListLayerEvents(ctx context.Context, opts ListLayerEventsOption
 }
 
 func (s Service) RollbackLayer(ctx context.Context, opts LayerActionOptions) (LayerActionResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9RollbackLayer(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "rollback tdc fs layer")
 	if err != nil {
 		return LayerActionResult{}, err
@@ -353,6 +371,9 @@ func (s Service) RollbackLayer(ctx context.Context, opts LayerActionOptions) (La
 }
 
 func (s Service) CommitLayer(ctx context.Context, opts LayerActionOptions) (LayerCommitResult, error) {
+	if s.UseDrive9Companion {
+		return s.drive9CommitLayer(ctx, opts)
+	}
 	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "commit tdc fs layer")
 	if err != nil {
 		return LayerCommitResult{}, err

@@ -2,11 +2,14 @@ package endpoints
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -31,6 +34,18 @@ const (
 )
 
 var errFSManifestUnavailable = errors.New("tdc fs region manifest unavailable")
+
+const (
+	fsManifestFetchAttempts = 3
+	fsManifestRetryDelay    = 200 * time.Millisecond
+	fsManifestCacheMaxAge   = 24 * time.Hour
+)
+
+type cachedFSRegionManifest struct {
+	ManifestURL string           `json:"manifest_url"`
+	FetchedAt   time.Time        `json:"fetched_at"`
+	Manifest    FSRegionManifest `json:"manifest"`
+}
 
 type ProviderRegion struct {
 	Provider string
@@ -197,32 +212,125 @@ func (r Resolver) fsManifest() (*FSRegionManifest, error) {
 }
 
 func fetchFSManifest(ctx context.Context, manifestURL string, client *http.Client) (*FSRegionManifest, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL, nil)
-	if err != nil {
-		return nil, apperr.Wrap("api.fs_manifest_request", "api", 1, "build tdc fs region manifest request", err)
-	}
 	if client == nil {
 		client = http.DefaultClient
 	}
+
+	var lastErr error
+	for attempt := 0; attempt < fsManifestFetchAttempts; attempt++ {
+		manifest, retry, err := fetchFSManifestOnce(ctx, manifestURL, client)
+		if err == nil {
+			storeCachedFSManifest(manifestURL, manifest)
+			return manifest, nil
+		}
+		lastErr = err
+		if !retry || attempt == fsManifestFetchAttempts-1 {
+			break
+		}
+		timer := time.NewTimer(time.Duration(attempt+1) * fsManifestRetryDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			lastErr = apperr.Wrap("api.fs_manifest_unavailable", "api", 1, fmt.Sprintf("%s: fetch %s", errFSManifestUnavailable, manifestURL), ctx.Err())
+			if cached, cacheErr := loadCachedFSManifest(manifestURL); cacheErr == nil {
+				return cached, nil
+			}
+			return nil, lastErr
+		case <-timer.C:
+		}
+	}
+	if cached, cacheErr := loadCachedFSManifest(manifestURL); cacheErr == nil {
+		return cached, nil
+	}
+	return nil, lastErr
+}
+
+func fetchFSManifestOnce(ctx context.Context, manifestURL string, client *http.Client) (*FSRegionManifest, bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL, nil)
+	if err != nil {
+		return nil, false, apperr.Wrap("api.fs_manifest_request", "api", 1, "build tdc fs region manifest request", err)
+	}
 	res, err := client.Do(req)
 	if err != nil {
-		return nil, apperr.Wrap("api.fs_manifest_unavailable", "api", 1, fmt.Sprintf("%s: fetch %s", errFSManifestUnavailable, manifestURL), err)
+		return nil, true, apperr.Wrap("api.fs_manifest_unavailable", "api", 1, fmt.Sprintf("%s: fetch %s", errFSManifestUnavailable, manifestURL), err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return nil, apperr.New("api.fs_manifest_unavailable", "api", 1, fmt.Sprintf("%s: fetch %s returned HTTP %d", errFSManifestUnavailable, manifestURL, res.StatusCode))
+		return nil, retryableFSManifestStatus(res.StatusCode), apperr.New("api.fs_manifest_unavailable", "api", 1, fmt.Sprintf("%s: fetch %s returned HTTP %d", errFSManifestUnavailable, manifestURL, res.StatusCode))
 	}
 	var manifest FSRegionManifest
 	if err := json.NewDecoder(res.Body).Decode(&manifest); err != nil {
-		return nil, apperr.Wrap("api.fs_manifest_decode", "api", 1, "decode tdc fs region manifest", err)
+		return nil, true, apperr.Wrap("api.fs_manifest_decode", "api", 1, "decode tdc fs region manifest", err)
 	}
+	if err := validateFSManifest(&manifest); err != nil {
+		return nil, false, err
+	}
+	return &manifest, false, nil
+}
+
+func retryableFSManifestStatus(statusCode int) bool {
+	return statusCode == http.StatusTooManyRequests || statusCode >= 500
+}
+
+func loadCachedFSManifest(manifestURL string) (*FSRegionManifest, error) {
+	cachePath, err := fsManifestCachePath(manifestURL)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		return nil, err
+	}
+	var cached cachedFSRegionManifest
+	if err := json.Unmarshal(data, &cached); err != nil {
+		return nil, err
+	}
+	if cached.ManifestURL != manifestURL {
+		return nil, fmt.Errorf("cached tdc fs manifest belongs to a different URL")
+	}
+	if cached.FetchedAt.IsZero() || time.Since(cached.FetchedAt) > fsManifestCacheMaxAge {
+		return nil, fmt.Errorf("cached tdc fs manifest is expired")
+	}
+	manifest := cached.Manifest
 	if err := validateFSManifest(&manifest); err != nil {
 		return nil, err
 	}
 	return &manifest, nil
+}
+
+func storeCachedFSManifest(manifestURL string, manifest *FSRegionManifest) {
+	if manifest == nil {
+		return
+	}
+	cachePath, err := fsManifestCachePath(manifestURL)
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0o755); err != nil {
+		return
+	}
+	cached := cachedFSRegionManifest{
+		ManifestURL: manifestURL,
+		FetchedAt:   time.Now().UTC(),
+		Manifest:    *manifest,
+	}
+	data, err := json.MarshalIndent(cached, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(cachePath, data, 0o644)
+}
+
+func fsManifestCachePath(manifestURL string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return "", fmt.Errorf("resolve tdc fs manifest cache home: %w", err)
+	}
+	sum := sha256.Sum256([]byte(manifestURL))
+	name := fmt.Sprintf("fs-region-manifest-%x.json", sum[:8])
+	return filepath.Join(home, ".tdc", "cache", name), nil
 }
 
 func validateFSManifest(manifest *FSRegionManifest) error {

@@ -58,6 +58,29 @@ func TestCreateVaultSecretParsesFieldAssignments(t *testing.T) {
 	}
 }
 
+func TestDrive9VaultGrantScopesCanonicalizeShortForm(t *testing.T) {
+	scopes, err := drive9VaultGrantScopes([]string{"db-prod", "db-prod/DB_URL", "/n/vault/canonical/TOKEN"})
+	if err != nil {
+		t.Fatalf("drive9VaultGrantScopes failed: %v", err)
+	}
+	want := []string{"db-prod", "db-prod/DB_URL", "canonical/TOKEN"}
+	if fmt.Sprint(scopes) != fmt.Sprint(want) {
+		t.Fatalf("scopes = %#v, want %#v", scopes, want)
+	}
+}
+
+func TestIsTransientDrive9Error(t *testing.T) {
+	if !isTransientDrive9Error(fmt.Errorf(`vault rm: Delete "https://example/v1/vault/secrets/x": EOF`)) {
+		t.Fatal("EOF should be treated as transient")
+	}
+	if !isTransientDrive9Error(fmt.Errorf(`fs layer: Post "https://example/v1/layers/x/checkpoints": net/http: TLS handshake timeout`)) {
+		t.Fatal("TLS handshake timeout should be treated as transient")
+	}
+	if isTransientDrive9Error(fmt.Errorf("vault rm: not found")) {
+		t.Fatal("not found should not be treated as transient")
+	}
+}
+
 func TestReadVaultSecretWithDelegatedTokenUsesReadEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/v1/vault/read/db-prod/password" {

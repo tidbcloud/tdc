@@ -199,6 +199,7 @@ func newDBCreateClusterCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("db-cluster-type", "", "DB cluster type; must be starter")
 	cmd.Flags().String("project-id", "", "TiDB Cloud project id")
 	cmd.Flags().Int32("monthly-spending-limit-usd-cents", -1, "monthly spending limit in USD cents; omit to use the API default")
+	markUsageRequired(cmd, "db-cluster-name", "db-cluster-type", "project-id")
 	return cmd
 }
 
@@ -279,6 +280,7 @@ func newDBDescribeClusterCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
 	cmd.Flags().String("view", "", "detail level: BASIC or FULL")
+	markUsageRequired(cmd, "db-cluster-id")
 	return cmd
 }
 
@@ -314,6 +316,7 @@ func newDBUpdateClusterCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
 	cmd.Flags().String("db-cluster-name", "", "new Starter DB cluster display name")
 	cmd.Flags().Int32("monthly-spending-limit-usd-cents", -1, "monthly spending limit in USD cents; omit to leave unchanged")
+	markUsageRequired(cmd, "db-cluster-id")
 	return cmd
 }
 
@@ -347,6 +350,7 @@ func newDBDeleteClusterCommand(info version.Info) *cobra.Command {
 		},
 	}, info)
 	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
+	markUsageRequired(cmd, "db-cluster-id")
 	return cmd
 }
 
@@ -381,6 +385,7 @@ func newDBCreateBranchCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
 	cmd.Flags().String("db-cluster-branch-name", "", "Starter DB cluster branch display name")
+	markUsageRequired(cmd, "db-cluster-id", "db-cluster-branch-name")
 	return cmd
 }
 
@@ -418,6 +423,7 @@ func newDBListBranchesCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
 	cmd.Flags().Int32("page-size", 0, "number of branches to request; 0 uses the API default")
 	cmd.Flags().String("page-token", "", "page token returned by a previous list-db-cluster-branches call")
+	markUsageRequired(cmd, "db-cluster-id")
 	return cmd
 }
 
@@ -455,6 +461,7 @@ func newDBDescribeBranchCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
 	cmd.Flags().String("db-cluster-branch-id", "", "Starter DB cluster branch id")
 	cmd.Flags().String("view", "", "detail level: BASIC or FULL")
+	markUsageRequired(cmd, "db-cluster-id", "db-cluster-branch-id")
 	return cmd
 }
 
@@ -489,6 +496,7 @@ func newDBDeleteBranchCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
 	cmd.Flags().String("db-cluster-branch-id", "", "Starter DB cluster branch id")
+	markUsageRequired(cmd, "db-cluster-id", "db-cluster-branch-id")
 	return cmd
 }
 
@@ -528,6 +536,7 @@ func newDBPrepareQueryAccessCommand(info version.Info) *cobra.Command {
 		},
 	}, info)
 	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
+	markUsageRequired(cmd, "db-cluster-id")
 	return cmd
 }
 
@@ -562,6 +571,7 @@ func newDBCreateConnectionStringCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("env-prefix", "TIDB_", "dotenv variable prefix for --format env")
 	cmd.Flags().Bool("env-include-database-url", false, "include a database URL variable with --format env")
 	cmd.Flags().String("env-database-url-name", "DATABASE_URL", "database URL variable name for --format env")
+	markUsageRequired(cmd, "db-cluster-id")
 	return cmd
 }
 
@@ -587,6 +597,7 @@ func newDBExecuteSQLCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("database", "", "database/default schema name")
 	cmd.Flags().String("sql", "", "one SQL statement to execute")
 	cmd.Flags().String("transport", "https", "SQL execution transport: https or mysql")
+	markUsageRequired(cmd, "db-cluster-id", "sql")
 	return cmd
 }
 
@@ -823,14 +834,7 @@ func newFSCommand(info version.Info) *cobra.Command {
 		newFSListLayersCommand(info),
 		newFSDescribeLayerCommand(info),
 		newFSDiffLayerCommand(info),
-		newFSReplayLayerCommand(info),
-		newFSCreateLayerEntryCommand(info),
-		newFSUploadLayerFileCommand(info),
-		newFSReadLayerFileCommand(info),
-		newFSDescribeLayerEntryCommand(info),
 		newFSCreateLayerCheckpointCommand(info),
-		newFSDescribeLayerCheckpointCommand(info),
-		newFSListLayerEventsCommand(info),
 		newFSRollbackLayerCommand(info),
 		newFSCommitLayerCommand(info),
 		newFSPackFileSystemCommand(info),
@@ -878,6 +882,7 @@ func newFSCreateFileSystemCommand(info version.Info) *cobra.Command {
 		},
 	}, info)
 	cmd.Flags().String("file-system-name", "", "tdc fs resource name")
+	markUsageRequired(cmd, "file-system-name")
 	return cmd
 }
 
@@ -920,6 +925,7 @@ func newFSDeleteFileSystemCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("file-system-name", "", "tdc fs resource name")
 	cmd.Flags().String("confirm-file-system-name", "", "required exact tdc fs resource name confirmation")
+	markUsageRequired(cmd, "file-system-name", "confirm-file-system-name")
 	return cmd
 }
 
@@ -1031,6 +1037,7 @@ func newFSReadFileCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("path", "", "tdc fs file path")
 	cmd.Flags().Int64("offset", 0, "zero-based byte offset for a ranged read")
 	cmd.Flags().Int64("length", 0, "byte length for a ranged read")
+	markUsageRequired(cmd, "path")
 	return cmd
 }
 
@@ -1083,6 +1090,7 @@ func newFSDescribeFileCommand(info version.Info) *cobra.Command {
 		},
 	}, info)
 	cmd.Flags().String("path", "", "tdc fs file or directory path")
+	markUsageRequired(cmd, "path")
 	return cmd
 }
 
@@ -1121,6 +1129,7 @@ func newFSMoveFileCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("from-remote", "", "tdc fs source path")
 	cmd.Flags().String("to-remote", "", "tdc fs target path")
 	cmd.Flags().Bool("overwrite", false, "replace an existing remote target")
+	markUsageRequired(cmd, "from-remote", "to-remote")
 	return cmd
 }
 
@@ -1153,6 +1162,7 @@ func newFSDeleteFileCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("path", "", "tdc fs file or directory path")
 	cmd.Flags().Bool("recursive", false, "delete a directory recursively")
+	markUsageRequired(cmd, "path")
 	return cmd
 }
 
@@ -1185,6 +1195,7 @@ func newFSCreateDirectoryCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("path", "", "tdc fs directory path")
 	cmd.Flags().String("mode", "", "directory mode as an octal value such as 0755")
+	markUsageRequired(cmd, "path")
 	return cmd
 }
 
@@ -1213,6 +1224,7 @@ func newFSChmodFileCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("path", "", "tdc fs file or directory path")
 	cmd.Flags().String("mode", "", "octal permission mode such as 0644")
+	markUsageRequired(cmd, "path", "mode")
 	return cmd
 }
 
@@ -1241,6 +1253,7 @@ func newFSSymlinkFileCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("target", "", "symbolic link target string")
 	cmd.Flags().String("link-path", "", "tdc fs path for the created symlink")
+	markUsageRequired(cmd, "target", "link-path")
 	return cmd
 }
 
@@ -1269,6 +1282,7 @@ func newFSHardlinkFileCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("source-path", "", "existing tdc fs source file path")
 	cmd.Flags().String("link-path", "", "tdc fs path for the created hard link")
+	markUsageRequired(cmd, "source-path", "link-path")
 	return cmd
 }
 
@@ -1313,6 +1327,7 @@ func newFSSearchFileContentCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("pattern", "", "content search pattern")
 	cmd.Flags().Int32("limit", 0, "maximum number of search results; 0 uses the service default")
 	cmd.Flags().String("layer-id", "", "search through a tdc fs layer overlay")
+	markUsageRequired(cmd, "pattern")
 	return cmd
 }
 
@@ -1395,6 +1410,7 @@ func newFSCreateLayerCommand(info version.Info) *cobra.Command {
 	cmd.Flags().StringArray("tag", nil, "layer tag key=value; repeatable")
 	cmd.Flags().String("durability-mode", "", "layer durability mode, for example restore-safe")
 	cmd.Flags().String("actor-id", "", "actor id recorded on layer events")
+	markUsageRequired(cmd, "base-root-path")
 	return cmd
 }
 
@@ -1433,6 +1449,7 @@ func newFSDescribeLayerCommand(info version.Info) *cobra.Command {
 		},
 	}, info)
 	cmd.Flags().String("layer-id", "", "tdc fs layer id")
+	markUsageRequired(cmd, "layer-id")
 	return cmd
 }
 
@@ -1456,181 +1473,7 @@ func newFSDiffLayerCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("layer-id", "", "tdc fs layer id")
 	cmd.Flags().Int64("max-seq", 0, "highest layer sequence to include; 0 includes all entries")
-	return cmd
-}
-
-func newFSReplayLayerCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "replay-layer",
-		Short:      "Replay effective entries in a tdc fs layer.",
-		Mutation:   readOnlyCommand,
-		Permission: authz.FSFileRead,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			opts, err := fsLayerEntriesOptions(ctx, profile)
-			if err != nil {
-				return nil, err
-			}
-			return service.ReplayLayer(ctx.cmd.Context(), opts)
-		},
-	}, info)
-	cmd.Flags().String("layer-id", "", "tdc fs layer id")
-	cmd.Flags().Int64("max-seq", 0, "highest layer sequence to include; 0 includes all entries")
-	return cmd
-}
-
-func newFSCreateLayerEntryCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "create-layer-entry",
-		Short:      "Create or update a tdc fs layer entry.",
-		Mutation:   mutatingCommand,
-		Permission: authz.FSFileWrite,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			opts, err := fsCreateLayerEntryOptions(ctx, profile)
-			if err != nil {
-				return nil, err
-			}
-			return service.CreateLayerEntry(ctx.cmd.Context(), opts)
-		},
-		DryRun: func(ctx commandContext) (dryrun.Result, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
-			if err != nil {
-				return dryrun.Result{}, err
-			}
-			opts, err := fsCreateLayerEntryOptions(ctx, profile)
-			if err != nil {
-				return dryrun.Result{}, err
-			}
-			return service.DryRunLayerMutation(ctx.cmd.Context(), ctx.CommandPath(), "create_layer_entry", "POST", "/v1/layers/"+opts.LayerID+"/entries", map[string]any{
-				"path":          opts.Path,
-				"op":            opts.Operation,
-				"kind":          opts.ResourceKind,
-				"base_revision": opts.BaseRevision,
-				"content_type":  opts.ContentType,
-				"content_text":  opts.ContentText,
-				"size_bytes":    opts.SizeBytes,
-				"mode":          opts.Mode,
-			}, profile, authz.FSFileWrite)
-		},
-	}, info)
-	cmd.Flags().String("layer-id", "", "tdc fs layer id")
-	cmd.Flags().String("path", "", "tdc fs path inside the layer")
-	cmd.Flags().String("operation", "upsert", "layer operation such as upsert or delete")
-	cmd.Flags().String("resource-kind", "file", "layer resource kind such as file or directory")
-	cmd.Flags().String("base-inode-id", "", "base inode id expected by the layer entry")
-	cmd.Flags().Int64("base-revision", 0, "base revision expected by the layer entry")
-	cmd.Flags().String("storage-type", "", "storage type for an external layer object")
-	cmd.Flags().String("storage-ref", "", "storage reference for an external layer object")
-	cmd.Flags().String("storage-ref-hash", "", "storage reference hash")
-	cmd.Flags().String("storage-encryption-mode", "", "storage encryption mode")
-	cmd.Flags().String("storage-encryption-key-id", "", "storage encryption key id")
-	cmd.Flags().String("content", "", "inline layer entry bytes encoded as a UTF-8 string")
-	cmd.Flags().String("content-type", "", "content type for inline layer content")
-	cmd.Flags().String("content-text", "", "semantic text for the layer entry")
-	cmd.Flags().String("checksum-sha256", "", "sha256 checksum for external content")
-	cmd.Flags().Int64("size-bytes", 0, "layer entry size in bytes")
-	cmd.Flags().String("mode", "", "entry mode as an octal value such as 0644")
-	return cmd
-}
-
-func newFSUploadLayerFileCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "upload-layer-file",
-		Short:      "Upload a local file into a tdc fs layer.",
-		Mutation:   mutatingCommand,
-		Permission: authz.FSFileWrite,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			opts, err := fsUploadLayerFileOptions(ctx, profile)
-			if err != nil {
-				return nil, err
-			}
-			return service.UploadLayerFile(ctx.cmd.Context(), opts)
-		},
-		DryRun: func(ctx commandContext) (dryrun.Result, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
-			if err != nil {
-				return dryrun.Result{}, err
-			}
-			opts, err := fsUploadLayerFileOptions(ctx, profile)
-			if err != nil {
-				return dryrun.Result{}, err
-			}
-			return service.DryRunLayerMutation(ctx.cmd.Context(), ctx.CommandPath(), "upload_layer_file", "POST", "/v1/layers/"+opts.LayerID+"/objects", map[string]any{
-				"path":          opts.ToLayerPath,
-				"from_local":    opts.FromLocal,
-				"base_revision": opts.BaseRevision,
-				"mode":          opts.Mode,
-			}, profile, authz.FSFileWrite)
-		},
-	}, info)
-	cmd.Flags().String("layer-id", "", "tdc fs layer id")
-	cmd.Flags().String("from-local", "", "local source file")
-	cmd.Flags().String("to-layer-path", "", "tdc fs target path inside the layer")
-	cmd.Flags().Int64("base-revision", 0, "base revision expected by the upload")
-	cmd.Flags().String("mode", "", "entry mode as an octal value such as 0644; defaults to local file permissions")
-	return cmd
-}
-
-func newFSReadLayerFileCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "read-layer-file",
-		Short:      "Read a file from a tdc fs layer.",
-		Mutation:   readOnlyCommand,
-		Permission: authz.FSFileRead,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			opts, err := fsReadLayerFileOptions(ctx, profile)
-			if err != nil {
-				return nil, err
-			}
-			data, err := service.ReadLayerFile(ctx.cmd.Context(), opts)
-			if err != nil {
-				return nil, err
-			}
-			return outputpkg.Raw{Bytes: data}, nil
-		},
-	}, info)
-	cmd.Flags().String("layer-id", "", "tdc fs layer id")
-	cmd.Flags().String("path", "", "tdc fs file path inside the layer")
-	cmd.Flags().Int64("max-seq", 0, "highest layer sequence to read; 0 reads the latest layer state")
-	return cmd
-}
-
-func newFSDescribeLayerEntryCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "describe-layer-entry",
-		Short:      "Describe a tdc fs layer entry.",
-		Mutation:   readOnlyCommand,
-		Permission: authz.FSFileRead,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			opts, err := fsDescribeLayerEntryOptions(ctx, profile)
-			if err != nil {
-				return nil, err
-			}
-			return service.DescribeLayerEntry(ctx.cmd.Context(), opts)
-		},
-	}, info)
-	cmd.Flags().String("layer-id", "", "tdc fs layer id")
-	cmd.Flags().String("path", "", "tdc fs path inside the layer")
-	cmd.Flags().Int64("max-seq", 0, "highest layer sequence to inspect; 0 inspects latest layer state")
+	markUsageRequired(cmd, "layer-id")
 	return cmd
 }
 
@@ -1669,55 +1512,7 @@ func newFSCreateLayerCheckpointCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("layer-id", "", "tdc fs layer id")
 	cmd.Flags().String("checkpoint-id", "", "optional stable checkpoint id")
 	cmd.Flags().String("label", "", "checkpoint label")
-	return cmd
-}
-
-func newFSDescribeLayerCheckpointCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "describe-layer-checkpoint",
-		Short:      "Describe a tdc fs layer checkpoint.",
-		Mutation:   readOnlyCommand,
-		Permission: authz.FSFileRead,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			checkpointID, err := ctx.StringFlag("checkpoint-id")
-			if err != nil {
-				return nil, err
-			}
-			return service.DescribeLayerCheckpoint(ctx.cmd.Context(), tdcfs.DescribeLayerCheckpointOptions{Profile: profile, CheckpointID: checkpointID})
-		},
-	}, info)
-	cmd.Flags().String("checkpoint-id", "", "tdc fs layer checkpoint id")
-	return cmd
-}
-
-func newFSListLayerEventsCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "list-layer-events",
-		Short:      "List tdc fs layer events.",
-		Mutation:   readOnlyCommand,
-		Permission: authz.FSFileRead,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			layerID, err := ctx.StringFlag("layer-id")
-			if err != nil {
-				return nil, err
-			}
-			since, err := ctx.Int64Flag("since")
-			if err != nil {
-				return nil, err
-			}
-			return service.ListLayerEvents(ctx.cmd.Context(), tdcfs.ListLayerEventsOptions{Profile: profile, LayerID: layerID, Since: since})
-		},
-	}, info)
-	cmd.Flags().String("layer-id", "", "tdc fs layer id")
-	cmd.Flags().Int64("since", 0, "only return events after this sequence; 0 returns all available events")
+	markUsageRequired(cmd, "layer-id")
 	return cmd
 }
 
@@ -1751,6 +1546,7 @@ func newFSRollbackLayerCommand(info version.Info) *cobra.Command {
 		},
 	}, info)
 	cmd.Flags().String("layer-id", "", "tdc fs layer id")
+	markUsageRequired(cmd, "layer-id")
 	return cmd
 }
 
@@ -1784,6 +1580,7 @@ func newFSCommitLayerCommand(info version.Info) *cobra.Command {
 		},
 	}, info)
 	cmd.Flags().String("layer-id", "", "tdc fs layer id")
+	markUsageRequired(cmd, "layer-id")
 	return cmd
 }
 
@@ -1910,6 +1707,7 @@ func newFSMountFileSystemCommand(info version.Info) *cobra.Command {
 	cmd.Flags().StringArray("pack-path", nil, "local overlay path included by automatic or manual pack; repeatable")
 	cmd.Flags().String("unpack-archive-path", "", "tdc fs pack archive to restore before mounting")
 	cmd.Flags().Bool("no-auto-unpack", false, "skip default portable-profile auto-unpack before mounting")
+	markUsageRequired(cmd, "mount-path")
 	return cmd
 }
 
@@ -1966,6 +1764,7 @@ func newFSUnmountFileSystemCommand(info version.Info) *cobra.Command {
 	cmd.Flags().Bool("ignore-absent", false, "return success when no tdc fs mount state exists for the path")
 	cmd.Flags().String("pack-archive-path", "", "tdc fs pack archive to write after unmount")
 	cmd.Flags().Bool("no-auto-pack", false, "skip default portable-profile auto-pack after unmount")
+	markUsageRequired(cmd, "mount-path")
 	return cmd
 }
 
@@ -2017,6 +1816,7 @@ func newFSDrainFileSystemCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("mount-path", "", "local FUSE mount path")
 	cmd.Flags().Duration("timeout", 30*time.Second, "time to wait for dirty handles and pending writes to drain")
+	markUsageRequired(cmd, "mount-path")
 	return cmd
 }
 
@@ -2280,172 +2080,6 @@ func fsLayerEntriesOptions(ctx commandContext, profile *config.Profile) (tdcfs.L
 	}, nil
 }
 
-func fsCreateLayerEntryOptions(ctx commandContext, profile *config.Profile) (tdcfs.CreateLayerEntryOptions, error) {
-	layerID, err := ctx.StringFlag("layer-id")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	path, err := ctx.StringFlag("path")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	operation, err := ctx.StringFlag("operation")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	resourceKind, err := ctx.StringFlag("resource-kind")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	baseInodeID, err := ctx.StringFlag("base-inode-id")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	baseRevision, err := ctx.Int64Flag("base-revision")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	storageType, err := ctx.StringFlag("storage-type")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	storageRef, err := ctx.StringFlag("storage-ref")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	storageRefHash, err := ctx.StringFlag("storage-ref-hash")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	storageEncryptionMode, err := ctx.StringFlag("storage-encryption-mode")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	storageEncryptionKeyID, err := ctx.StringFlag("storage-encryption-key-id")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	content, err := ctx.StringFlag("content")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	contentType, err := ctx.StringFlag("content-type")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	contentText, err := ctx.StringFlag("content-text")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	checksum, err := ctx.StringFlag("checksum-sha256")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	sizeBytes, err := ctx.Int64Flag("size-bytes")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	mode, err := ctx.StringFlag("mode")
-	if err != nil {
-		return tdcfs.CreateLayerEntryOptions{}, err
-	}
-	return tdcfs.CreateLayerEntryOptions{
-		Profile:                profile,
-		LayerID:                layerID,
-		Path:                   path,
-		Operation:              operation,
-		ResourceKind:           resourceKind,
-		BaseInodeID:            baseInodeID,
-		BaseRevision:           baseRevision,
-		StorageType:            storageType,
-		StorageRef:             storageRef,
-		StorageRefHash:         storageRefHash,
-		StorageEncryptionMode:  storageEncryptionMode,
-		StorageEncryptionKeyID: storageEncryptionKeyID,
-		Content:                content,
-		ContentSet:             ctx.FlagChanged("content"),
-		ContentType:            contentType,
-		ContentText:            contentText,
-		ChecksumSHA256:         checksum,
-		SizeBytes:              sizeBytes,
-		Mode:                   mode,
-	}, nil
-}
-
-func fsUploadLayerFileOptions(ctx commandContext, profile *config.Profile) (tdcfs.UploadLayerFileOptions, error) {
-	layerID, err := ctx.StringFlag("layer-id")
-	if err != nil {
-		return tdcfs.UploadLayerFileOptions{}, err
-	}
-	fromLocal, err := ctx.StringFlag("from-local")
-	if err != nil {
-		return tdcfs.UploadLayerFileOptions{}, err
-	}
-	toLayerPath, err := ctx.StringFlag("to-layer-path")
-	if err != nil {
-		return tdcfs.UploadLayerFileOptions{}, err
-	}
-	baseRevision, err := ctx.Int64Flag("base-revision")
-	if err != nil {
-		return tdcfs.UploadLayerFileOptions{}, err
-	}
-	mode, err := ctx.StringFlag("mode")
-	if err != nil {
-		return tdcfs.UploadLayerFileOptions{}, err
-	}
-	return tdcfs.UploadLayerFileOptions{
-		Profile:      profile,
-		LayerID:      layerID,
-		FromLocal:    fromLocal,
-		ToLayerPath:  toLayerPath,
-		BaseRevision: baseRevision,
-		Mode:         mode,
-		ModeSet:      ctx.FlagChanged("mode"),
-	}, nil
-}
-
-func fsReadLayerFileOptions(ctx commandContext, profile *config.Profile) (tdcfs.ReadLayerFileOptions, error) {
-	layerID, err := ctx.StringFlag("layer-id")
-	if err != nil {
-		return tdcfs.ReadLayerFileOptions{}, err
-	}
-	path, err := ctx.StringFlag("path")
-	if err != nil {
-		return tdcfs.ReadLayerFileOptions{}, err
-	}
-	maxSeq, err := ctx.Int64Flag("max-seq")
-	if err != nil {
-		return tdcfs.ReadLayerFileOptions{}, err
-	}
-	return tdcfs.ReadLayerFileOptions{
-		Profile: profile,
-		LayerID: layerID,
-		Path:    path,
-		MaxSeq:  maxSeq,
-	}, nil
-}
-
-func fsDescribeLayerEntryOptions(ctx commandContext, profile *config.Profile) (tdcfs.DescribeLayerEntryOptions, error) {
-	layerID, err := ctx.StringFlag("layer-id")
-	if err != nil {
-		return tdcfs.DescribeLayerEntryOptions{}, err
-	}
-	path, err := ctx.StringFlag("path")
-	if err != nil {
-		return tdcfs.DescribeLayerEntryOptions{}, err
-	}
-	maxSeq, err := ctx.Int64Flag("max-seq")
-	if err != nil {
-		return tdcfs.DescribeLayerEntryOptions{}, err
-	}
-	return tdcfs.DescribeLayerEntryOptions{
-		Profile: profile,
-		LayerID: layerID,
-		Path:    path,
-		MaxSeq:  maxSeq,
-	}, nil
-}
-
 func fsCreateLayerCheckpointOptions(ctx commandContext, profile *config.Profile) (tdcfs.CreateLayerCheckpointOptions, error) {
 	layerID, err := ctx.StringFlag("layer-id")
 	if err != nil {
@@ -2568,9 +2202,13 @@ func fsServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, er
 		return tdcfs.Service{}, nil, err
 	}
 	return tdcfs.Service{
-		Timeout:     30 * time.Second,
-		Debug:       debug,
-		DebugWriter: ctx.cmd.ErrOrStderr(),
+		Timeout:            30 * time.Second,
+		Debug:              debug,
+		DebugWriter:        ctx.cmd.ErrOrStderr(),
+		UseDrive9Companion: true,
+		Stdin:              ctx.cmd.InOrStdin(),
+		Stdout:             ctx.cmd.OutOrStdout(),
+		Stderr:             ctx.cmd.ErrOrStderr(),
 	}, profile, nil
 }
 
@@ -2636,8 +2274,6 @@ func newFSVaultCommand(info version.Info) *cobra.Command {
 		newVaultReadSecretCommand(info),
 		newVaultListSecretsCommand(info),
 		newVaultDeleteSecretCommand(info),
-		newVaultCreateTokenCommand(info),
-		newVaultDeleteTokenCommand(info),
 		newVaultCreateGrantCommand(info),
 		newVaultDeleteGrantCommand(info),
 		newVaultListAuditEventsCommand(info),
@@ -2677,6 +2313,7 @@ func newVaultCreateSecretCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("secret-name", "", "vault secret name")
 	cmd.Flags().StringArray("field", nil, "secret field assignment key=value, key=@file, or key=-; repeatable")
+	markUsageRequired(cmd, "secret-name", "field")
 	return cmd
 }
 
@@ -2708,6 +2345,7 @@ func newVaultReplaceSecretCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("secret-path", "", "vault path in the form /n/vault/<secret>")
 	cmd.Flags().String("from-directory", "", "directory whose files become secret fields")
+	markUsageRequired(cmd, "secret-path", "from-directory")
 	return cmd
 }
 
@@ -2758,6 +2396,7 @@ func newVaultReadSecretCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("field", "", "optional field name to read")
 	cmd.Flags().String("format", "json", "read output format: json, raw, or env")
 	cmd.Flags().String("vault-token", "", "delegated tdc fs-vault token; prefer TDC_VAULT_TOKEN")
+	markUsageRequired(cmd, "secret-name")
 	return cmd
 }
 
@@ -2802,61 +2441,7 @@ func newVaultDeleteSecretCommand(info version.Info) *cobra.Command {
 		},
 	}, info)
 	cmd.Flags().String("secret-name", "", "vault secret name")
-	return cmd
-}
-
-func newVaultCreateTokenCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "create-token",
-		Short:      "Create a legacy tdc fs-vault scoped token.",
-		Mutation:   mutatingCommand,
-		Permission: authz.FSVaultTokenCreate,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			opts, err := vaultCreateTokenOptions(ctx, profile)
-			if err != nil {
-				return nil, err
-			}
-			result, err := service.CreateVaultToken(ctx.cmd.Context(), opts)
-			if err != nil {
-				return nil, err
-			}
-			if opts.TokenOnly {
-				return outputpkg.Raw{Bytes: []byte(result.Token + "\n")}, nil
-			}
-			return result, nil
-		},
-	}, info)
-	cmd.Flags().String("agent-id", "", "agent id recorded in vault audit events")
-	cmd.Flags().String("task-id", "", "task id recorded in vault audit events")
-	cmd.Flags().StringArray("scope", nil, "vault scope such as secret or secret/field; repeatable")
-	cmd.Flags().Duration("ttl", 0, "token time to live, for example 1h")
-	cmd.Flags().Bool("token-only", false, "print only the bearer token")
-	return cmd
-}
-
-func newVaultDeleteTokenCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "delete-token",
-		Short:      "Delete a tdc fs-vault scoped token.",
-		Mutation:   mutatingCommand,
-		Permission: authz.FSVaultTokenDelete,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			tokenID, err := ctx.StringFlag("token-id")
-			if err != nil {
-				return nil, err
-			}
-			return service.DeleteVaultToken(ctx.cmd.Context(), tdcfs.VaultDeleteTokenOptions{Profile: profile, TokenID: tokenID})
-		},
-	}, info)
-	cmd.Flags().String("token-id", "", "vault token id")
+	markUsageRequired(cmd, "secret-name")
 	return cmd
 }
 
@@ -2891,6 +2476,7 @@ func newVaultCreateGrantCommand(info version.Info) *cobra.Command {
 	cmd.Flags().Duration("ttl", 0, "grant time to live, for example 1h")
 	cmd.Flags().String("label-hint", "", "optional grant label hint")
 	cmd.Flags().Bool("token-only", false, "print only the delegated bearer token")
+	markUsageRequired(cmd, "agent-id", "scope", "permission", "ttl")
 	return cmd
 }
 
@@ -2923,6 +2509,7 @@ func newVaultDeleteGrantCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("grant-id", "", "vault grant id")
 	cmd.Flags().String("revoked-by", "tdc", "actor label for the revoke audit entry")
 	cmd.Flags().String("reason", "", "optional revoke reason")
+	markUsageRequired(cmd, "grant-id")
 	return cmd
 }
 
@@ -3001,6 +2588,7 @@ func newVaultRunWithSecretCommand(info version.Info) *cobra.Command {
 	cmd.Args = cobra.ArbitraryArgs
 	cmd.Flags().String("secret-path", "", "vault path in the form /n/vault/<secret>")
 	cmd.Flags().String("vault-token", "", "delegated tdc fs-vault token; prefer TDC_VAULT_TOKEN")
+	markUsageRequired(cmd, "secret-path")
 	return cmd
 }
 
@@ -3037,6 +2625,7 @@ func newVaultMountCommand(info version.Info) *cobra.Command {
 	cmd.Flags().Bool("foreground", false, "run mount runtime in the foreground until interrupted")
 	cmd.Flags().Duration("ready-timeout", 30*time.Second, "time to wait for a background mount to become ready")
 	cmd.Flags().String("vault-token", "", "delegated tdc fs-vault token; prefer TDC_VAULT_TOKEN")
+	markUsageRequired(cmd, "mount-path")
 	return cmd
 }
 
@@ -3081,31 +2670,8 @@ func newVaultUnmountCommand(info version.Info) *cobra.Command {
 	cmd.Flags().Duration("timeout", 30*time.Second, "time to wait for the mount process to exit")
 	cmd.Flags().Bool("force", false, "force-kill the mount process if graceful unmount times out")
 	cmd.Flags().Bool("ignore-absent", false, "return success when no tdc fs-vault mount state exists for the path")
+	markUsageRequired(cmd, "mount-path")
 	return cmd
-}
-
-func vaultCreateTokenOptions(ctx commandContext, profile *config.Profile) (tdcfs.VaultCreateTokenOptions, error) {
-	agentID, err := ctx.StringFlag("agent-id")
-	if err != nil {
-		return tdcfs.VaultCreateTokenOptions{}, err
-	}
-	taskID, err := ctx.StringFlag("task-id")
-	if err != nil {
-		return tdcfs.VaultCreateTokenOptions{}, err
-	}
-	scopes, err := ctx.StringArrayFlag("scope")
-	if err != nil {
-		return tdcfs.VaultCreateTokenOptions{}, err
-	}
-	ttl, err := ctx.DurationFlag("ttl")
-	if err != nil {
-		return tdcfs.VaultCreateTokenOptions{}, err
-	}
-	tokenOnly, err := ctx.BoolFlag("token-only")
-	if err != nil {
-		return tdcfs.VaultCreateTokenOptions{}, err
-	}
-	return tdcfs.VaultCreateTokenOptions{Profile: profile, AgentID: agentID, TaskID: taskID, Scopes: scopes, TTL: ttl, TokenOnly: tokenOnly}, nil
 }
 
 func vaultCreateGrantOptions(ctx commandContext, profile *config.Profile) (tdcfs.VaultCreateGrantOptions, error) {
@@ -3178,23 +2744,8 @@ func newFSGitCommand(info version.Info) *cobra.Command {
 	cmd.AddCommand(
 		newGitCloneWorkspaceCommand(info),
 		newGitHydrateWorkspaceCommand(info),
-		newGitRestoreWorkspaceCommand(info),
 		newGitAddWorktreeCommand(info),
 		newGitRemoveWorktreeCommand(info),
-		newGitCreateWorkspaceCommand(info),
-		newGitListWorkspacesCommand(info),
-		newGitDescribeWorkspaceCommand(info),
-		newGitDeleteWorkspaceCommand(info),
-		newGitReplaceTreeCommand(info),
-		newGitListTreeCommand(info),
-		newGitUpsertStateCommand(info),
-		newGitDescribeStateCommand(info),
-		newGitPutObjectPackCommand(info),
-		newGitListObjectPacksCommand(info),
-		newGitDescribeObjectPackCommand(info),
-		newGitPutOverlayEntryCommand(info),
-		newGitDescribeOverlayEntryCommand(info),
-		newGitListOverlayEntriesCommand(info),
 	)
 	return cmd
 }
@@ -3221,6 +2772,7 @@ func newGitCloneWorkspaceCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("target-path", "", "mounted tdc fs path to clone into")
 	cmd.Flags().Bool("blobless", false, "create a blobless partial local .git and hydrate clean blobs separately")
 	cmd.Flags().String("hydrate", "auto", "blobless hydrate mode: auto, background, sync, or off")
+	markUsageRequired(cmd, "repo-url", "target-path")
 	return cmd
 }
 
@@ -3248,28 +2800,7 @@ func newGitHydrateWorkspaceCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("target-path", "", "mounted tdc fs workspace path")
 	cmd.Flags().Duration("timeout", 30*time.Minute, "maximum hydrate duration")
-	return cmd
-}
-
-func newGitRestoreWorkspaceCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "restore-git-workspace",
-		Short:      "Restore local git state and object packs for a tdc fs-git workspace.",
-		Mutation:   readOnlyCommand,
-		Permission: authz.FSGitWorkspaceRead,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			targetPath, err := ctx.StringFlag("target-path")
-			if err != nil {
-				return nil, err
-			}
-			return service.RestoreGitWorkspace(ctx.cmd.Context(), tdcfs.GitWorkspaceRestoreOptions{Profile: profile, TargetPath: targetPath})
-		},
-	}, info)
-	cmd.Flags().String("target-path", "", "mounted tdc fs workspace path")
+	markUsageRequired(cmd, "target-path")
 	return cmd
 }
 
@@ -3298,6 +2829,7 @@ func newGitAddWorktreeCommand(info version.Info) *cobra.Command {
 	cmd.Flags().Bool("blobless", false, "require the base workspace to be fast-blobless")
 	cmd.Flags().String("hydrate", "auto", "blobless hydrate mode: auto, background, sync, or off")
 	cmd.Flags().String("commit-ish", "", "optional commit-ish for the linked worktree")
+	markUsageRequired(cmd, "base-path", "worktree-path")
 	return cmd
 }
 
@@ -3325,350 +2857,7 @@ func newGitRemoveWorktreeCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("worktree-path", "", "mounted tdc fs path of the linked worktree")
 	cmd.Flags().Bool("force", false, "remove even when the linked worktree has local changes")
-	return cmd
-}
-
-func newGitCreateWorkspaceCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "create-git-workspace",
-		Short:      "Create or update a tdc fs-git workspace.",
-		Mutation:   mutatingCommand,
-		Permission: authz.FSGitWorkspaceWrite,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			opts, err := gitWorkspaceCreateOptions(ctx, profile)
-			if err != nil {
-				return nil, err
-			}
-			return service.CreateGitWorkspace(ctx.cmd.Context(), opts)
-		},
-	}, info)
-	cmd.Flags().String("root-path", "", "tdc fs root path for the workspace")
-	cmd.Flags().String("repo-url", "", "git repository URL")
-	cmd.Flags().String("remote-name", "", "git remote name")
-	cmd.Flags().String("branch-name", "", "git branch name")
-	cmd.Flags().String("base-commit", "", "base commit sha")
-	cmd.Flags().String("head-commit", "", "head commit sha")
-	cmd.Flags().String("mode", "", "workspace mode such as fast or fast-blobless")
-	cmd.Flags().String("workspace-kind", "", "workspace kind such as main or worktree")
-	cmd.Flags().String("common-workspace-id", "", "common workspace id for linked worktrees")
-	cmd.Flags().String("worktree-name", "", "linked worktree name")
-	cmd.Flags().String("git-dir-rel", "", "relative git dir path")
-	return cmd
-}
-
-func newGitListWorkspacesCommand(info version.Info) *cobra.Command {
-	return newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "list-git-workspaces",
-		Short:      "List tdc fs-git workspaces.",
-		Mutation:   readOnlyCommand,
-		Permission: authz.FSGitWorkspaceRead,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			return service.ListGitWorkspaces(ctx.cmd.Context(), profile)
-		},
-	}, info)
-}
-
-func newGitDescribeWorkspaceCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "describe-git-workspace",
-		Short:      "Describe a tdc fs-git workspace by id or root path.",
-		Mutation:   readOnlyCommand,
-		Permission: authz.FSGitWorkspaceRead,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			workspaceID, err := ctx.StringFlag("workspace-id")
-			if err != nil {
-				return nil, err
-			}
-			rootPath, err := ctx.StringFlag("root-path")
-			if err != nil {
-				return nil, err
-			}
-			return service.DescribeGitWorkspace(ctx.cmd.Context(), tdcfs.GitWorkspaceDescribeOptions{Profile: profile, WorkspaceID: workspaceID, RootPath: rootPath})
-		},
-	}, info)
-	cmd.Flags().String("workspace-id", "", "git workspace id")
-	cmd.Flags().String("root-path", "", "tdc fs root path for lookup")
-	return cmd
-}
-
-func newGitDeleteWorkspaceCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "delete-git-workspace",
-		Short:      "Delete a tdc fs-git workspace.",
-		Mutation:   mutatingCommand,
-		Permission: authz.FSGitWorkspaceWrite,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			workspaceID, err := ctx.StringFlag("workspace-id")
-			if err != nil {
-				return nil, err
-			}
-			return service.DeleteGitWorkspace(ctx.cmd.Context(), tdcfs.GitWorkspaceDeleteOptions{Profile: profile, WorkspaceID: workspaceID})
-		},
-	}, info)
-	cmd.Flags().String("workspace-id", "", "git workspace id")
-	return cmd
-}
-
-func newGitReplaceTreeCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "replace-git-tree",
-		Short:      "Replace a tdc fs-git workspace tree manifest.",
-		Mutation:   mutatingCommand,
-		Permission: authz.FSGitWorkspaceWrite,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			workspaceID, err := ctx.StringFlag("workspace-id")
-			if err != nil {
-				return nil, err
-			}
-			commitSHA, err := ctx.StringFlag("commit-sha")
-			if err != nil {
-				return nil, err
-			}
-			nodes, err := ctx.StringArrayFlag("node-json")
-			if err != nil {
-				return nil, err
-			}
-			return service.ReplaceGitTree(ctx.cmd.Context(), tdcfs.GitTreeReplaceOptions{Profile: profile, WorkspaceID: workspaceID, CommitSHA: commitSHA, NodeJSON: nodes})
-		},
-	}, info)
-	cmd.Flags().String("workspace-id", "", "git workspace id")
-	cmd.Flags().String("commit-sha", "", "commit sha for the tree manifest")
-	cmd.Flags().StringArray("node-json", nil, "git tree node JSON object; repeatable")
-	return cmd
-}
-
-func newGitListTreeCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "list-git-tree",
-		Short:      "List a tdc fs-git workspace tree manifest.",
-		Mutation:   readOnlyCommand,
-		Permission: authz.FSGitWorkspaceRead,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			workspaceID, err := ctx.StringFlag("workspace-id")
-			if err != nil {
-				return nil, err
-			}
-			commitSHA, err := ctx.StringFlag("commit-sha")
-			if err != nil {
-				return nil, err
-			}
-			return service.ListGitTree(ctx.cmd.Context(), tdcfs.GitTreeListOptions{Profile: profile, WorkspaceID: workspaceID, CommitSHA: commitSHA})
-		},
-	}, info)
-	cmd.Flags().String("workspace-id", "", "git workspace id")
-	cmd.Flags().String("commit-sha", "", "commit sha")
-	return cmd
-}
-
-func newGitUpsertStateCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "upsert-git-state",
-		Short:      "Create or update tdc fs-git state.",
-		Mutation:   mutatingCommand,
-		Permission: authz.FSGitWorkspaceWrite,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			opts, err := gitStateUpsertOptions(ctx, profile)
-			if err != nil {
-				return nil, err
-			}
-			return service.UpsertGitState(ctx.cmd.Context(), opts)
-		},
-	}, info)
-	addGitWorkspaceIDFlag(cmd)
-	cmd.Flags().String("checkpoint-commit", "", "checkpoint commit sha")
-	cmd.Flags().String("storage-type", "", "state storage type")
-	cmd.Flags().String("storage-ref", "", "state storage reference")
-	cmd.Flags().String("storage-ref-hash", "", "state storage reference hash")
-	cmd.Flags().String("checksum-sha256", "", "state checksum")
-	cmd.Flags().Int64("size-bytes", 0, "state size in bytes")
-	cmd.Flags().String("content", "", "inline state content")
-	return cmd
-}
-
-func newGitDescribeStateCommand(info version.Info) *cobra.Command {
-	cmd := gitWorkspaceIDReadCommand("describe-git-state", "Describe tdc fs-git state.", authz.FSGitWorkspaceRead, func(ctx commandContext, service tdcfs.Service, profile *config.Profile, workspaceID string) (any, error) {
-		return service.DescribeGitState(ctx.cmd.Context(), tdcfs.GitWorkspaceIDOptions{Profile: profile, WorkspaceID: workspaceID})
-	}, info)
-	return cmd
-}
-
-func newGitPutObjectPackCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "put-git-object-pack",
-		Short:      "Put a tdc fs-git object pack.",
-		Mutation:   mutatingCommand,
-		Permission: authz.FSGitWorkspaceWrite,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			workspaceID, err := ctx.StringFlag("workspace-id")
-			if err != nil {
-				return nil, err
-			}
-			content, err := ctx.StringFlag("content")
-			if err != nil {
-				return nil, err
-			}
-			return service.PutGitObjectPack(ctx.cmd.Context(), tdcfs.GitObjectPackPutOptions{Profile: profile, WorkspaceID: workspaceID, Content: content})
-		},
-	}, info)
-	addGitWorkspaceIDFlag(cmd)
-	cmd.Flags().String("content", "", "inline object pack content")
-	return cmd
-}
-
-func newGitListObjectPacksCommand(info version.Info) *cobra.Command {
-	return gitWorkspaceIDReadCommand("list-git-object-packs", "List tdc fs-git object packs.", authz.FSGitWorkspaceRead, func(ctx commandContext, service tdcfs.Service, profile *config.Profile, workspaceID string) (any, error) {
-		return service.ListGitObjectPacks(ctx.cmd.Context(), tdcfs.GitWorkspaceIDOptions{Profile: profile, WorkspaceID: workspaceID})
-	}, info)
-}
-
-func newGitDescribeObjectPackCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "describe-git-object-pack",
-		Short:      "Describe a tdc fs-git object pack.",
-		Mutation:   readOnlyCommand,
-		Permission: authz.FSGitWorkspaceRead,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			workspaceID, err := ctx.StringFlag("workspace-id")
-			if err != nil {
-				return nil, err
-			}
-			packID, err := ctx.StringFlag("pack-id")
-			if err != nil {
-				return nil, err
-			}
-			return service.DescribeGitObjectPack(ctx.cmd.Context(), tdcfs.GitObjectPackDescribeOptions{Profile: profile, WorkspaceID: workspaceID, PackID: packID})
-		},
-	}, info)
-	addGitWorkspaceIDFlag(cmd)
-	cmd.Flags().String("pack-id", "", "git object pack id")
-	return cmd
-}
-
-func newGitPutOverlayEntryCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "put-git-overlay-entry",
-		Short:      "Put a tdc fs-git overlay entry.",
-		Mutation:   mutatingCommand,
-		Permission: authz.FSGitWorkspaceWrite,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			opts, err := gitOverlayPutOptions(ctx, profile)
-			if err != nil {
-				return nil, err
-			}
-			return service.PutGitOverlayEntry(ctx.cmd.Context(), opts)
-		},
-	}, info)
-	addGitWorkspaceIDFlag(cmd)
-	cmd.Flags().String("path", "", "overlay path")
-	cmd.Flags().String("operation", "", "overlay operation")
-	cmd.Flags().String("resource-kind", "", "overlay resource kind")
-	cmd.Flags().String("mode", "", "file mode")
-	cmd.Flags().String("storage-type", "", "storage type")
-	cmd.Flags().String("storage-ref", "", "storage reference")
-	cmd.Flags().String("storage-ref-hash", "", "storage reference hash")
-	cmd.Flags().String("checksum-sha256", "", "checksum")
-	cmd.Flags().Int64("size-bytes", 0, "size in bytes")
-	cmd.Flags().String("base-object-sha", "", "base object sha")
-	cmd.Flags().String("content", "", "inline content")
-	return cmd
-}
-
-func newGitDescribeOverlayEntryCommand(info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        "describe-git-overlay-entry",
-		Short:      "Describe a tdc fs-git overlay entry.",
-		Mutation:   readOnlyCommand,
-		Permission: authz.FSGitWorkspaceRead,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			workspaceID, err := ctx.StringFlag("workspace-id")
-			if err != nil {
-				return nil, err
-			}
-			path, err := ctx.StringFlag("path")
-			if err != nil {
-				return nil, err
-			}
-			return service.DescribeGitOverlayEntry(ctx.cmd.Context(), tdcfs.GitOverlayDescribeOptions{Profile: profile, WorkspaceID: workspaceID, Path: path})
-		},
-	}, info)
-	addGitWorkspaceIDFlag(cmd)
-	cmd.Flags().String("path", "", "overlay path")
-	return cmd
-}
-
-func newGitListOverlayEntriesCommand(info version.Info) *cobra.Command {
-	return gitWorkspaceIDReadCommand("list-git-overlay-entries", "List tdc fs-git overlay entries.", authz.FSGitWorkspaceRead, func(ctx commandContext, service tdcfs.Service, profile *config.Profile, workspaceID string) (any, error) {
-		return service.ListGitOverlayEntries(ctx.cmd.Context(), tdcfs.GitWorkspaceIDOptions{Profile: profile, WorkspaceID: workspaceID})
-	}, info)
-}
-
-func addGitWorkspaceIDFlag(cmd *cobra.Command) {
-	cmd.Flags().String("workspace-id", "", "git workspace id")
-}
-
-func gitWorkspaceIDReadCommand(use, short string, permission authz.Permission, run func(commandContext, tdcfs.Service, *config.Profile, string) (any, error), info version.Info) *cobra.Command {
-	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
-		Use:        use,
-		Short:      short,
-		Mutation:   readOnlyCommand,
-		Permission: permission,
-		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			workspaceID, err := ctx.StringFlag("workspace-id")
-			if err != nil {
-				return nil, err
-			}
-			return run(ctx, service, profile, workspaceID)
-		},
-	}, info)
-	addGitWorkspaceIDFlag(cmd)
+	markUsageRequired(cmd, "worktree-path")
 	return cmd
 }
 
@@ -3731,155 +2920,6 @@ func gitWorktreeAddOptions(ctx commandContext, profile *config.Profile) (tdcfs.G
 		HydrateMode:  hydrate,
 		CommitISH:    commitISH,
 	}, nil
-}
-
-func gitWorkspaceCreateOptions(ctx commandContext, profile *config.Profile) (tdcfs.GitWorkspaceCreateOptions, error) {
-	rootPath, err := ctx.StringFlag("root-path")
-	if err != nil {
-		return tdcfs.GitWorkspaceCreateOptions{}, err
-	}
-	repoURL, err := ctx.StringFlag("repo-url")
-	if err != nil {
-		return tdcfs.GitWorkspaceCreateOptions{}, err
-	}
-	remoteName, err := ctx.StringFlag("remote-name")
-	if err != nil {
-		return tdcfs.GitWorkspaceCreateOptions{}, err
-	}
-	branchName, err := ctx.StringFlag("branch-name")
-	if err != nil {
-		return tdcfs.GitWorkspaceCreateOptions{}, err
-	}
-	baseCommit, err := ctx.StringFlag("base-commit")
-	if err != nil {
-		return tdcfs.GitWorkspaceCreateOptions{}, err
-	}
-	headCommit, err := ctx.StringFlag("head-commit")
-	if err != nil {
-		return tdcfs.GitWorkspaceCreateOptions{}, err
-	}
-	mode, err := ctx.StringFlag("mode")
-	if err != nil {
-		return tdcfs.GitWorkspaceCreateOptions{}, err
-	}
-	workspaceKind, err := ctx.StringFlag("workspace-kind")
-	if err != nil {
-		return tdcfs.GitWorkspaceCreateOptions{}, err
-	}
-	commonWorkspaceID, err := ctx.StringFlag("common-workspace-id")
-	if err != nil {
-		return tdcfs.GitWorkspaceCreateOptions{}, err
-	}
-	worktreeName, err := ctx.StringFlag("worktree-name")
-	if err != nil {
-		return tdcfs.GitWorkspaceCreateOptions{}, err
-	}
-	gitDirRel, err := ctx.StringFlag("git-dir-rel")
-	if err != nil {
-		return tdcfs.GitWorkspaceCreateOptions{}, err
-	}
-	return tdcfs.GitWorkspaceCreateOptions{
-		Profile:           profile,
-		RootPath:          rootPath,
-		RepoURL:           repoURL,
-		RemoteName:        remoteName,
-		BranchName:        branchName,
-		BaseCommit:        baseCommit,
-		HeadCommit:        headCommit,
-		Mode:              mode,
-		WorkspaceKind:     workspaceKind,
-		CommonWorkspaceID: commonWorkspaceID,
-		WorktreeName:      worktreeName,
-		GitDirRel:         gitDirRel,
-	}, nil
-}
-
-func gitStateUpsertOptions(ctx commandContext, profile *config.Profile) (tdcfs.GitStateUpsertOptions, error) {
-	workspaceID, err := ctx.StringFlag("workspace-id")
-	if err != nil {
-		return tdcfs.GitStateUpsertOptions{}, err
-	}
-	checkpointCommit, err := ctx.StringFlag("checkpoint-commit")
-	if err != nil {
-		return tdcfs.GitStateUpsertOptions{}, err
-	}
-	storageType, err := ctx.StringFlag("storage-type")
-	if err != nil {
-		return tdcfs.GitStateUpsertOptions{}, err
-	}
-	storageRef, err := ctx.StringFlag("storage-ref")
-	if err != nil {
-		return tdcfs.GitStateUpsertOptions{}, err
-	}
-	storageRefHash, err := ctx.StringFlag("storage-ref-hash")
-	if err != nil {
-		return tdcfs.GitStateUpsertOptions{}, err
-	}
-	checksum, err := ctx.StringFlag("checksum-sha256")
-	if err != nil {
-		return tdcfs.GitStateUpsertOptions{}, err
-	}
-	sizeBytes, err := ctx.Int64Flag("size-bytes")
-	if err != nil {
-		return tdcfs.GitStateUpsertOptions{}, err
-	}
-	content, err := ctx.StringFlag("content")
-	if err != nil {
-		return tdcfs.GitStateUpsertOptions{}, err
-	}
-	return tdcfs.GitStateUpsertOptions{Profile: profile, WorkspaceID: workspaceID, CheckpointCommit: checkpointCommit, StorageType: storageType, StorageRef: storageRef, StorageRefHash: storageRefHash, ChecksumSHA256: checksum, SizeBytes: sizeBytes, Content: content}, nil
-}
-
-func gitOverlayPutOptions(ctx commandContext, profile *config.Profile) (tdcfs.GitOverlayPutOptions, error) {
-	workspaceID, err := ctx.StringFlag("workspace-id")
-	if err != nil {
-		return tdcfs.GitOverlayPutOptions{}, err
-	}
-	path, err := ctx.StringFlag("path")
-	if err != nil {
-		return tdcfs.GitOverlayPutOptions{}, err
-	}
-	operation, err := ctx.StringFlag("operation")
-	if err != nil {
-		return tdcfs.GitOverlayPutOptions{}, err
-	}
-	resourceKind, err := ctx.StringFlag("resource-kind")
-	if err != nil {
-		return tdcfs.GitOverlayPutOptions{}, err
-	}
-	mode, err := ctx.StringFlag("mode")
-	if err != nil {
-		return tdcfs.GitOverlayPutOptions{}, err
-	}
-	storageType, err := ctx.StringFlag("storage-type")
-	if err != nil {
-		return tdcfs.GitOverlayPutOptions{}, err
-	}
-	storageRef, err := ctx.StringFlag("storage-ref")
-	if err != nil {
-		return tdcfs.GitOverlayPutOptions{}, err
-	}
-	storageRefHash, err := ctx.StringFlag("storage-ref-hash")
-	if err != nil {
-		return tdcfs.GitOverlayPutOptions{}, err
-	}
-	checksum, err := ctx.StringFlag("checksum-sha256")
-	if err != nil {
-		return tdcfs.GitOverlayPutOptions{}, err
-	}
-	sizeBytes, err := ctx.Int64Flag("size-bytes")
-	if err != nil {
-		return tdcfs.GitOverlayPutOptions{}, err
-	}
-	baseObjectSHA, err := ctx.StringFlag("base-object-sha")
-	if err != nil {
-		return tdcfs.GitOverlayPutOptions{}, err
-	}
-	content, err := ctx.StringFlag("content")
-	if err != nil {
-		return tdcfs.GitOverlayPutOptions{}, err
-	}
-	return tdcfs.GitOverlayPutOptions{Profile: profile, WorkspaceID: workspaceID, Path: path, Operation: operation, ResourceKind: resourceKind, Mode: mode, StorageType: storageType, StorageRef: storageRef, StorageRefHash: storageRefHash, ChecksumSHA256: checksum, SizeBytes: sizeBytes, BaseObjectSHA: baseObjectSHA, Content: content}, nil
 }
 
 func newFSJournalCommand(info version.Info) *cobra.Command {
@@ -4002,6 +3042,7 @@ func newJournalAppendEntriesCommand(info version.Info) *cobra.Command {
 	cmd.Flags().StringArray("subject", nil, "entry subject; repeatable")
 	cmd.Flags().StringArray("entry-json", nil, "one JSON journal entry object; repeatable")
 	cmd.Flags().Bool("json-array", false, "read a JSON array from stdin instead of JSONL")
+	markUsageRequired(cmd, "journal-id")
 	return cmd
 }
 
@@ -4039,6 +3080,7 @@ func newJournalReadEntriesCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("journal-id", "", "journal id")
 	cmd.Flags().Int64("after-seq", 0, "read entries after this sequence")
 	cmd.Flags().Int32("limit", 100, "maximum entries to read")
+	markUsageRequired(cmd, "journal-id")
 	return cmd
 }
 
@@ -4149,6 +3191,7 @@ func newJournalVerifyCommand(info version.Info) *cobra.Command {
 		},
 	}, info)
 	cmd.Flags().String("journal-id", "", "journal id")
+	markUsageRequired(cmd, "journal-id")
 	return cmd
 }
 
