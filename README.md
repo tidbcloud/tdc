@@ -860,3 +860,7 @@ Pending requirement specs remain in:
 ```text
 docs/spec/
 ```
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).
