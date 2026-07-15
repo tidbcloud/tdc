@@ -15,7 +15,6 @@ import (
 
 	apifs "github.com/tidbcloud/tdc/internal/api/fs"
 	"github.com/tidbcloud/tdc/internal/apperr"
-	"github.com/tidbcloud/tdc/internal/authz"
 	"github.com/tidbcloud/tdc/internal/config"
 )
 
@@ -82,158 +81,23 @@ type JournalSearchResult struct {
 type JournalVerifyResult apifs.JournalVerifyResult
 
 func (s Service) CreateJournal(ctx context.Context, opts JournalCreateOptions) (JournalResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9CreateJournal(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSJournalCreate, "create tdc fs-journal")
-	if err != nil {
-		return JournalResult{}, err
-	}
-	journalID := strings.TrimSpace(opts.JournalID)
-	if journalID == "" {
-		journalID = newJournalID("jrn")
-	}
-	kind := strings.TrimSpace(opts.JournalKind)
-	if kind == "" {
-		kind = apifs.DefaultJournalKind
-	}
-	labels, err := parseJournalLabels(opts.Labels)
-	if err != nil {
-		return JournalResult{}, err
-	}
-	actorType, actorID, err := apifs.SplitJournalActor(opts.Actor)
-	if err != nil {
-		return JournalResult{}, err
-	}
-	journal, err := client.CreateJournal(ctx, apifs.JournalCreateRequest{
-		JournalID: journalID,
-		Kind:      kind,
-		Title:     strings.TrimSpace(opts.Title),
-		Actor:     apifs.JournalActor{Type: actorType, ID: actorID},
-		Labels:    labels,
-	})
-	if err != nil {
-		return JournalResult{}, err
-	}
-	return JournalResult(journal), nil
+	return s.drive9CreateJournal(ctx, opts)
 }
 
 func (s Service) AppendJournalEntries(ctx context.Context, opts JournalAppendOptions) (JournalAppendResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9AppendJournalEntries(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSJournalAppend, "append tdc fs-journal entries")
-	if err != nil {
-		return JournalAppendResult{}, err
-	}
-	journalID, err := requireJournalID(opts.JournalID)
-	if err != nil {
-		return JournalAppendResult{}, err
-	}
-	appendID := strings.TrimSpace(opts.IdempotencyKey)
-	if appendID == "" {
-		appendID = newJournalID("app")
-	}
-	entries, err := parseJournalEntryInputs(opts.EntryJSON, opts.Stdin, opts.JSONArray)
-	if err != nil {
-		return JournalAppendResult{}, err
-	}
-	defaultType := strings.TrimSpace(opts.EntryType)
-	source := strings.TrimSpace(opts.Source)
-	for i := range entries {
-		if entries[i].Type == "" {
-			entries[i].Type = defaultType
-		}
-		if entries[i].Type == "" {
-			return JournalAppendResult{}, apperr.New("journal.missing_entry_type", "usage", 2, fmt.Sprintf("journal entry %d missing required type; provide --entry-type or include type in the entry JSON", i+1))
-		}
-		if source != "" {
-			entries[i].Source = source
-		}
-		if len(opts.Subjects) > 0 {
-			entries[i].Subjects = append(append([]string{}, opts.Subjects...), entries[i].Subjects...)
-		}
-	}
-	response, err := client.AppendJournalEntries(ctx, journalID, appendID, entries)
-	if err != nil {
-		return JournalAppendResult{}, err
-	}
-	return JournalAppendResult(response), nil
+	return s.drive9AppendJournalEntries(ctx, opts)
 }
 
 func (s Service) ReadJournalEntries(ctx context.Context, opts JournalReadOptions) (JournalEntriesResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9ReadJournalEntries(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSJournalRead, "read tdc fs-journal entries")
-	if err != nil {
-		return JournalEntriesResult{}, err
-	}
-	journalID, err := requireJournalID(opts.JournalID)
-	if err != nil {
-		return JournalEntriesResult{}, err
-	}
-	limit := normalizeJournalLimit(opts.Limit)
-	entries, err := client.ReadJournalEntries(ctx, journalID, opts.AfterSeq, limit)
-	if err != nil {
-		return JournalEntriesResult{}, err
-	}
-	return JournalEntriesResult{Entries: entries}, nil
+	return s.drive9ReadJournalEntries(ctx, opts)
 }
 
 func (s Service) SearchJournal(ctx context.Context, opts JournalSearchOptions) (JournalSearchResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9SearchJournal(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSJournalSearch, "search tdc fs-journal")
-	if err != nil {
-		return JournalSearchResult{}, err
-	}
-	labels, err := parseJournalLabels(opts.Labels)
-	if err != nil {
-		return JournalSearchResult{}, err
-	}
-	actorType, actorID, err := apifs.SplitJournalActor(opts.Actor)
-	if err != nil {
-		return JournalSearchResult{}, err
-	}
-	matches, err := client.SearchJournal(ctx, apifs.JournalSearchRequest{
-		Type:      strings.TrimSpace(opts.EntryType),
-		Status:    strings.TrimSpace(opts.Status),
-		Kind:      strings.TrimSpace(opts.JournalKind),
-		ActorType: actorType,
-		ActorID:   actorID,
-		Subjects:  opts.Subjects,
-		Labels:    labels,
-		SinceRaw:  strings.TrimSpace(opts.Since),
-		UntilRaw:  strings.TrimSpace(opts.Until),
-		Limit:     normalizeJournalLimit(opts.Limit),
-		Entries:   opts.IncludeEntries,
-		Cursor:    strings.TrimSpace(opts.Cursor),
-	})
-	if err != nil {
-		return JournalSearchResult{}, err
-	}
-	return JournalSearchResult{Matches: matches}, nil
+	return s.drive9SearchJournal(ctx, opts)
 }
 
 func (s Service) VerifyJournal(ctx context.Context, opts JournalVerifyOptions) (JournalVerifyResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9VerifyJournal(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSJournalVerify, "verify tdc fs-journal")
-	if err != nil {
-		return JournalVerifyResult{}, err
-	}
-	journalID, err := requireJournalID(opts.JournalID)
-	if err != nil {
-		return JournalVerifyResult{}, err
-	}
-	result, err := client.VerifyJournal(ctx, journalID)
-	if err != nil {
-		return JournalVerifyResult{}, err
-	}
-	return JournalVerifyResult(result), nil
+	return s.drive9VerifyJournal(ctx, opts)
 }
 
 func requireJournalID(raw string) (string, error) {

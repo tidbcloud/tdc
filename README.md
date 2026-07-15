@@ -28,7 +28,7 @@ powershell -ExecutionPolicy Bypass -File $script -InstallDir "$HOME\bin" -Yes
 Configure the `tdc` with the TiDB Cloud Public Key and Private Key from the [TiDB Cloud](https://tidbcloud.com/org-settings/api-keys) console. The available region codes are: `aws-us-east-1`, `aws-us-west-2`, and `aws-ap-southeast-1`.
 
 ```shell
-tdc configure --non-interactive --region-code <TDC_REGION_CODE> --tdc-public-key <TDC_PUBLIC_KE> --tdc-private-key <TDC_PRIVATE_KEY>
+tdc configure --non-interactive --region-code <TDC_REGION_CODE> --tdc-public-key <TDC_PUBLIC_KEY> --tdc-private-key <TDC_PRIVATE_KEY>
 ```
 
 ### TiDB Cloud Filesystem

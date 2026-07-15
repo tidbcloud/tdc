@@ -138,7 +138,7 @@ func sleepDrive9Retry(ctx context.Context, attempt int) error {
 }
 
 func (s Service) drive9CreateFileSystem(ctx context.Context, opts CreateFileSystemOptions) (FileSystemResult, error) {
-	request, name, _, err := s.createRequestAndEndpoint(opts, false)
+	_, name, _, err := s.createRequestAndEndpoint(opts, false)
 	if err != nil {
 		return FileSystemResult{}, err
 	}
@@ -156,9 +156,6 @@ func (s Service) drive9CreateFileSystem(ctx context.Context, opts CreateFileSyst
 		}, nil
 	}
 	args := []string{"create", "--json", "--name", name, "--region-code", opts.Profile.PlacementRegionCode}
-	if request.TiDBCloudSpendingLimit != nil {
-		args = append(args, "--tidbcloud-spending-limit", strconv.FormatInt(*request.TiDBCloudSpendingLimit, 10))
-	}
 	result, err := s.drive9Runner().Run(ctx, fswrap.RunOptions{
 		Profile:         opts.Profile,
 		Args:            args,

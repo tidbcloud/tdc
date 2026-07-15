@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -170,210 +169,11 @@ type SearchFilesResult struct {
 }
 
 func (s Service) CopyFile(ctx context.Context, opts CopyFileOptions) (FileOperationResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9CopyFile(ctx, opts)
-	}
-	fromLocal := strings.TrimSpace(opts.FromLocal)
-	toLocal := strings.TrimSpace(opts.ToLocal)
-	fromRemote := strings.TrimSpace(opts.FromRemote)
-	toRemote := strings.TrimSpace(opts.ToRemote)
-	layerID := strings.TrimSpace(opts.LayerID)
-	if err := validateCopyMetadataFlags(opts); err != nil {
-		return FileOperationResult{}, err
-	}
-	if opts.Append && (opts.Recursive || opts.Resume) {
-		return FileOperationResult{}, apperr.New("fs.invalid_copy_flags", "usage", 2, "--append cannot be combined with --recursive or --resume")
-	}
-	if layerID != "" && (opts.Append || opts.Recursive || opts.Resume) {
-		return FileOperationResult{}, apperr.New("fs.invalid_copy_flags", "usage", 2, "--layer-id cannot be combined with --append, --recursive, or --resume")
-	}
-	switch {
-	case opts.FromStdin && toRemote != "" && fromLocal == "" && fromRemote == "" && toLocal == "" && !opts.ToStdout:
-		if opts.Recursive || opts.Resume {
-			return FileOperationResult{}, apperr.New("fs.invalid_copy_flags", "usage", 2, "--from-stdin cannot be combined with --recursive or --resume")
-		}
-		if opts.Append {
-			return FileOperationResult{}, apperr.New("fs.invalid_copy_flags", "usage", 2, "--append does not support --from-stdin; use a local file")
-		}
-		if layerID != "" {
-			return FileOperationResult{}, apperr.New("fs.invalid_copy_flags", "usage", 2, "--layer-id does not support --from-stdin")
-		}
-		client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "write tdc fs file")
-		if err != nil {
-			return FileOperationResult{}, err
-		}
-		target, err := normalizeRemotePath(toRemote)
-		if err != nil {
-			return FileOperationResult{}, err
-		}
-		if err := ensureRemoteTargetCanWrite(ctx, client, target, opts.Overwrite); err != nil {
-			return FileOperationResult{}, err
-		}
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return FileOperationResult{}, apperr.Wrap("fs.read_stdin", "runtime", 1, "read stdin", err)
-		}
-		written, err := client.WriteFileWithOptions(ctx, target, data, apifs.WriteFileOptions{Tags: opts.Tags, Description: opts.Description})
-		if err != nil {
-			return FileOperationResult{}, err
-		}
-		return FileOperationResult{Operation: "copy_file", SourcePath: "-", TargetPath: target, BytesTransferred: int64(len(data)), Revision: written.Revision, Status: "copied"}, nil
-	case fromRemote != "" && opts.ToStdout && fromLocal == "" && toLocal == "" && toRemote == "" && !opts.FromStdin:
-		client, err := s.dataClient(opts.Profile, authz.FSFileRead, "read tdc fs file")
-		if err != nil {
-			return FileOperationResult{}, err
-		}
-		source, err := normalizeRemotePath(fromRemote)
-		if err != nil {
-			return FileOperationResult{}, err
-		}
-		if opts.Recursive || opts.Append || opts.Resume || layerID != "" {
-			return FileOperationResult{}, apperr.New("fs.invalid_copy_flags", "usage", 2, "--to-stdout only supports single remote file reads")
-		}
-		data, err := client.ReadFile(ctx, source)
-		if err != nil {
-			return FileOperationResult{}, err
-		}
-		if _, err := os.Stdout.Write(data); err != nil {
-			return FileOperationResult{}, apperr.Wrap("fs.write_stdout", "runtime", 1, "write stdout", err)
-		}
-		return FileOperationResult{Operation: "copy_file", SourcePath: source, TargetPath: "-", BytesTransferred: int64(len(data)), Status: "copied"}, nil
-	case fromLocal != "" && toRemote != "" && fromRemote == "" && toLocal == "":
-		client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "write tdc fs file")
-		if err != nil {
-			return FileOperationResult{}, err
-		}
-		target, err := normalizeRemotePath(toRemote)
-		if err != nil {
-			return FileOperationResult{}, err
-		}
-		if layerID != "" {
-			entry, err := uploadLocalFileToLayer(ctx, client, UploadLayerFileOptions{
-				Profile:     opts.Profile,
-				LayerID:     layerID,
-				FromLocal:   fromLocal,
-				ToLayerPath: target,
-			})
-			if err != nil {
-				return FileOperationResult{}, err
-			}
-			return FileOperationResult{Operation: "copy_file_to_layer", SourcePath: fromLocal, TargetPath: target, BytesTransferred: entry.SizeBytes, Revision: entry.EntrySeq, Status: "layered"}, nil
-		}
-		if opts.Resume {
-			return resumeLocalFileToRemote(ctx, client, fromLocal, target, opts.Tags)
-		}
-		if opts.Recursive {
-			return copyLocalTreeToRemote(ctx, client, fromLocal, target, opts.Overwrite)
-		}
-		if opts.Append {
-			return appendLocalFileToRemote(ctx, client, fromLocal, target)
-		}
-		if err := ensureRemoteTargetCanWrite(ctx, client, target, opts.Overwrite); err != nil {
-			return FileOperationResult{}, err
-		}
-		return uploadLocalFileToRemote(ctx, client, fromLocal, target, nil, "copy_file", "copied", opts.Tags, opts.Description)
-	case fromRemote != "" && toLocal != "" && fromLocal == "" && toRemote == "":
-		client, err := s.dataClient(opts.Profile, authz.FSFileRead, "read tdc fs file")
-		if err != nil {
-			return FileOperationResult{}, err
-		}
-		source, err := normalizeRemotePath(fromRemote)
-		if err != nil {
-			return FileOperationResult{}, err
-		}
-		if layerID != "" {
-			return FileOperationResult{}, apperr.New("fs.invalid_copy_flags", "usage", 2, "--layer-id does not support remote-to-local copy through the Drive9-compatible command surface")
-		}
-		if opts.Append {
-			return FileOperationResult{}, apperr.New("fs.invalid_copy_flags", "usage", 2, "--append only supports --from-local with --to-remote")
-		}
-		if opts.Recursive {
-			return copyRemoteTreeToLocal(ctx, client, source, toLocal, opts.Overwrite, opts.CreateParents, opts.Resume)
-		}
-		if opts.Resume {
-			return resumeRemoteFileToLocal(ctx, client, source, toLocal)
-		}
-		if err := ensureLocalTargetCanWrite(toLocal, opts.Overwrite, opts.CreateParents); err != nil {
-			return FileOperationResult{}, err
-		}
-		data, err := client.ReadFile(ctx, source)
-		if err != nil {
-			return FileOperationResult{}, err
-		}
-		if err := os.WriteFile(toLocal, data, 0o644); err != nil {
-			return FileOperationResult{}, apperr.Wrap("fs.write_local_file", "runtime", 1, fmt.Sprintf("write local file %q", toLocal), err)
-		}
-		return FileOperationResult{Operation: "copy_file", SourcePath: source, TargetPath: toLocal, BytesTransferred: int64(len(data)), Status: "copied"}, nil
-	case fromRemote != "" && toRemote != "" && fromLocal == "" && toLocal == "":
-		client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "copy tdc fs file")
-		if err != nil {
-			return FileOperationResult{}, err
-		}
-		source, err := normalizeRemotePath(fromRemote)
-		if err != nil {
-			return FileOperationResult{}, err
-		}
-		target, err := normalizeRemotePath(toRemote)
-		if err != nil {
-			return FileOperationResult{}, err
-		}
-		if opts.Append || opts.Resume {
-			return FileOperationResult{}, apperr.New("fs.invalid_copy_flags", "usage", 2, "--append and --resume do not support remote-to-remote copy")
-		}
-		if layerID != "" {
-			stat, err := client.Stat(ctx, source)
-			if err != nil {
-				return FileOperationResult{}, err
-			}
-			if stat.IsDir {
-				return FileOperationResult{}, apperr.New("fs.source_is_directory", "usage", 2, fmt.Sprintf("remote source %q is a directory; layer remote-to-remote copy supports files only", source))
-			}
-			data, err := client.ReadFile(ctx, source)
-			if err != nil {
-				return FileOperationResult{}, err
-			}
-			mode := uint32(0)
-			hasMode := stat.HasMode
-			if hasMode {
-				mode = uint32(stat.Mode & 0o777)
-			}
-			entry, err := uploadBytesToLayer(ctx, client, layerID, target, data, mode, hasMode)
-			if err != nil {
-				return FileOperationResult{}, err
-			}
-			return FileOperationResult{Operation: "copy_file_to_layer", SourcePath: source, TargetPath: target, BytesTransferred: int64(len(data)), Revision: entry.EntrySeq, Status: "layered"}, nil
-		}
-		if opts.Recursive {
-			return copyRemoteTreeToRemote(ctx, client, source, target, opts.Overwrite)
-		}
-		if err := ensureRemoteTargetCanWrite(ctx, client, target, opts.Overwrite); err != nil {
-			return FileOperationResult{}, err
-		}
-		if err := client.CopyRemote(ctx, source, target); err != nil {
-			return FileOperationResult{}, err
-		}
-		return FileOperationResult{Operation: "copy_file", SourcePath: source, TargetPath: target, Status: "copied"}, nil
-	default:
-		return FileOperationResult{}, apperr.New("fs.invalid_copy_flags", "usage", 2, "copy-file requires exactly one source/target pair: --from-local with --to-remote, --from-remote with --to-local, or --from-remote with --to-remote")
-	}
+	return s.drive9CopyFile(ctx, opts)
 }
 
 func (s Service) ReadFile(ctx context.Context, opts ReadFileOptions) ([]byte, error) {
-	if s.UseDrive9Companion {
-		return s.drive9ReadFile(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "read tdc fs file")
-	if err != nil {
-		return nil, err
-	}
-	remotePath, err := normalizeRemotePath(opts.Path)
-	if err != nil {
-		return nil, err
-	}
-	if opts.Range {
-		return client.ReadFileRange(ctx, remotePath, opts.Offset, opts.Length)
-	}
-	return client.ReadFile(ctx, remotePath)
+	return s.drive9ReadFile(ctx, opts)
 }
 
 func appendLocalFileToRemote(ctx context.Context, client *apifs.Client, localPath string, target string) (FileOperationResult, error) {
@@ -714,288 +514,43 @@ func copyRemoteTreeToRemote(ctx context.Context, client *apifs.Client, sourceRoo
 }
 
 func (s Service) ListFiles(ctx context.Context, opts ListFilesOptions) (ListFilesResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9ListFiles(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "list tdc fs files")
-	if err != nil {
-		return ListFilesResult{}, err
-	}
-	remotePath, err := normalizeRemotePath(defaultRemotePath(opts.Path))
-	if err != nil {
-		return ListFilesResult{}, err
-	}
-	response, err := client.List(ctx, remotePath)
-	if err != nil {
-		return ListFilesResult{}, err
-	}
-	entries := make([]FileEntry, 0, len(response.Entries))
-	for _, entry := range response.Entries {
-		entries = append(entries, FileEntry{Name: entry.Name, SizeBytes: entry.Size, IsDir: entry.IsDir, Mtime: entry.Mtime})
-	}
-	return ListFilesResult{Path: remotePath, Entries: entries}, nil
+	return s.drive9ListFiles(ctx, opts)
 }
 
 func (s Service) DescribeFile(ctx context.Context, opts DescribeFileOptions) (DescribeFileResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9DescribeFile(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "describe tdc fs file")
-	if err != nil {
-		return DescribeFileResult{}, err
-	}
-	remotePath, err := normalizeRemotePath(opts.Path)
-	if err != nil {
-		return DescribeFileResult{}, err
-	}
-	metadataStore, err := s.metadataStore(opts.Profile)
-	if err != nil {
-		return DescribeFileResult{}, err
-	}
-	metadata, err := client.StatMetadata(ctx, remotePath)
-	if err == nil {
-		return metadataStore.applyDescribe(describeFromMetadata(remotePath, metadata)), nil
-	}
-	if !shouldFallbackStat(err) {
-		return DescribeFileResult{}, err
-	}
-	stat, statErr := client.Stat(ctx, remotePath)
-	if statErr != nil {
-		return DescribeFileResult{}, statErr
-	}
-	return metadataStore.applyDescribe(describeFromStat(stat, true)), nil
+	return s.drive9DescribeFile(ctx, opts)
 }
 
 func (s Service) MoveFile(ctx context.Context, opts MoveFileOptions) (FileOperationResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9MoveFile(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "move tdc fs file")
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	source, err := normalizeRemotePath(opts.FromRemote)
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	target, err := normalizeRemotePath(opts.ToRemote)
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	if err := ensureRemoteTargetCanWrite(ctx, client, target, opts.Overwrite); err != nil {
-		return FileOperationResult{}, err
-	}
-	if err := client.Rename(ctx, source, target); err != nil {
-		return FileOperationResult{}, err
-	}
-	if metadataStore, metaErr := s.metadataStore(opts.Profile); metaErr != nil {
-		return FileOperationResult{}, metaErr
-	} else if err := metadataStore.move(source, target); err != nil {
-		return FileOperationResult{}, err
-	}
-	return FileOperationResult{Operation: "move_file", SourcePath: source, TargetPath: target, Status: "moved"}, nil
+	return s.drive9MoveFile(ctx, opts)
 }
 
 func (s Service) DeleteFile(ctx context.Context, opts DeleteFileOptions) (FileOperationResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9DeleteFile(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "delete tdc fs file")
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	remotePath, err := normalizeRemotePath(opts.Path)
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	if err := client.DeleteFile(ctx, remotePath, opts.Recursive); err != nil {
-		return FileOperationResult{}, err
-	}
-	if metadataStore, metaErr := s.metadataStore(opts.Profile); metaErr != nil {
-		return FileOperationResult{}, metaErr
-	} else if err := metadataStore.remove(remotePath, opts.Recursive); err != nil {
-		return FileOperationResult{}, err
-	}
-	return FileOperationResult{Operation: "delete_file", TargetPath: remotePath, Status: "deleted"}, nil
+	return s.drive9DeleteFile(ctx, opts)
 }
 
 func (s Service) CreateDirectory(ctx context.Context, opts CreateDirectoryOptions) (FileOperationResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9CreateDirectory(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "create tdc fs directory")
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	remotePath, err := normalizeRemotePath(opts.Path)
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	mode, err := parseMode(opts.Mode)
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	if err := client.Mkdir(ctx, remotePath, mode); err != nil {
-		return FileOperationResult{}, err
-	}
-	if metadataStore, metaErr := s.metadataStore(opts.Profile); metaErr != nil {
-		return FileOperationResult{}, metaErr
-	} else if mode > 0 {
-		if err := metadataStore.setMode(remotePath, mode); err != nil {
-			return FileOperationResult{}, err
-		}
-	}
-	return FileOperationResult{Operation: "create_directory", TargetPath: remotePath, Status: "created"}, nil
+	return s.drive9CreateDirectory(ctx, opts)
 }
 
 func (s Service) ChmodFile(ctx context.Context, opts ChmodFileOptions) (FileOperationResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9ChmodFile(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "chmod tdc fs file")
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	remotePath, err := normalizeRemotePath(opts.Path)
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	mode, err := parseRequiredMode(opts.Mode, "--mode")
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	if err := client.Chmod(ctx, remotePath, mode); err != nil {
-		return FileOperationResult{}, err
-	}
-	if metadataStore, metaErr := s.metadataStore(opts.Profile); metaErr != nil {
-		return FileOperationResult{}, metaErr
-	} else if err := metadataStore.setMode(remotePath, mode); err != nil {
-		return FileOperationResult{}, err
-	}
-	return FileOperationResult{Operation: "chmod_file", TargetPath: remotePath, Status: "updated"}, nil
+	return s.drive9ChmodFile(ctx, opts)
 }
 
 func (s Service) SymlinkFile(ctx context.Context, opts SymlinkFileOptions) (FileOperationResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9SymlinkFile(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "create tdc fs symlink")
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	if strings.TrimSpace(opts.Target) == "" {
-		return FileOperationResult{}, apperr.New("fs.missing_symlink_target", "usage", 2, "--target is required")
-	}
-	link, err := normalizeRemotePath(opts.Link)
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	if err := client.Symlink(ctx, opts.Target, link); err != nil {
-		return FileOperationResult{}, err
-	}
-	if metadataStore, metaErr := s.metadataStore(opts.Profile); metaErr != nil {
-		return FileOperationResult{}, metaErr
-	} else if err := metadataStore.setSymlink(link, opts.Target); err != nil {
-		return FileOperationResult{}, err
-	}
-	return FileOperationResult{Operation: "create_symlink", SourcePath: opts.Target, TargetPath: link, Status: "created"}, nil
+	return s.drive9SymlinkFile(ctx, opts)
 }
 
 func (s Service) HardlinkFile(ctx context.Context, opts HardlinkFileOptions) (FileOperationResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9HardlinkFile(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "create tdc fs hardlink")
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	source, err := normalizeRemotePath(opts.Source)
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	link, err := normalizeRemotePath(opts.Link)
-	if err != nil {
-		return FileOperationResult{}, err
-	}
-	if err := client.Hardlink(ctx, source, link); err != nil {
-		return FileOperationResult{}, err
-	}
-	if metadataStore, metaErr := s.metadataStore(opts.Profile); metaErr != nil {
-		return FileOperationResult{}, metaErr
-	} else if err := metadataStore.copyMetadata(source, link); err != nil {
-		return FileOperationResult{}, err
-	}
-	return FileOperationResult{Operation: "create_hardlink", SourcePath: source, TargetPath: link, Status: "created"}, nil
+	return s.drive9HardlinkFile(ctx, opts)
 }
 
 func (s Service) SearchFileContent(ctx context.Context, opts SearchFileContentOptions) (SearchFilesResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9SearchFileContent(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "search tdc fs file content")
-	if err != nil {
-		return SearchFilesResult{}, err
-	}
-	remotePath, err := normalizeRemotePath(defaultRemotePath(opts.Path))
-	if err != nil {
-		return SearchFilesResult{}, err
-	}
-	pattern := strings.TrimSpace(opts.Pattern)
-	if pattern == "" {
-		return SearchFilesResult{}, apperr.New("fs.missing_pattern", "usage", 2, "--pattern is required")
-	}
-	results, err := client.GrepWithLayer(ctx, remotePath, pattern, opts.Limit, opts.LayerID)
-	if err != nil {
-		return SearchFilesResult{}, err
-	}
-	return SearchFilesResult{Path: remotePath, Results: searchResults(results)}, nil
+	return s.drive9SearchFileContent(ctx, opts)
 }
 
 func (s Service) FindFiles(ctx context.Context, opts FindFilesOptions) (SearchFilesResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9FindFiles(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "find tdc fs files")
-	if err != nil {
-		return SearchFilesResult{}, err
-	}
-	remotePath, err := normalizeRemotePath(defaultRemotePath(opts.Path))
-	if err != nil {
-		return SearchFilesResult{}, err
-	}
-	params := url.Values{}
-	if opts.FileNamePattern != "" {
-		params.Set("name", opts.FileNamePattern)
-	}
-	if opts.ResourceType != "" {
-		params.Set("type", opts.ResourceType)
-	}
-	if opts.Tag != "" {
-		params.Set("tag", opts.Tag)
-	}
-	if opts.LayerID != "" {
-		params.Set("layer", opts.LayerID)
-	}
-	if opts.Newer != "" {
-		params.Set("newer", opts.Newer)
-	}
-	if opts.Older != "" {
-		params.Set("older", opts.Older)
-	}
-	if opts.MinSizeBytes > 0 {
-		params.Set("minsize", strconv.FormatInt(opts.MinSizeBytes, 10))
-	}
-	if opts.MaxSizeBytes > 0 {
-		params.Set("maxsize", strconv.FormatInt(opts.MaxSizeBytes, 10))
-	}
-	if opts.Limit > 0 {
-		params.Set("limit", strconv.FormatInt(int64(opts.Limit), 10))
-	}
-	results, err := client.Find(ctx, remotePath, params)
-	if err != nil {
-		return SearchFilesResult{}, err
-	}
-	return SearchFilesResult{Path: remotePath, Results: searchResults(results)}, nil
+	return s.drive9FindFiles(ctx, opts)
 }
 
 func (s Service) dataClient(profile *config.Profile, permission authz.Permission, action string) (*apifs.Client, error) {

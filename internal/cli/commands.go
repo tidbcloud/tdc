@@ -2202,13 +2202,12 @@ func fsServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, er
 		return tdcfs.Service{}, nil, err
 	}
 	return tdcfs.Service{
-		Timeout:            30 * time.Second,
-		Debug:              debug,
-		DebugWriter:        ctx.cmd.ErrOrStderr(),
-		UseDrive9Companion: true,
-		Stdin:              ctx.cmd.InOrStdin(),
-		Stdout:             ctx.cmd.OutOrStdout(),
-		Stderr:             ctx.cmd.ErrOrStderr(),
+		Timeout:     30 * time.Second,
+		Debug:       debug,
+		DebugWriter: ctx.cmd.ErrOrStderr(),
+		Stdin:       ctx.cmd.InOrStdin(),
+		Stdout:      ctx.cmd.OutOrStdout(),
+		Stderr:      ctx.cmd.ErrOrStderr(),
 	}, profile, nil
 }
 

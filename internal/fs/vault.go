@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -153,21 +152,7 @@ type vaultMountInputs struct {
 }
 
 func (s Service) MountVault(ctx context.Context, opts VaultMountOptions) (MountResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9MountVault(ctx, opts)
-	}
-	inputs, checks, err := s.vaultMountInputs(ctx, opts)
-	if err != nil {
-		return MountResult{}, err
-	}
-	if err := inputs.mountDriver.CheckPrerequisites(); err != nil {
-		return MountResult{}, apperr.Wrap("vault.mount_prerequisite", "runtime", 1, err.Error(), err)
-	}
-	checks = append(checks, MountRuntimeCheck{Name: "mount_driver", Status: "passed", Message: inputs.mountDriver.Name()})
-	if opts.Foreground {
-		return s.mountVaultForeground(ctx, inputs, checks)
-	}
-	return s.mountVaultBackground(ctx, inputs, checks)
+	return s.drive9MountVault(ctx, opts)
 }
 
 func (s Service) DryRunMountVault(ctx context.Context, commandPath string, opts VaultMountOptions) (dryrun.Result, error) {
@@ -331,289 +316,39 @@ func vaultMountResult(status string, inputs vaultMountInputs, checks []MountRunt
 }
 
 func (s Service) CreateVaultSecret(ctx context.Context, opts VaultCreateSecretOptions) (VaultSecretResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9CreateVaultSecret(ctx, opts)
-	}
-	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultSecretCreate, "create tdc fs-vault secret")
-	if err != nil {
-		return VaultSecretResult{}, err
-	}
-	name, err := validateVaultSecretName(opts.SecretName)
-	if err != nil {
-		return VaultSecretResult{}, err
-	}
-	fields, err := parseVaultFieldAssignments(opts.Fields, opts.Stdin)
-	if err != nil {
-		return VaultSecretResult{}, err
-	}
-	secret, err := client.CreateVaultSecret(ctx, name, fields)
-	if err != nil {
-		return VaultSecretResult{}, err
-	}
-	return VaultSecretResult{Secret: secret, Status: "created"}, nil
+	return s.drive9CreateVaultSecret(ctx, opts)
 }
 
 func (s Service) ReplaceVaultSecret(ctx context.Context, opts VaultReplaceSecretOptions) (VaultSecretResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9ReplaceVaultSecret(ctx, opts)
-	}
-	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultSecretUpdate, "replace tdc fs-vault secret")
-	if err != nil {
-		return VaultSecretResult{}, err
-	}
-	name, err := parseVaultPath(opts.SecretPath)
-	if err != nil {
-		return VaultSecretResult{}, err
-	}
-	fields, err := readVaultFieldsDirectory(opts.FromDirectory)
-	if err != nil {
-		return VaultSecretResult{}, err
-	}
-	secret, err := client.UpdateVaultSecret(ctx, name, fields)
-	if err != nil {
-		return VaultSecretResult{}, err
-	}
-	return VaultSecretResult{Secret: secret, Status: "replaced"}, nil
+	return s.drive9ReplaceVaultSecret(ctx, opts)
 }
 
 func (s Service) ReadVaultSecret(ctx context.Context, opts VaultReadSecretOptions) (any, error) {
-	if s.UseDrive9Companion {
-		return s.drive9ReadVaultSecret(ctx, opts)
-	}
-	client, ownerMode, err := s.vaultReadClient(opts.Profile, opts.VaultToken, authz.FSVaultSecretRead, "read tdc fs-vault secret")
-	if err != nil {
-		return nil, err
-	}
-	name, err := validateVaultSecretName(opts.SecretName)
-	if err != nil {
-		return nil, err
-	}
-	field := strings.TrimSpace(opts.Field)
-	format := strings.TrimSpace(opts.Format)
-	if format == "" {
-		format = "json"
-	}
-	if field != "" {
-		var value string
-		if ownerMode {
-			value, err = client.ReadVaultSecretFieldAsOwner(ctx, name, field)
-		} else {
-			value, err = client.ReadVaultSecretField(ctx, name, field)
-		}
-		if err != nil {
-			return nil, err
-		}
-		switch format {
-		case "json":
-			return VaultReadSecretResult{SecretName: name, Field: field, Value: value}, nil
-		case "raw":
-			return []byte(value), nil
-		case "env":
-			envKey, err := normalizeVaultEnvKey(field)
-			if err != nil {
-				return nil, err
-			}
-			return []byte(envKey + "=" + value + "\n"), nil
-		default:
-			return nil, apperr.New("vault.invalid_format", "usage", 2, "--format must be json, raw, or env")
-		}
-	}
-	var fields map[string]string
-	if ownerMode {
-		fields, err = client.ReadVaultSecretAsOwner(ctx, name)
-	} else {
-		fields, err = client.ReadVaultSecret(ctx, name)
-	}
-	if err != nil {
-		return nil, err
-	}
-	switch format {
-	case "json":
-		return VaultReadSecretResult{SecretName: name, Fields: fields}, nil
-	case "env":
-		data, err := renderVaultEnv(fields)
-		if err != nil {
-			return nil, err
-		}
-		return []byte(data), nil
-	case "raw":
-		return nil, apperr.New("vault.invalid_format", "usage", 2, "--format raw requires --field")
-	default:
-		return nil, apperr.New("vault.invalid_format", "usage", 2, "--format must be json, raw, or env")
-	}
+	return s.drive9ReadVaultSecret(ctx, opts)
 }
 
 func (s Service) ListVaultSecrets(ctx context.Context, opts VaultListSecretsOptions) (VaultListSecretsResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9ListVaultSecrets(ctx, opts)
-	}
-	client, ownerMode, err := s.vaultReadClient(opts.Profile, opts.VaultToken, authz.FSVaultSecretRead, "list tdc fs-vault secrets")
-	if err != nil {
-		return VaultListSecretsResult{}, err
-	}
-	var names []string
-	if ownerMode {
-		secrets, err := client.ListVaultSecrets(ctx)
-		if err != nil {
-			return VaultListSecretsResult{}, err
-		}
-		names = make([]string, 0, len(secrets))
-		for _, secret := range secrets {
-			names = append(names, secret.Name)
-		}
-	} else {
-		names, err = client.ListReadableVaultSecrets(ctx)
-		if err != nil {
-			return VaultListSecretsResult{}, err
-		}
-	}
-	sort.Strings(names)
-	return VaultListSecretsResult{Secrets: names}, nil
+	return s.drive9ListVaultSecrets(ctx, opts)
 }
 
 func (s Service) DeleteVaultSecret(ctx context.Context, opts VaultDeleteSecretOptions) (VaultDeleteResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9DeleteVaultSecret(ctx, opts)
-	}
-	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultSecretDelete, "delete tdc fs-vault secret")
-	if err != nil {
-		return VaultDeleteResult{}, err
-	}
-	name, err := validateVaultSecretName(opts.SecretName)
-	if err != nil {
-		return VaultDeleteResult{}, err
-	}
-	if err := client.DeleteVaultSecret(ctx, name); err != nil {
-		return VaultDeleteResult{}, err
-	}
-	return VaultDeleteResult{Operation: "delete_vault_secret", ID: name, Status: "deleted"}, nil
+	return s.drive9DeleteVaultSecret(ctx, opts)
 }
 
 func (s Service) CreateVaultGrant(ctx context.Context, opts VaultCreateGrantOptions) (VaultTokenResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9CreateVaultGrant(ctx, opts)
-	}
-	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultGrantCreate, "create tdc fs-vault grant")
-	if err != nil {
-		return VaultTokenResult{}, err
-	}
-	if strings.TrimSpace(opts.AgentID) == "" {
-		return VaultTokenResult{}, apperr.New("vault.missing_agent_id", "usage", 2, "--agent-id is required")
-	}
-	if opts.Permission != "read" && opts.Permission != "write" {
-		return VaultTokenResult{}, apperr.New("vault.invalid_permission", "usage", 2, "--permission must be read or write")
-	}
-	if opts.TTL <= 0 {
-		return VaultTokenResult{}, apperr.New("vault.invalid_ttl", "usage", 2, "--ttl must be positive")
-	}
-	if len(opts.Scopes) == 0 {
-		return VaultTokenResult{}, apperr.New("vault.missing_scope", "usage", 2, "at least one --scope is required")
-	}
-	response, err := client.IssueVaultGrant(ctx, apifs.VaultGrantIssueRequest{
-		Agent:      strings.TrimSpace(opts.AgentID),
-		Scope:      opts.Scopes,
-		Perm:       opts.Permission,
-		TTLSeconds: int(opts.TTL / time.Second),
-		LabelHint:  strings.TrimSpace(opts.LabelHint),
-	})
-	if err != nil {
-		return VaultTokenResult{}, err
-	}
-	return VaultTokenResult{Token: response.Token, GrantID: response.GrantID, ExpiresAt: response.ExpiresAt, Scope: response.Scope, Perm: response.Perm}, nil
+	return s.drive9CreateVaultGrant(ctx, opts)
 }
 
 func (s Service) DeleteVaultGrant(ctx context.Context, opts VaultDeleteGrantOptions) (VaultDeleteResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9DeleteVaultGrant(ctx, opts)
-	}
-	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultGrantDelete, "delete tdc fs-vault grant")
-	if err != nil {
-		return VaultDeleteResult{}, err
-	}
-	grantID := strings.TrimSpace(opts.GrantID)
-	if grantID == "" {
-		return VaultDeleteResult{}, apperr.New("vault.missing_grant_id", "usage", 2, "--grant-id is required")
-	}
-	revokedBy := strings.TrimSpace(opts.RevokedBy)
-	if revokedBy == "" {
-		revokedBy = "tdc"
-	}
-	if err := client.RevokeVaultGrant(ctx, grantID, revokedBy, strings.TrimSpace(opts.Reason)); err != nil {
-		return VaultDeleteResult{}, err
-	}
-	return VaultDeleteResult{Operation: "delete_vault_grant", ID: grantID, Status: "deleted"}, nil
+	return s.drive9DeleteVaultGrant(ctx, opts)
 }
 
 func (s Service) ListVaultAuditEvents(ctx context.Context, opts VaultAuditOptions) (VaultAuditResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9ListVaultAuditEvents(ctx, opts)
-	}
-	client, err := s.vaultManagementClient(opts.Profile, authz.FSVaultAuditRead, "list tdc fs-vault audit events")
-	if err != nil {
-		return VaultAuditResult{}, err
-	}
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = DefaultVaultAuditLimit
-	}
-	queryLimit := limit
-	if opts.AgentID != "" || opts.Since > 0 {
-		queryLimit = MaxVaultAuditLimit
-	}
-	if queryLimit > MaxVaultAuditLimit {
-		queryLimit = MaxVaultAuditLimit
-	}
-	events, err := client.QueryVaultAudit(ctx, opts.SecretName, queryLimit)
-	if err != nil {
-		return VaultAuditResult{}, err
-	}
-	if opts.AgentID != "" || opts.Since > 0 {
-		events = filterVaultAuditEvents(events, opts.AgentID, opts.Since)
-	}
-	if len(events) > limit {
-		events = events[:limit]
-	}
-	return VaultAuditResult{Events: events}, nil
+	return s.drive9ListVaultAuditEvents(ctx, opts)
 }
 
 func (s Service) RunWithVaultSecret(ctx context.Context, opts VaultRunWithSecretOptions) error {
-	if s.UseDrive9Companion {
-		return s.drive9RunWithVaultSecret(ctx, opts)
-	}
-	client, ownerMode, err := s.vaultReadClient(opts.Profile, opts.VaultToken, authz.FSVaultSecretRead, "run with tdc fs-vault secret")
-	if err != nil {
-		return err
-	}
-	name, err := parseVaultPath(opts.SecretPath)
-	if err != nil {
-		return err
-	}
-	if len(opts.Command) == 0 {
-		return apperr.New("vault.missing_command", "usage", 2, "run-with-secret requires `--` followed by a command")
-	}
-	var fields map[string]string
-	if ownerMode {
-		fields, err = client.ReadVaultSecretAsOwner(ctx, name)
-	} else {
-		fields, err = client.ReadVaultSecret(ctx, name)
-	}
-	if err != nil {
-		return err
-	}
-	envMap, err := validateVaultEnvFields(fields)
-	if err != nil {
-		return err
-	}
-	command := exec.CommandContext(ctx, opts.Command[0], opts.Command[1:]...)
-	command.Stdin = opts.Stdin
-	command.Stdout = opts.Stdout
-	command.Stderr = opts.Stderr
-	baseEnv := opts.Env
-	if baseEnv == nil {
-		baseEnv = os.Environ()
-	}
-	command.Env = mergeEnv(scrubTDCCredEnv(baseEnv), envMap)
-	return command.Run()
+	return s.drive9RunWithVaultSecret(ctx, opts)
 }
 
 func (s Service) vaultManagementClient(profile *config.Profile, permission authz.Permission, action string) (*apifs.Client, error) {

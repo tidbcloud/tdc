@@ -708,6 +708,10 @@ commands route through the installer-managed Drive9 companion binary named
 preflight errors, output/query handling, and command naming; Drive9 owns the
 filesystem runtime semantics for data-plane file operations, FUSE/WebDAV mount,
 FUSE mount drain, layer behavior, pack/unpack, Git workflows, journal, and vault.
+Do not reintroduce a runtime fallback to tdc-native fs behavior. Public fs
+service methods must route through the Drive9 companion path unconditionally;
+do not add switches such as `UseDrive9Companion` or hidden environment flags
+that select old tdc HTTP/FUSE/WebDAV implementations.
 The companion runs with isolated state under `~/.tdc/drive9-home`; do not write
 or require user edits to `~/.drive9`.
 

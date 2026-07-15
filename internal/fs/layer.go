@@ -3,7 +3,6 @@ package fs
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -149,84 +148,19 @@ type LayerCommitResult struct {
 }
 
 func (s Service) CreateLayer(ctx context.Context, opts CreateLayerOptions) (LayerResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9CreateLayer(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "create tdc fs layer")
-	if err != nil {
-		return LayerResult{}, err
-	}
-	baseRoot, err := normalizeRemotePath(opts.BaseRootPath)
-	if err != nil {
-		return LayerResult{}, err
-	}
-	tags, err := parseLayerTags(opts.Tags)
-	if err != nil {
-		return LayerResult{}, err
-	}
-	layer, err := client.CreateFSLayer(ctx, apifs.FSLayerCreateRequest{
-		LayerID:        strings.TrimSpace(opts.LayerID),
-		BaseRootPath:   baseRoot,
-		Name:           strings.TrimSpace(opts.LayerName),
-		Tags:           tags,
-		DurabilityMode: strings.TrimSpace(opts.DurabilityMode),
-		ActorID:        strings.TrimSpace(opts.ActorID),
-	})
-	if err != nil {
-		return LayerResult{}, err
-	}
-	return LayerResult{FSLayer: layer}, nil
+	return s.drive9CreateLayer(ctx, opts)
 }
 
 func (s Service) ListLayers(ctx context.Context, opts ListLayersOptions) (LayerListResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9ListLayers(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "list tdc fs layers")
-	if err != nil {
-		return LayerListResult{}, err
-	}
-	layers, err := client.ListFSLayers(ctx)
-	if err != nil {
-		return LayerListResult{}, err
-	}
-	return LayerListResult{Layers: layers}, nil
+	return s.drive9ListLayers(ctx, opts)
 }
 
 func (s Service) DescribeLayer(ctx context.Context, opts DescribeLayerOptions) (LayerResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9DescribeLayer(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "describe tdc fs layer")
-	if err != nil {
-		return LayerResult{}, err
-	}
-	layer, err := client.GetFSLayer(ctx, strings.TrimSpace(opts.LayerID))
-	if err != nil {
-		return LayerResult{}, err
-	}
-	return LayerResult{FSLayer: layer}, nil
+	return s.drive9DescribeLayer(ctx, opts)
 }
 
 func (s Service) DiffLayer(ctx context.Context, opts LayerEntriesOptions) (LayerEntriesResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9DiffLayer(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileRead, "diff tdc fs layer")
-	if err != nil {
-		return LayerEntriesResult{}, err
-	}
-	layerID := strings.TrimSpace(opts.LayerID)
-	var entries []apifs.FSLayerEntry
-	if opts.MaxSeq > 0 {
-		entries, err = client.DiffFSLayerAtSeq(ctx, layerID, opts.MaxSeq)
-	} else {
-		entries, err = client.DiffFSLayer(ctx, layerID)
-	}
-	if err != nil {
-		return LayerEntriesResult{}, err
-	}
-	return LayerEntriesResult{LayerID: layerID, Entries: entries}, nil
+	return s.drive9DiffLayer(ctx, opts)
 }
 
 func (s Service) ReplayLayer(ctx context.Context, opts LayerEntriesOptions) (LayerEntriesResult, error) {
@@ -313,21 +247,7 @@ func (s Service) DescribeLayerEntry(ctx context.Context, opts DescribeLayerEntry
 }
 
 func (s Service) CreateLayerCheckpoint(ctx context.Context, opts CreateLayerCheckpointOptions) (LayerCheckpointResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9CreateLayerCheckpoint(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "checkpoint tdc fs layer")
-	if err != nil {
-		return LayerCheckpointResult{}, err
-	}
-	checkpoint, err := client.CheckpointFSLayer(ctx, strings.TrimSpace(opts.LayerID), apifs.FSLayerCheckpointRequest{
-		CheckpointID: strings.TrimSpace(opts.CheckpointID),
-		Label:        strings.TrimSpace(opts.Label),
-	})
-	if err != nil {
-		return LayerCheckpointResult{}, err
-	}
-	return LayerCheckpointResult{FSLayerCheckpoint: checkpoint}, nil
+	return s.drive9CreateLayerCheckpoint(ctx, opts)
 }
 
 func (s Service) DescribeLayerCheckpoint(ctx context.Context, opts DescribeLayerCheckpointOptions) (LayerCheckpointResult, error) {
@@ -356,36 +276,11 @@ func (s Service) ListLayerEvents(ctx context.Context, opts ListLayerEventsOption
 }
 
 func (s Service) RollbackLayer(ctx context.Context, opts LayerActionOptions) (LayerActionResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9RollbackLayer(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "rollback tdc fs layer")
-	if err != nil {
-		return LayerActionResult{}, err
-	}
-	layerID := strings.TrimSpace(opts.LayerID)
-	if err := client.RollbackFSLayer(ctx, layerID); err != nil {
-		return LayerActionResult{}, err
-	}
-	return LayerActionResult{Operation: "rollback_layer", LayerID: layerID, Status: "rolled_back"}, nil
+	return s.drive9RollbackLayer(ctx, opts)
 }
 
 func (s Service) CommitLayer(ctx context.Context, opts LayerActionOptions) (LayerCommitResult, error) {
-	if s.UseDrive9Companion {
-		return s.drive9CommitLayer(ctx, opts)
-	}
-	client, err := s.dataClient(opts.Profile, authz.FSFileWrite, "commit tdc fs layer")
-	if err != nil {
-		return LayerCommitResult{}, err
-	}
-	commit, err := client.CommitFSLayer(ctx, strings.TrimSpace(opts.LayerID))
-	if err != nil {
-		if errors.Is(err, apifs.ErrLayerCommitConflict) {
-			return LayerCommitResult{FSLayerCommit: commit}, err
-		}
-		return LayerCommitResult{}, err
-	}
-	return LayerCommitResult{FSLayerCommit: commit}, nil
+	return s.drive9CommitLayer(ctx, opts)
 }
 
 func (s Service) DryRunLayerMutation(ctx context.Context, commandPath, operation, method, requestPath string, body any, profile *config.Profile, permission authz.Permission) (dryrun.Result, error) {

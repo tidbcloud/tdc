@@ -98,9 +98,8 @@ type WriteFileOptions struct {
 }
 
 type ProvisionRequest struct {
-	PublicKey              string `json:"public_key,omitempty"`
-	PrivateKey             string `json:"private_key,omitempty"`
-	TiDBCloudSpendingLimit *int64 `json:"tidbcloud_spending_limit,omitempty"`
+	PublicKey  string `json:"public_key,omitempty"`
+	PrivateKey string `json:"private_key,omitempty"`
 }
 
 type ProvisionResponse struct {
@@ -507,7 +506,7 @@ func (c *Client) DeleteTenant(ctx context.Context, request DeprovisionRequest) (
 }
 
 func provisionBody(request ProvisionRequest) any {
-	if request.PublicKey == "" && request.PrivateKey == "" && request.TiDBCloudSpendingLimit == nil {
+	if request.PublicKey == "" && request.PrivateKey == "" {
 		return nil
 	}
 	return request
