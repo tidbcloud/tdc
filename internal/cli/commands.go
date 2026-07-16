@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -15,6 +14,7 @@ import (
 	"github.com/tidbcloud/tdc/internal/db/connectionstring"
 	"github.com/tidbcloud/tdc/internal/dryrun"
 	tdcfs "github.com/tidbcloud/tdc/internal/fs"
+	"github.com/tidbcloud/tdc/internal/fs/fscred"
 	"github.com/tidbcloud/tdc/internal/organization"
 	outputpkg "github.com/tidbcloud/tdc/internal/output"
 	"github.com/tidbcloud/tdc/internal/update"
@@ -814,9 +814,13 @@ func sqlCommonOptions(ctx commandContext) (sqlCommon, error) {
 
 func newFSCommand(info version.Info) *cobra.Command {
 	cmd := newParentCommand("fs", "Manage and access tdc fs resources.", info)
-	cmd.AddCommand(
+	commands := []*cobra.Command{
 		newFSCreateFileSystemCommand(info),
 		newFSDeleteFileSystemCommand(info),
+		newFSListFileSystemsCommand(info),
+		newFSDescribeFileSystemCommand(info),
+		newFSSetDefaultFileSystemCommand(info),
+		newFSUnsetDefaultFileSystemCommand(info),
 		newFSCheckFileSystemCommand(info),
 		newFSCopyFileCommand(info),
 		newFSReadFileCommand(info),
@@ -842,8 +846,25 @@ func newFSCommand(info version.Info) *cobra.Command {
 		newFSMountFileSystemCommand(info),
 		newFSDrainFileSystemCommand(info),
 		newFSUnmountFileSystemCommand(info),
-	)
+	}
+	addFSSelectorFlags(commands, "create-file-system", "list-file-systems", "unset-default-file-system")
+	cmd.AddCommand(commands...)
 	return cmd
+}
+
+func addFSSelectorFlags(commands []*cobra.Command, excluded ...string) {
+	skip := make(map[string]struct{}, len(excluded))
+	for _, name := range excluded {
+		skip[name] = struct{}{}
+	}
+	for _, command := range commands {
+		if _, ok := skip[command.Name()]; ok {
+			continue
+		}
+		if command.Flags().Lookup("file-system-name") == nil {
+			command.Flags().String("file-system-name", "", "tdc fs resource name; defaults to the profile default or only configured resource")
+		}
+	}
 }
 
 func newFSCreateFileSystemCommand(info version.Info) *cobra.Command {
@@ -853,21 +874,29 @@ func newFSCreateFileSystemCommand(info version.Info) *cobra.Command {
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVolumeCreate,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsBaseServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
+			if err := fscred.MigrateLegacy(profile.HomeDir, profile); err != nil {
+				return nil, err
+			}
 			name, err := ctx.StringFlag("file-system-name")
+			if err != nil {
+				return nil, err
+			}
+			setDefault, err := ctx.BoolFlag("set-default")
 			if err != nil {
 				return nil, err
 			}
 			return service.CreateFileSystem(ctx.cmd.Context(), tdcfs.CreateFileSystemOptions{
 				Profile:        profile,
 				FileSystemName: name,
+				SetDefault:     setDefault,
 			})
 		},
 		DryRun: func(ctx commandContext) (dryrun.Result, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsBaseServiceAndProfile(ctx)
 			if err != nil {
 				return dryrun.Result{}, err
 			}
@@ -875,15 +904,115 @@ func newFSCreateFileSystemCommand(info version.Info) *cobra.Command {
 			if err != nil {
 				return dryrun.Result{}, err
 			}
+			setDefault, err := ctx.BoolFlag("set-default")
+			if err != nil {
+				return dryrun.Result{}, err
+			}
 			return service.DryRunCreateFileSystem(ctx.cmd.Context(), ctx.CommandPath(), tdcfs.CreateFileSystemOptions{
 				Profile:        profile,
 				FileSystemName: name,
+				SetDefault:     setDefault,
 			})
+		},
+	}, info)
+	cmd.Flags().String("file-system-name", "", "tdc fs resource name")
+	cmd.Flags().Bool("set-default", false, "make the created file system the profile default")
+	markUsageRequired(cmd, "file-system-name")
+	return cmd
+}
+
+func newFSListFileSystemsCommand(info version.Info) *cobra.Command {
+	return newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "list-file-systems",
+		Short:      "List locally registered tdc fs resources.",
+		Mutation:   readOnlyCommand,
+		Permission: authz.FSVolumeRead,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsBaseServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return service.ListFileSystems(ctx.cmd.Context(), profile)
+		},
+	}, info)
+}
+
+func newFSDescribeFileSystemCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "describe-file-system",
+		Short:      "Describe a locally registered tdc fs resource.",
+		Mutation:   readOnlyCommand,
+		Permission: authz.FSVolumeRead,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return service.DescribeFileSystem(ctx.cmd.Context(), profile)
 		},
 	}, info)
 	cmd.Flags().String("file-system-name", "", "tdc fs resource name")
 	markUsageRequired(cmd, "file-system-name")
 	return cmd
+}
+
+func newFSSetDefaultFileSystemCommand(info version.Info) *cobra.Command {
+	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "set-default-file-system",
+		Short:      "Set the default tdc fs resource for a profile.",
+		Mutation:   mutatingCommand,
+		Permission: authz.FSVolumeRead,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return service.SetDefaultFileSystem(ctx.cmd.Context(), profile)
+		},
+		DryRun: func(ctx commandContext) (dryrun.Result, error) {
+			_, profile, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			return localFSDefaultDryRun(ctx.CommandPath(), profile, profile.FSResourceName), nil
+		},
+	}, info)
+	cmd.Flags().String("file-system-name", "", "tdc fs resource name")
+	markUsageRequired(cmd, "file-system-name")
+	return cmd
+}
+
+func newFSUnsetDefaultFileSystemCommand(info version.Info) *cobra.Command {
+	return newControlPlaneCommand(controlPlaneCommandSpec{
+		Use:        "unset-default-file-system",
+		Short:      "Clear the default tdc fs resource for a profile.",
+		Mutation:   mutatingCommand,
+		Permission: authz.FSVolumeRead,
+		Run: func(ctx commandContext) (any, error) {
+			service, profile, err := fsBaseServiceAndProfile(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return service.UnsetDefaultFileSystem(ctx.cmd.Context(), profile)
+		},
+		DryRun: func(ctx commandContext) (dryrun.Result, error) {
+			_, profile, err := fsBaseServiceAndProfile(ctx)
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			return localFSDefaultDryRun(ctx.CommandPath(), profile, ""), nil
+		},
+	}, info)
+}
+
+func localFSDefaultDryRun(commandPath string, profile *config.Profile, name string) dryrun.Result {
+	action := "unset_default_file_system"
+	description := "normal execution clears fs_default_file_system_name in the selected profile"
+	if name != "" {
+		action = "set_default_file_system"
+		description = fmt.Sprintf("normal execution sets fs_default_file_system_name to %q in the selected profile", name)
+	}
+	return dryrun.New(commandPath, action, dryrun.RequestSummary{Description: description}, dryrun.Check{Name: "local_resource_registry", Status: "passed", Message: fmt.Sprintf("profile %q", profile.Name)})
 }
 
 func newFSDeleteFileSystemCommand(info version.Info) *cobra.Command {
@@ -1690,7 +1819,7 @@ func newFSMountFileSystemCommand(info version.Info) *cobra.Command {
 			return service.DryRunMountFileSystem(ctx.cmd.Context(), ctx.CommandPath(), opts)
 		},
 	}, info)
-	cmd.Flags().String("file-system-name", "", "tdc fs resource name; defaults to fs_resource_name in the active profile")
+	cmd.Flags().String("file-system-name", "", "tdc fs resource name; defaults to the profile default or only configured resource")
 	cmd.Flags().String("mount-path", "", "local mount path")
 	cmd.Flags().String("remote-path", "/", "tdc fs remote root path to expose")
 	cmd.Flags().String("driver", "auto", "mount driver: auto, fuse, or webdav")
@@ -2192,7 +2321,7 @@ func fsMountOptions(ctx commandContext, profile *config.Profile) (tdcfs.MountFil
 	}, nil
 }
 
-func fsServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {
+func fsBaseServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {
 	profile, err := ctx.LoadProfile()
 	if err != nil {
 		return tdcfs.Service{}, nil, err
@@ -2201,56 +2330,45 @@ func fsServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, er
 	if err != nil {
 		return tdcfs.Service{}, nil, err
 	}
-	return tdcfs.Service{
+	service := tdcfs.Service{
 		Timeout:     30 * time.Second,
 		Debug:       debug,
 		DebugWriter: ctx.cmd.ErrOrStderr(),
 		Stdin:       ctx.cmd.InOrStdin(),
 		Stdout:      ctx.cmd.OutOrStdout(),
 		Stderr:      ctx.cmd.ErrOrStderr(),
-	}, profile, nil
-}
-
-func fsAdjunctServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {
-	service, profile, err := fsServiceAndProfile(ctx)
-	if err != nil {
-		return tdcfs.Service{}, nil, err
-	}
-	if err := requireConfiguredFSResource(profile); err != nil {
-		return tdcfs.Service{}, nil, err
+		HomeDir:     profile.HomeDir,
 	}
 	return service, profile, nil
 }
 
-func requireConfiguredFSResource(profile *config.Profile) error {
-	if profile == nil {
-		return apperr.New("fs.missing_profile", "config", 2, "active profile is required")
+func fsServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {
+	service, profile, err := fsBaseServiceAndProfile(ctx)
+	if err != nil {
+		return tdcfs.Service{}, nil, err
 	}
-	profileName := profile.Name
-	if profileName == "" {
-		profileName = config.DefaultProfile
+	selector := ""
+	selectorExplicit := false
+	if ctx.cmd.Flag("file-system-name") != nil {
+		selector, err = ctx.StringFlag("file-system-name")
+		if err != nil {
+			return tdcfs.Service{}, nil, err
+		}
+		selectorExplicit = ctx.FlagChanged("file-system-name")
 	}
-	hasResourceMetadata := strings.TrimSpace(profile.FSResourceName) != "" || strings.TrimSpace(profile.FSTenantID) != ""
-	hasCompleteResource := strings.TrimSpace(profile.FSResourceName) != "" &&
-		strings.TrimSpace(profile.FSTenantID) != "" &&
-		strings.TrimSpace(profile.FSAPIKey) != ""
-	if hasCompleteResource {
-		return nil
+	resolve := fscred.Resolve
+	if dryRun, _ := ctx.BoolFlag("dry-run"); dryRun {
+		resolve = fscred.ResolveDryRun
 	}
-	if hasResourceMetadata || strings.TrimSpace(profile.FSAPIKey) != "" {
-		return apperr.New(
-			"fs.resource_credentials_incomplete",
-			"authentication",
-			3,
-			fmt.Sprintf("tdc fs credentials are incomplete for profile %q; run `tdc fs check-file-system` or recreate the file system", profileName),
-		)
+	selected, _, err := resolve(profile.HomeDir, profile, selector, selectorExplicit, nil)
+	if err != nil {
+		return tdcfs.Service{}, nil, err
 	}
-	return apperr.New(
-		"fs.resource_not_configured",
-		"authentication",
-		3,
-		fmt.Sprintf("tdc fs is not configured for profile %q; run `tdc fs create-file-system --file-system-name <name>` first", profileName),
-	)
+	return service, selected, nil
+}
+
+func fsAdjunctServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {
+	return fsServiceAndProfile(ctx)
 }
 
 func fsDeleteFlags(ctx commandContext) (string, string, error) {
@@ -2267,7 +2385,7 @@ func fsDeleteFlags(ctx commandContext) (string, string, error) {
 
 func newFSVaultCommand(info version.Info) *cobra.Command {
 	cmd := newParentCommand("fs-vault", "Manage tdc fs vault secrets and delegated access.", info)
-	cmd.AddCommand(
+	commands := []*cobra.Command{
 		newVaultCreateSecretCommand(info),
 		newVaultReplaceSecretCommand(info),
 		newVaultReadSecretCommand(info),
@@ -2279,7 +2397,9 @@ func newFSVaultCommand(info version.Info) *cobra.Command {
 		newVaultRunWithSecretCommand(info),
 		newVaultMountCommand(info),
 		newVaultUnmountCommand(info),
-	)
+	}
+	addFSSelectorFlags(commands)
+	cmd.AddCommand(commands...)
 	return cmd
 }
 
@@ -2740,12 +2860,14 @@ func vaultToken(ctx commandContext) (string, error) {
 
 func newFSGitCommand(info version.Info) *cobra.Command {
 	cmd := newParentCommand("fs-git", "Manage tdc fs git workspaces.", info)
-	cmd.AddCommand(
+	commands := []*cobra.Command{
 		newGitCloneWorkspaceCommand(info),
 		newGitHydrateWorkspaceCommand(info),
 		newGitAddWorktreeCommand(info),
 		newGitRemoveWorktreeCommand(info),
-	)
+	}
+	addFSSelectorFlags(commands)
+	cmd.AddCommand(commands...)
 	return cmd
 }
 
@@ -2923,13 +3045,15 @@ func gitWorktreeAddOptions(ctx commandContext, profile *config.Profile) (tdcfs.G
 
 func newFSJournalCommand(info version.Info) *cobra.Command {
 	cmd := newParentCommand("fs-journal", "Manage tdc fs journals.", info)
-	cmd.AddCommand(
+	commands := []*cobra.Command{
 		newJournalCreateCommand(info),
 		newJournalAppendEntriesCommand(info),
 		newJournalReadEntriesCommand(info),
 		newJournalSearchEntriesCommand(info),
 		newJournalVerifyCommand(info),
-	)
+	}
+	addFSSelectorFlags(commands)
+	cmd.AddCommand(commands...)
 	return cmd
 }
 

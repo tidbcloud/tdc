@@ -142,9 +142,15 @@ func (s Service) drive9CreateFileSystem(ctx context.Context, opts CreateFileSyst
 	if err != nil {
 		return FileSystemResult{}, err
 	}
-	if existing := fscred.FromProfile(opts.Profile); existing.Name != "" && existing.TenantID != "" && existing.HasAPIKey {
-		if existing.Name != name {
-			return FileSystemResult{}, resourceMismatch(existing.Name, name)
+	homeDir, err := s.homeDir()
+	if err != nil {
+		return FileSystemResult{}, err
+	}
+	if existing, getErr := fscred.Get(homeDir, opts.Profile.Name, name); getErr == nil {
+		if opts.SetDefault {
+			if err := fscred.SetDefault(homeDir, opts.Profile, name); err != nil {
+				return FileSystemResult{}, err
+			}
 		}
 		return FileSystemResult{
 			FileSystemName:    existing.Name,
@@ -154,10 +160,13 @@ func (s Service) drive9CreateFileSystem(ctx context.Context, opts CreateFileSyst
 			Status:            "exists",
 			CredentialsStored: true,
 		}, nil
+	} else if apperr.CodeFor(getErr) != "fs.resource_not_found" {
+		return FileSystemResult{}, getErr
 	}
 	args := []string{"create", "--json", "--name", name, "--region-code", opts.Profile.PlacementRegionCode}
 	result, err := s.drive9Runner().Run(ctx, fswrap.RunOptions{
 		Profile:         opts.Profile,
+		ResourceName:    name,
 		Args:            args,
 		CaptureStdout:   true,
 		IncludeTDCKeys:  true,
@@ -185,11 +194,7 @@ func (s Service) drive9CreateFileSystem(ctx context.Context, opts CreateFileSyst
 	if regionCode == "" {
 		regionCode = opts.Profile.PlacementRegionCode
 	}
-	homeDir, err := s.homeDir()
-	if err != nil {
-		return FileSystemResult{}, err
-	}
-	if err := fscred.Store(homeDir, opts.Profile, name, out.TenantID, cloudProvider, regionCode, out.APIKey); err != nil {
+	if err := fscred.Store(homeDir, opts.Profile, name, out.TenantID, cloudProvider, regionCode, out.APIKey, opts.SetDefault); err != nil {
 		return FileSystemResult{}, err
 	}
 	return FileSystemResult{
@@ -223,8 +228,11 @@ func (s Service) drive9DeleteFileSystem(ctx context.Context, opts DeleteFileSyst
 	if err != nil {
 		return DeleteResult{}, err
 	}
-	if err := fscred.Clear(homeDir, opts.Profile); err != nil {
+	if err := fscred.Delete(homeDir, opts.Profile, name); err != nil {
 		return DeleteResult{}, err
+	}
+	if companionHome, companionErr := fscred.CompanionHome(homeDir, opts.Profile.Name, name); companionErr == nil {
+		_ = os.RemoveAll(companionHome)
 	}
 	return DeleteResult{
 		FileSystemName:      name,
@@ -282,8 +290,14 @@ func (s Service) drive9CopyFile(ctx context.Context, opts CopyFileOptions) (File
 			return FileOperationResult{}, apperr.Wrap("fs.create_local_parent", "runtime", 1, fmt.Sprintf("create parent directories for %q", opts.ToLocal), err)
 		}
 	}
-	if err := s.drive9RunIdempotentDelete(ctx, opts.Profile, args); err != nil {
-		return FileOperationResult{}, err
+	var runErr error
+	if opts.FromStdin || opts.ToStdout || opts.Append {
+		_, runErr = s.drive9Run(ctx, opts.Profile, args, false)
+	} else {
+		_, runErr = s.drive9RunTransientRetry(ctx, opts.Profile, args, false)
+	}
+	if runErr != nil {
+		return FileOperationResult{}, runErr
 	}
 	status := "copied"
 	if opts.Append {
@@ -1171,6 +1185,13 @@ func drive9CopyArgs(opts CopyFileOptions) ([]string, string, string, error) {
 		}
 		source, target = opts.FromLocal, targetPath
 		args = append(args, opts.FromLocal, drive9Remote(targetPath))
+	case opts.FromRemote != "" && opts.ToStdout:
+		sourcePath, err := normalizeRemotePath(opts.FromRemote)
+		if err != nil {
+			return nil, "", "", err
+		}
+		source, target = sourcePath, "-"
+		args = append(args, drive9Remote(sourcePath), "-")
 	case opts.FromRemote != "" && opts.ToLocal != "":
 		sourcePath, err := normalizeRemotePath(opts.FromRemote)
 		if err != nil {

@@ -72,12 +72,18 @@ type Resolver struct {
 }
 
 func NewResolver() Resolver {
-	return Resolver{
+	resolver := Resolver{
 		StarterBaseURL: DefaultStarterBaseURL,
 		IAMBaseURL:     DefaultIAMBaseURL,
 		FSManifestURL:  DefaultFSManifestURL,
 		FSMode:         DefaultFSMode,
 	}
+	if os.Getenv("TDC_ALLOW_TEST_ENDPOINTS") == "1" {
+		if manifestURL := strings.TrimSpace(os.Getenv("TDC_TEST_FS_MANIFEST_URL")); manifestURL != "" {
+			resolver.FSManifestURL = manifestURL
+		}
+	}
+	return resolver
 }
 
 func (r Resolver) IsZero() bool {

@@ -22,12 +22,13 @@ const (
 type ConfigDocument map[string]ConfigProfile
 
 type ConfigProfile struct {
-	CloudProvider   string `toml:"cloud_provider,omitempty"`
-	RegionCode      string `toml:"region_code,omitempty"`
-	FSResourceName  string `toml:"fs_resource_name,omitempty"`
-	FSTenantID      string `toml:"fs_tenant_id,omitempty"`
-	FSCloudProvider string `toml:"fs_cloud_provider,omitempty"`
-	FSRegionCode    string `toml:"fs_region_code,omitempty"`
+	CloudProvider           string `toml:"cloud_provider,omitempty"`
+	RegionCode              string `toml:"region_code,omitempty"`
+	FSDefaultFileSystemName string `toml:"fs_default_file_system_name,omitempty"`
+	FSResourceName          string `toml:"fs_resource_name,omitempty"`
+	FSTenantID              string `toml:"fs_tenant_id,omitempty"`
+	FSCloudProvider         string `toml:"fs_cloud_provider,omitempty"`
+	FSRegionCode            string `toml:"fs_region_code,omitempty"`
 }
 
 type LoggingConfig struct {
@@ -173,6 +174,9 @@ func WriteProfile(homeDir, profileName string, cfg ConfigProfile, creds Credenti
 	if cfg.FSRegionCode != "" {
 		existingConfig.FSRegionCode = cfg.FSRegionCode
 	}
+	if cfg.FSDefaultFileSystemName != "" {
+		existingConfig.FSDefaultFileSystemName = cfg.FSDefaultFileSystemName
+	}
 	configDoc[profileName] = existingConfig
 
 	credentialsDoc, err := ReadCredentials(homeDir)
@@ -198,6 +202,23 @@ func WriteProfile(homeDir, profileName string, cfg ConfigProfile, creds Credenti
 		return err
 	}
 	return nil
+}
+
+func SetFSDefaultFileSystem(homeDir, profileName, fileSystemName string) error {
+	if profileName == "" {
+		profileName = "default"
+	}
+	if err := ensureDir(homeDir); err != nil {
+		return err
+	}
+	configDoc, err := ReadConfig(homeDir)
+	if err != nil {
+		return err
+	}
+	profile := configDoc[profileName]
+	profile.FSDefaultFileSystemName = strings.TrimSpace(fileSystemName)
+	configDoc[profileName] = profile
+	return writeConfigTOML(homeDir, configDoc)
 }
 
 func ClearFSResource(homeDir, profileName string) error {

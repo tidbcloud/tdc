@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -321,11 +322,55 @@ func TestFSAdjunctCommandsRequireConfiguredFSResource(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected missing tdc fs resource to fail")
 	}
-	if got := apperr.ExitCodeFor(err); got != 3 {
-		t.Fatalf("expected auth exit code 3, got %d", got)
+	if got := apperr.ExitCodeFor(err); got != 2 {
+		t.Fatalf("expected config exit code 2, got %d", got)
 	}
 	if got := apperr.MessageFor(err); !strings.Contains(got, "tdc fs is not configured") || !strings.Contains(got, "tdc fs create-file-system") {
 		t.Fatalf("unexpected message %q", got)
+	}
+}
+
+func TestFSOperationalCommandsExposeResourceSelector(t *testing.T) {
+	root := NewRootCommand(testVersion())
+	excluded := map[string]bool{
+		"tdc fs list-file-systems":         true,
+		"tdc fs unset-default-file-system": true,
+	}
+	visitCommands(root, func(cmd *cobra.Command) {
+		if cmd.Name() == "help" || cmd.HasSubCommands() || excluded[cmd.CommandPath()] {
+			return
+		}
+		path := cmd.CommandPath()
+		if !strings.HasPrefix(path, "tdc fs ") && !strings.HasPrefix(path, "tdc fs-git ") && !strings.HasPrefix(path, "tdc fs-journal ") && !strings.HasPrefix(path, "tdc fs-vault ") {
+			return
+		}
+		if cmd.Flags().Lookup("file-system-name") == nil {
+			t.Fatalf("%s does not expose --file-system-name", path)
+		}
+	})
+}
+
+func TestFSRegistryDryRunDoesNotMigrateLegacyState(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("TDC_REGION_CODE", "")
+	t.Setenv("TDC_PUBLIC_KEY", "")
+	t.Setenv("TDC_PRIVATE_KEY", "")
+	if err := store.WriteProfile(home, "default", store.ConfigProfile{
+		RegionCode:      "aws-us-east-1",
+		FSResourceName:  "workspace",
+		FSTenantID:      "tenant-1",
+		FSCloudProvider: "aws",
+		FSRegionCode:    "aws-us-east-1",
+	}, store.CredentialsProfile{TDCPublicKey: "public", TDCPrivateKey: "private", FSAPIKey: "key-1"}); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := executeForTest("fs", "set-default-file-system", "--file-system-name", "workspace", "--dry-run")
+	if err != nil {
+		t.Fatalf("dry-run failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, store.TDCDirName, "fs_resources")); !os.IsNotExist(err) {
+		t.Fatalf("dry-run migrated legacy state: %v", err)
 	}
 }
 

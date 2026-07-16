@@ -92,13 +92,14 @@ func (s Service) resolver() endpoints.Resolver {
 func (r ListProjectsResult) Human() string {
 	var out strings.Builder
 	writer := tabwriter.NewWriter(&out, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(writer, "ID\tNAME\tORG_ID\tCLUSTERS\tUSERS\tCREATED\tAWS_CMEK")
+	_, _ = fmt.Fprintln(writer, "ID\tNAME\tTYPE\tORG_ID\tCLUSTERS\tUSERS\tCREATED\tAWS_CMEK")
 	for _, project := range r.Projects {
 		_, _ = fmt.Fprintf(
 			writer,
-			"%s\t%s\t%s\t%d\t%d\t%s\t%t\n",
+			"%s\t%s\t%s\t%s\t%d\t%d\t%s\t%t\n",
 			project.ID,
 			project.Name,
+			project.Type,
 			project.OrgID,
 			project.ClusterCount,
 			project.UserCount,
@@ -107,7 +108,7 @@ func (r ListProjectsResult) Human() string {
 		)
 	}
 	if r.NextPageToken != "" {
-		_, _ = fmt.Fprintf(writer, "next_page_token\t%s\t\t\t\t\t\n", r.NextPageToken)
+		_, _ = fmt.Fprintf(writer, "next_page_token\t%s\t\t\t\t\t\t\n", r.NextPageToken)
 	}
 	_ = writer.Flush()
 	return strings.TrimRight(out.String(), "\n")

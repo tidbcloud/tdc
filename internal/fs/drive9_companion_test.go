@@ -17,6 +17,7 @@ import (
 	"github.com/tidbcloud/tdc/internal/config"
 	"github.com/tidbcloud/tdc/internal/config/store"
 	"github.com/tidbcloud/tdc/internal/dryrun"
+	"github.com/tidbcloud/tdc/internal/fs/fscred"
 )
 
 type fakeDrive9Call struct {
@@ -24,7 +25,7 @@ type fakeDrive9Call struct {
 	Env  map[string]string `json:"env"`
 }
 
-func TestDrive9CreateFileSystemStoresFlatCredentialsAndUsesCanonicalRegion(t *testing.T) {
+func TestDrive9CreateFileSystemStoresRegistryCredentialsAndUsesCanonicalRegion(t *testing.T) {
 	home := t.TempDir()
 	companion, recordPath := buildFakeDrive9(t)
 	t.Setenv("TDC_FAKE_DRIVE9_RECORD", recordPath)
@@ -46,15 +47,22 @@ func TestDrive9CreateFileSystemStoresFlatCredentialsAndUsesCanonicalRegion(t *te
 	if err != nil {
 		t.Fatalf("ReadConfig failed: %v", err)
 	}
-	if got := configDoc["stage"]; got.FSResourceName != "workspace" || got.FSTenantID != "tenant-1" || got.FSCloudProvider != "aws" || got.FSRegionCode != "aws-us-east-1" {
+	if got := configDoc["stage"]; got.FSDefaultFileSystemName != "workspace" || got.FSResourceName != "" || got.FSTenantID != "" || got.FSRegionCode != "" {
 		t.Fatalf("unexpected fs config: %#v", got)
 	}
 	credentialsDoc, err := store.ReadCredentials(home)
 	if err != nil {
 		t.Fatalf("ReadCredentials failed: %v", err)
 	}
-	if got := credentialsDoc["stage"]; got.FSAPIKey != "fs-secret" {
-		t.Fatalf("fs api key not stored flat under profile: %#v", got)
+	if got := credentialsDoc["stage"]; got.FSAPIKey != "" {
+		t.Fatalf("fs api key must not be stored flat under profile: %#v", got)
+	}
+	resource, err := fscred.Get(home, "stage", "workspace")
+	if err != nil {
+		t.Fatalf("Get registry resource failed: %v", err)
+	}
+	if resource.TenantID != "tenant-1" || resource.RegionCode != "aws-us-east-1" || resource.APIKey != "fs-secret" {
+		t.Fatalf("unexpected registry resource: %#v", resource)
 	}
 
 	createCall := requireFakeDrive9Call(t, recordPath, "create")
@@ -70,6 +78,13 @@ func TestDrive9CreateFileSystemStoresFlatCredentialsAndUsesCanonicalRegion(t *te
 	}
 	if _, ok := createCall.Env["DRIVE9_API_KEY"]; ok {
 		t.Fatalf("create should not pass an fs api key, env=%#v", createCall.Env)
+	}
+	wantHome, err := fscred.CompanionHome(home, "stage", "workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if createCall.Env["HOME"] != wantHome {
+		t.Fatalf("create HOME = %q, want %q", createCall.Env["HOME"], wantHome)
 	}
 }
 
@@ -98,7 +113,7 @@ func TestDrive9CreateFileSystemFromEnvironmentProfileStoresDefaultProfile(t *tes
 	if err != nil {
 		t.Fatalf("ReadConfig failed: %v", err)
 	}
-	if got := configDoc[config.DefaultProfile]; got.FSResourceName != "workspace" || got.FSTenantID != "tenant-1" {
+	if got := configDoc[config.DefaultProfile]; got.FSDefaultFileSystemName != "workspace" || got.FSResourceName != "" || got.FSTenantID != "" {
 		t.Fatalf("expected fs config under default profile, got %#v", got)
 	}
 	if _, ok := configDoc["env"]; ok {
@@ -108,32 +123,80 @@ func TestDrive9CreateFileSystemFromEnvironmentProfileStoresDefaultProfile(t *tes
 	if err != nil {
 		t.Fatalf("ReadCredentials failed: %v", err)
 	}
-	if got := credentialsDoc[config.DefaultProfile]; got.FSAPIKey != "fs-secret" {
-		t.Fatalf("expected fs api key under default profile, got %#v", got)
+	if got := credentialsDoc[config.DefaultProfile]; got.FSAPIKey != "" {
+		t.Fatalf("did not expect flat fs api key under default profile, got %#v", got)
 	}
 	if _, ok := credentialsDoc["env"]; ok {
 		t.Fatalf("did not expect generated [env] credentials section: %#v", credentialsDoc["env"])
 	}
 }
 
-func TestDrive9DeleteFileSystemClearsFlatCredentials(t *testing.T) {
+func TestDrive9CreateSecondFileSystemUsesIndependentCompanionHome(t *testing.T) {
+	home := t.TempDir()
+	companion, recordPath := buildFakeDrive9(t)
+	t.Setenv("TDC_FAKE_DRIVE9_RECORD", recordPath)
+	profile := testProfile()
+	service := testCompanionService(home, companion)
+	if _, err := service.CreateFileSystem(context.Background(), CreateFileSystemOptions{Profile: profile, FileSystemName: "workspace"}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if _, err := service.CreateFileSystem(context.Background(), CreateFileSystemOptions{Profile: profile, FileSystemName: "scratch", SetDefault: true}); err != nil {
+		t.Fatalf("create scratch: %v", err)
+	}
+	configDoc, err := store.ReadConfig(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := configDoc[profile.Name].FSDefaultFileSystemName; got != "scratch" {
+		t.Fatalf("default = %q, want scratch", got)
+	}
+	repeated, err := service.CreateFileSystem(context.Background(), CreateFileSystemOptions{Profile: profile, FileSystemName: "scratch"})
+	if err != nil {
+		t.Fatalf("repeat create scratch: %v", err)
+	}
+	if repeated.Status != "exists" || !repeated.CredentialsStored {
+		t.Fatalf("unexpected repeated create result: %#v", repeated)
+	}
+	resources, err := fscred.List(home, profile.Name, "scratch")
+	if err != nil || len(resources) != 2 {
+		t.Fatalf("resources=%#v err=%v", resources, err)
+	}
+	calls := readFakeDrive9Calls(t, recordPath)
+	homes := map[string]bool{}
+	for _, call := range calls {
+		if len(call.Args) > 0 && call.Args[0] == "create" {
+			homes[call.Env["HOME"]] = true
+		}
+	}
+	if len(homes) != 2 {
+		t.Fatalf("expected two resource-scoped companion homes, got %#v", homes)
+	}
+	createCalls := 0
+	for _, call := range calls {
+		if len(call.Args) > 0 && call.Args[0] == "create" {
+			createCalls++
+		}
+	}
+	if createCalls != 2 {
+		t.Fatalf("idempotent create invoked Drive9 %d times, want 2 total calls", createCalls)
+	}
+}
+
+func TestDrive9DeleteFileSystemDeletesOnlySelectedRegistryResource(t *testing.T) {
 	home := t.TempDir()
 	companion, recordPath := buildFakeDrive9(t)
 	t.Setenv("TDC_FAKE_DRIVE9_RECORD", recordPath)
 	profile := dataProfile()
-	if err := store.WriteProfile(home, profile.Name, store.ConfigProfile{
-		RegionCode:      profile.PlacementRegionCode,
-		FSResourceName:  profile.FSResourceName,
-		FSTenantID:      profile.FSTenantID,
-		FSCloudProvider: profile.FSCloudProvider,
-		FSRegionCode:    profile.FSPlacementRegionCode,
-	}, store.CredentialsProfile{
-		TDCPublicKey:  profile.TDCPublicKey,
-		TDCPrivateKey: profile.TDCPrivateKey,
-		FSAPIKey:      profile.FSAPIKey,
-	}); err != nil {
+	if err := store.WriteProfile(home, profile.Name, store.ConfigProfile{RegionCode: profile.PlacementRegionCode}, store.CredentialsProfile{TDCPublicKey: profile.TDCPublicKey, TDCPrivateKey: profile.TDCPrivateKey}); err != nil {
 		t.Fatal(err)
 	}
+	if err := fscred.Store(home, profile, "workspace", "tenant-1", "aws", "aws-us-east-1", "fs-secret", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := fscred.Store(home, profile, "scratch", "tenant-2", "aws", "aws-us-east-1", "fs-secret-2", false); err != nil {
+		t.Fatal(err)
+	}
+	profile.FSDefaultFileSystemName = "workspace"
 
 	result, err := testCompanionService(home, companion).DeleteFileSystem(context.Background(), DeleteFileSystemOptions{
 		Profile:               profile,
@@ -168,26 +231,39 @@ func TestDrive9DeleteFileSystemClearsFlatCredentials(t *testing.T) {
 	if got := credentialsDoc["stage"]; got.FSAPIKey != "" || got.TDCPublicKey != "public" {
 		t.Fatalf("unexpected credentials after delete: %#v", got)
 	}
+	if _, err := fscred.Get(home, "stage", "workspace"); apperr.CodeFor(err) != "fs.resource_not_found" {
+		t.Fatalf("deleted resource still exists: %v", err)
+	}
+	if resource, err := fscred.Get(home, "stage", "scratch"); err != nil || resource.APIKey != "fs-secret-2" {
+		t.Fatalf("unrelated resource was changed: resource=%#v err=%v", resource, err)
+	}
 }
 
-func TestDrive9CheckFileSystemDoesNotStatRemoteWithoutFSAPIKey(t *testing.T) {
+func TestDrive9CheckFileSystemUsesSelectedResource(t *testing.T) {
 	companion, recordPath := buildFakeDrive9(t)
 	t.Setenv("TDC_FAKE_DRIVE9_RECORD", recordPath)
 
-	result, err := testCompanionService(t.TempDir(), companion).CheckFileSystem(context.Background(), CheckFileSystemOptions{Profile: testProfile()})
+	result, err := testCompanionService(t.TempDir(), companion).CheckFileSystem(context.Background(), CheckFileSystemOptions{Profile: dataProfile()})
 	if err != nil {
 		t.Fatalf("CheckFileSystem failed: %v", err)
 	}
-	if result.Status != "warning" {
-		t.Fatalf("expected warning check, got %#v", result)
+	if result.Status != "passed" {
+		t.Fatalf("expected passed check, got %#v", result)
 	}
-	if !hasCheck(result.Checks, "remote_status", "warning") {
-		t.Fatalf("expected warning remote status check: %#v", result.Checks)
+	if !hasCheck(result.Checks, "remote_status", "passed") {
+		t.Fatalf("expected passed remote status check: %#v", result.Checks)
 	}
+	found := false
 	for _, call := range readFakeDrive9Calls(t, recordPath) {
 		if len(call.Args) >= 2 && call.Args[0] == "fs" && call.Args[1] == "stat" {
-			t.Fatalf("remote stat should not run without fs_api_key: %#v", call.Args)
+			found = true
+			if call.Env["DRIVE9_API_KEY"] != "fs-secret" {
+				t.Fatalf("remote stat used wrong api key: %#v", call.Env)
+			}
 		}
+	}
+	if !found {
+		t.Fatal("expected remote stat call")
 	}
 }
 
@@ -238,6 +314,57 @@ func TestDrive9DataPlaneCommandsTranslateToCompanion(t *testing.T) {
 	}
 }
 
+func TestDrive9CopyDoesNotTreatNotFoundAfterTransientFailureAsSuccess(t *testing.T) {
+	companion, _ := buildFakeDrive9(t)
+	sequencePath := filepath.Join(t.TempDir(), "copy-attempted")
+	t.Setenv("TDC_FAKE_DRIVE9_CP_FAILURE_SEQUENCE", sequencePath)
+
+	_, err := testCompanionService(t.TempDir(), companion).CopyFile(context.Background(), CopyFileOptions{
+		Profile:   dataProfile(),
+		FromLocal: filepath.Join(t.TempDir(), "input.txt"),
+		ToRemote:  "/workspace/input.txt",
+		Overwrite: true,
+	})
+	if err == nil {
+		t.Fatal("copy should fail when a transient error is followed by not found")
+	}
+	if !isDrive9NotFound(err) {
+		t.Fatalf("copy error = %v, want final not-found error", err)
+	}
+}
+
+func TestDrive9CopyDoesNotRetryNonReplayableStreamsOrAppend(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		opts CopyFileOptions
+	}{
+		{name: "stdin", opts: CopyFileOptions{FromStdin: true, ToRemote: "/workspace/stdin.txt"}},
+		{name: "stdout", opts: CopyFileOptions{FromRemote: "/workspace/stdout.txt", ToStdout: true}},
+		{name: "append", opts: CopyFileOptions{FromLocal: filepath.Join(t.TempDir(), "append.txt"), ToRemote: "/workspace/append.txt", Append: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			companion, recordPath := buildFakeDrive9(t)
+			t.Setenv("TDC_FAKE_DRIVE9_RECORD", recordPath)
+			t.Setenv("TDC_FAKE_DRIVE9_CP_FAILURE_SEQUENCE", filepath.Join(t.TempDir(), "copy-attempted"))
+			tc.opts.Profile = dataProfile()
+
+			if _, err := testCompanionService(t.TempDir(), companion).CopyFile(context.Background(), tc.opts); err == nil {
+				t.Fatal("copy should return the companion error")
+			}
+			calls := readFakeDrive9Calls(t, recordPath)
+			cpCalls := 0
+			for _, call := range calls {
+				if hasArgPrefix(call.Args, []string{"fs", "cp"}) {
+					cpCalls++
+				}
+			}
+			if cpCalls != 1 {
+				t.Fatalf("fs cp calls = %d, want exactly one for non-replayable operation", cpCalls)
+			}
+		})
+	}
+}
+
 func TestDrive9MissingCompanionIsActionable(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	_, err := Service{CompanionPath: filepath.Join(t.TempDir(), "missing-tdc-drive9")}.ReadFile(context.Background(), ReadFileOptions{
@@ -249,6 +376,32 @@ func TestDrive9MissingCompanionIsActionable(t *testing.T) {
 	}
 	if message := apperr.MessageFor(err); !strings.Contains(message, "tdc fs requires the Drive9 companion binary") {
 		t.Fatalf("unexpected error: %q", message)
+	}
+}
+
+func TestDrive9EndpointFailurePreventsCompanionExecution(t *testing.T) {
+	companion, recordPath := buildFakeDrive9(t)
+	t.Setenv("TDC_FAKE_DRIVE9_RECORD", recordPath)
+	resolver := endpoints.Resolver{FSManifest: &endpoints.FSRegionManifest{Regions: []endpoints.FSRegionManifestEntry{
+		{
+			RegionCode:    "aws-us-west-2",
+			Mode:          endpoints.DefaultFSMode,
+			ServerURL:     "https://fs-west.test",
+			CloudProvider: "aws",
+			TiDBRegion:    "us-west-2",
+		},
+	}}}
+	_, err := (Service{HomeDir: t.TempDir(), CompanionPath: companion, Resolver: resolver}).ReadFile(context.Background(), ReadFileOptions{
+		Profile: dataProfile(),
+		Path:    "/workspace/README.md",
+	})
+	if apperr.CodeFor(err) != "api.fs_endpoint_unsupported" {
+		t.Fatalf("expected unsupported endpoint error, got %v", err)
+	}
+	if data, readErr := os.ReadFile(recordPath); readErr == nil && len(data) != 0 {
+		t.Fatalf("endpoint failure invoked Drive9: %s", data)
+	} else if readErr != nil && !os.IsNotExist(readErr) {
+		t.Fatal(readErr)
 	}
 }
 
@@ -280,6 +433,39 @@ func TestDryRunCreateFileSystemUsesRedactedProvisionShape(t *testing.T) {
 	}
 	if !hasDryRunCheck(result.Checks, "endpoint_selection", "passed") {
 		t.Fatalf("expected endpoint dry-run check: %#v", result.Checks)
+	}
+}
+
+func TestDryRunDeleteFileSystemReportsRegistryFiles(t *testing.T) {
+	home := t.TempDir()
+	profile := dataProfile()
+	if err := fscred.Store(home, profile, "workspace", "tenant-1", "aws", "aws-us-east-1", "fs-secret", true); err != nil {
+		t.Fatal(err)
+	}
+	profile.FSDefaultFileSystemName = "workspace"
+	result, err := (Service{HomeDir: home, Resolver: supportedFSManifestResolver("https://fs.test")}).DryRunDeleteFileSystem(context.Background(), "tdc fs delete-file-system", DeleteFileSystemOptions{
+		Profile:               profile,
+		FileSystemName:        "workspace",
+		ConfirmFileSystemName: "workspace",
+	})
+	if err != nil {
+		t.Fatalf("DryRunDeleteFileSystem failed: %v", err)
+	}
+	paths, err := fscred.Paths(home, profile.Name, "workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, check := range result.Checks {
+		if check.Name == "local_resource_registry" {
+			found = strings.Contains(check.Message, paths.Config) && strings.Contains(check.Message, paths.Credentials)
+		}
+	}
+	if !found {
+		t.Fatalf("dry-run did not report registry files: %#v", result.Checks)
+	}
+	if _, err := fscred.Get(home, profile.Name, "workspace"); err != nil {
+		t.Fatalf("dry-run removed registry resource: %v", err)
 	}
 }
 
@@ -342,6 +528,15 @@ func main() {
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]string{"status": "deleted"})
 	case len(args) >= 2 && args[0] == "fs" && args[1] == "cat":
 		fmt.Fprint(os.Stdout, "file bytes")
+	case len(args) >= 2 && args[0] == "fs" && args[1] == "cp" && os.Getenv("TDC_FAKE_DRIVE9_CP_FAILURE_SEQUENCE") != "":
+		sequencePath := os.Getenv("TDC_FAKE_DRIVE9_CP_FAILURE_SEQUENCE")
+		if _, err := os.Stat(sequencePath); os.IsNotExist(err) {
+			_ = os.WriteFile(sequencePath, []byte("attempted"), 0600)
+			fmt.Fprintln(os.Stderr, "fs cp: unexpected EOF")
+			os.Exit(1)
+		}
+		fmt.Fprintln(os.Stderr, "fs cp: remote resource not found")
+		os.Exit(1)
 	case len(args) >= 2 && args[0] == "fs" && args[1] == "stat":
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"path": ":/", "size": 12, "isdir": false, "revision": 3})
 	default:

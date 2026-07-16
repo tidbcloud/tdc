@@ -1,5 +1,7 @@
 # Drive9 Companion Wrapper For tdc fs
 
+The original shared companion HOME and flat `fs_*` storage details in this spec are superseded by `docs/spec/done/0016-profile-fs-resource-registry.md`; the Drive9 wrapper ownership boundary remains current.
+
 ## Goal
 
 Replace the native tdc implementation of `tdc fs`, `tdc fs-git`, `tdc fs-journal`, and `tdc fs-vault` with a wrapper around a pinned compatible Drive9 companion binary. tdc remains the TiDB Cloud Starter CLI and keeps the user-facing `tdc` command surface, while Drive9 owns filesystem data-plane behavior, FUSE/WebDAV mount runtime correctness, layers, journal, vault, git workspace, pack, and unpack semantics. There must be no hidden runtime fallback to the old tdc-native fs client.

@@ -25,6 +25,7 @@ func TestListProjects(t *testing.T) {
 				{
 					"id": "project-1",
 					"name": "Project 1",
+					"type": "tidbx_virtual",
 					"org_id": "org-1",
 					"cluster_count": 2,
 					"user_count": 3,
@@ -51,10 +52,13 @@ func TestListProjects(t *testing.T) {
 	if len(result.Projects) != 1 || result.Projects[0].ID != "project-1" {
 		t.Fatalf("unexpected projects: %#v", result.Projects)
 	}
+	if result.Projects[0].Type != "tidbx_virtual" {
+		t.Fatalf("project type = %q, want tidbx_virtual", result.Projects[0].Type)
+	}
 	if result.NextPageToken != "token-2" {
 		t.Fatalf("unexpected next page token %q", result.NextPageToken)
 	}
-	if human := result.Human(); !strings.Contains(human, "Project 1") || !strings.Contains(human, "next_page_token") {
+	if human := result.Human(); !strings.Contains(human, "TYPE") || !strings.Contains(human, "tidbx_virtual") || !strings.Contains(human, "next_page_token") {
 		t.Fatalf("unexpected text output:\n%s", human)
 	}
 }
