@@ -28,6 +28,7 @@ const defaultLiveProfile = "live-e2e"
 var (
 	liveFSResourceMu          sync.Mutex
 	liveFSResourceAutoCreated bool
+	liveProfileConfigureMu    sync.Mutex
 )
 
 func TestMain(m *testing.M) {
@@ -1176,7 +1177,7 @@ func TestLiveDBClusterLifecycle(t *testing.T) {
 	bin := tdcBinary(t)
 	profileName := liveProfileName(t)
 	releaseAutoCreatedLiveFSResource(t, bin, profileName)
-	projectID := liveProjectID(t, bin, profileName)
+	projectID := liveProfile(t).ProjectID
 
 	suffix := time.Now().UTC().Format("20060102150405")
 	clusterName := "tdc-e2e-" + suffix
@@ -1200,7 +1201,6 @@ func TestLiveDBClusterLifecycle(t *testing.T) {
 		"db", "create-db-cluster",
 		"--db-cluster-name", clusterName,
 		"--db-cluster-type", "starter",
-		"--project-id", projectID,
 	)
 	create.wantExitCode(0)
 	created := decodeLiveCluster(t, create)
@@ -1215,6 +1215,9 @@ func TestLiveDBClusterLifecycle(t *testing.T) {
 	}, 12*time.Minute, "become ACTIVE after create")
 	if described.ClusterPlan != "" && described.ClusterPlan != "STARTER" {
 		t.Fatalf("expected STARTER cluster, got %#v", described)
+	}
+	if described.Labels["tidb.cloud/project"] != projectID {
+		t.Fatalf("cluster project label = %q, want configured default %q: %#v", described.Labels["tidb.cloud/project"], projectID, described)
 	}
 
 	prepare := runTDC(t, bin, "--profile", profileName, "db", "create-db-sql-users", "--db-cluster-id", clusterID)
@@ -1361,29 +1364,12 @@ func requireLive(t *testing.T) {
 	}
 }
 
-func liveProjectID(t *testing.T, bin, profileName string) string {
-	t.Helper()
-	projects := runTDC(t, bin, "--profile", profileName, "organization", "list-projects", "--page-size", "1")
-	projects.wantExitCode(0)
-	var projectList struct {
-		Projects []struct {
-			ID string `json:"id"`
-		} `json:"projects"`
-	}
-	if err := json.Unmarshal([]byte(projects.stdout), &projectList); err != nil {
-		t.Fatalf("decode live projects: %v\n%s", err, projects.stdout)
-	}
-	if len(projectList.Projects) == 0 || projectList.Projects[0].ID == "" {
-		t.Fatalf("live profile %q cannot see a project:\n%s", profileName, projects.stdout)
-	}
-	return projectList.Projects[0].ID
-}
-
 type liveCluster struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"display_name"`
-	State       string `json:"state"`
-	ClusterPlan string `json:"cluster_plan"`
+	ID          string            `json:"id"`
+	DisplayName string            `json:"display_name"`
+	State       string            `json:"state"`
+	ClusterPlan string            `json:"cluster_plan"`
+	Labels      map[string]string `json:"labels"`
 }
 
 type liveBranch struct {
@@ -1856,13 +1842,36 @@ func liveFileSystemNameFromEnv() string {
 
 func liveProfile(t *testing.T) *config.Profile {
 	t.Helper()
+	liveProfileConfigureMu.Lock()
+	defer liveProfileConfigureMu.Unlock()
 	profileName := liveProfileName(t)
-	profile, err := auth.LoadProfile(context.Background(), config.LoadOptions{
-		Profile:         profileName,
-		ProfileExplicit: true,
-	})
+	load := func() (*config.Profile, error) {
+		return auth.LoadProfile(context.Background(), config.LoadOptions{
+			Profile:         profileName,
+			ProfileExplicit: true,
+		})
+	}
+	profile, err := load()
 	if err != nil {
 		t.Fatalf("load live e2e profile %q: %v\nconfigure it with: bin/tdc configure --profile %s", profileName, err, profileName)
+	}
+	if profile.ProjectID != "" {
+		return profile
+	}
+
+	configured := runTDCWithInput(t, tdcBinary(t), "", []string{
+		"TDC_REGION_CODE=" + profile.PlacementRegionCode,
+		"TDC_PUBLIC_KEY=" + profile.TDCPublicKey,
+		"TDC_PRIVATE_KEY=" + profile.TDCPrivateKey,
+	}, "configure", "--profile", profileName, "--non-interactive")
+	configured.wantExitCode(0)
+	configured.wantStdoutContains(`"project_type": "tidbx_virtual"`)
+	profile, err = load()
+	if err != nil {
+		t.Fatalf("reload live e2e profile %q after configure: %v", profileName, err)
+	}
+	if profile.ProjectID == "" {
+		t.Fatalf("live e2e profile %q has no project_id after configure", profileName)
 	}
 	return profile
 }

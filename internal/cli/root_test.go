@@ -124,6 +124,7 @@ func TestCommandOperationLogRecordsSafeSummary(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("TDC_LOGGING", "on")
+	configureIAMForTest(t)
 
 	_, _, err := executeForTest(
 		"configure",
@@ -145,8 +146,14 @@ func TestCommandOperationLogRecordsSafeSummary(t *testing.T) {
 		t.Fatalf("operation log leaked secret values:\n%s", string(data))
 	}
 	var event oplog.Event
-	if err := json.Unmarshal(bytes.TrimSpace(data), &event); err != nil {
-		t.Fatalf("decode operation log: %v\n%s", err, string(data))
+	for _, line := range bytes.Split(bytes.TrimSpace(data), []byte("\n")) {
+		var candidate oplog.Event
+		if err := json.Unmarshal(line, &candidate); err != nil {
+			t.Fatalf("decode operation log: %v\n%s", err, string(data))
+		}
+		if candidate.Type == "command" {
+			event = candidate
+		}
 	}
 	if event.Type != "command" || event.Command != "tdc configure" || event.Profile != "ci" || event.RegionCode != "aws-us-east-1" {
 		t.Fatalf("unexpected command event: %#v", event)
@@ -211,6 +218,14 @@ func TestHelpUsageShowsRequiredFirstAndOptionalBracketed(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "    [--profile <string>]") {
 		t.Fatalf("expected inherited global flags to be bracketed in usage, got:\n%s", stdout)
+	}
+
+	stdout, _, err = executeForTest("db", "create-db-cluster", "help")
+	if err != nil {
+		t.Fatalf("expected db create help to succeed, got %v", err)
+	}
+	if !strings.Contains(stdout, "    [--project-id <string>]") {
+		t.Fatalf("expected --project-id to be optional, got:\n%s", stdout)
 	}
 }
 
@@ -569,6 +584,67 @@ func TestRegionOverrideAllowsEnvironmentCredentialsWithoutEnvRegion(t *testing.T
 	}
 }
 
+func TestCreateClusterUsesConfiguredDefaultProject(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("TDC_REGION_CODE", "")
+	t.Setenv("TDC_PUBLIC_KEY", "")
+	t.Setenv("TDC_PRIVATE_KEY", "")
+	writeCompleteProfile(t, home, "default")
+
+	stdout, _, err := executeForTest("db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--db-cluster-type", "starter", "--dry-run")
+	if err != nil {
+		t.Fatalf("expected profile project fallback to succeed: %v", err)
+	}
+	if !strings.Contains(stdout, `"tidb.cloud/project": "virtual-test"`) {
+		t.Fatalf("dry-run did not use configured project:\n%s", stdout)
+	}
+}
+
+func TestCreateClusterExplicitEmptyProjectDoesNotFallback(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("TDC_REGION_CODE", "")
+	t.Setenv("TDC_PUBLIC_KEY", "")
+	t.Setenv("TDC_PRIVATE_KEY", "")
+	writeCompleteProfile(t, home, "default")
+
+	_, _, err := executeForTest("db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--db-cluster-type", "starter", "--project-id", "", "--dry-run")
+	if apperr.CodeFor(err) != "db.empty_project_id" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestConfigureUsesTDCProfileNamespace(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("TDC_PROFILE", "stage")
+	configureIAMForTest(t)
+
+	stdout, _, err := executeForTest(
+		"configure", "--non-interactive",
+		"--region-code", "aws-us-east-1",
+		"--tdc-public-key", "public",
+		"--tdc-private-key", "private",
+	)
+	if err != nil {
+		t.Fatalf("configure failed: %v", err)
+	}
+	if !strings.Contains(stdout, `"profile": "stage"`) {
+		t.Fatalf("configure did not select TDC_PROFILE:\n%s", stdout)
+	}
+	doc, err := store.ReadConfig(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc["stage"].ProjectID != "virtual-test" {
+		t.Fatalf("stage project was not stored: %#v", doc)
+	}
+	if _, exists := doc["default"]; exists {
+		t.Fatalf("configure unexpectedly wrote default profile: %#v", doc)
+	}
+}
+
 func TestExplicitEmptyRegionFails(t *testing.T) {
 	_, _, err := executeForTest("--region", "", "db", "list-db-clusters")
 	if err == nil {
@@ -697,6 +773,7 @@ func writeCompleteProfile(t *testing.T, home, profileName string) {
 	t.Helper()
 	err := store.WriteProfile(home, profileName, store.ConfigProfile{
 		RegionCode: "aws-us-east-1",
+		ProjectID:  "virtual-test",
 	}, store.CredentialsProfile{
 		TDCPublicKey:  "test-public",
 		TDCPrivateKey: "test-private",
@@ -728,6 +805,20 @@ func executeForTest(args ...string) (string, string, error) {
 	root := NewRootCommand(testVersion())
 	err := Execute(context.Background(), root, args, &stdout, &stderr)
 	return stdout.String(), stderr.String(), err
+}
+
+func configureIAMForTest(t *testing.T) {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1beta1/projects" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"projects":[{"id":"virtual-test","type":"tidbx_virtual"}]}`))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("TDC_ALLOW_TEST_ENDPOINTS", "1")
+	t.Setenv("TDC_TEST_IAM_BASE_URL", server.URL)
 }
 
 func testVersion() version.Info {

@@ -79,6 +79,9 @@ func NewResolver() Resolver {
 		FSMode:         DefaultFSMode,
 	}
 	if os.Getenv("TDC_ALLOW_TEST_ENDPOINTS") == "1" {
+		if baseURL := strings.TrimSpace(os.Getenv("TDC_TEST_IAM_BASE_URL")); baseURL != "" {
+			resolver.IAMBaseURL = baseURL
+		}
 		if manifestURL := strings.TrimSpace(os.Getenv("TDC_TEST_FS_MANIFEST_URL")); manifestURL != "" {
 			resolver.FSManifestURL = manifestURL
 		}

@@ -219,10 +219,11 @@ func artifactNameForRuntime(t *testing.T) string {
 func TestConfigureWritesLocalProfile(t *testing.T) {
 	bin := tdcBinary(t)
 	home := t.TempDir()
+	env := append([]string{"HOME=" + home}, configureIAMEnv(t)...)
 
-	result := runTDCWithInput(t, bin, "aws-us-east-1\npublic-key\nprivate-key\n", []string{"HOME=" + home}, "configure", "--profile", "stage")
+	result := runTDCWithInput(t, bin, "aws-us-east-1\npublic-key\nprivate-key\n", env, "configure", "--profile", "stage")
 	result.wantExitCode(0)
-	result.wantStdoutContains(`Profile "stage" configured.`)
+	result.wantStdoutContains(`"project_id": "virtual-e2e"`)
 	result.wantStdoutNotContains("private-key")
 
 	configBytes, err := os.ReadFile(filepath.Join(home, ".tdc", "config"))
@@ -237,7 +238,8 @@ func TestConfigureWritesLocalProfile(t *testing.T) {
 
 	if !strings.Contains(string(configBytes), `[stage]`) ||
 		strings.Contains(string(configBytes), `cloud_provider`) ||
-		!strings.Contains(string(configBytes), `region_code = 'aws-us-east-1'`) {
+		!strings.Contains(string(configBytes), `region_code = 'aws-us-east-1'`) ||
+		!strings.Contains(string(configBytes), `project_id = 'virtual-e2e'`) {
 		t.Fatalf("config did not contain expected stage profile:\n%s", string(configBytes))
 	}
 	if !strings.Contains(string(credentialsBytes), `tdc_public_key = 'public-key'`) ||
@@ -260,14 +262,16 @@ func TestConfigureNonInteractiveFromEnvironment(t *testing.T) {
 	bin := tdcBinary(t)
 	home := t.TempDir()
 
-	result := runTDCWithInput(t, bin, "", []string{
+	env := []string{
 		"HOME=" + home,
 		"TDC_REGION_CODE=aws-us-east-1",
 		"TDC_PUBLIC_KEY=ci-public",
 		"TDC_PRIVATE_KEY=ci-private",
-	}, "configure", "--profile", "ci", "--non-interactive")
+	}
+	env = append(env, configureIAMEnv(t)...)
+	result := runTDCWithInput(t, bin, "", env, "configure", "--profile", "ci", "--non-interactive")
 	result.wantExitCode(0)
-	result.wantStdoutContains(`Profile "ci" configured.`)
+	result.wantStdoutContains(`"project_id": "virtual-e2e"`)
 	result.wantStdoutNotContains("ci-private")
 
 	configBytes, err := os.ReadFile(filepath.Join(home, ".tdc", "config"))
@@ -280,6 +284,7 @@ func TestConfigureNonInteractiveFromEnvironment(t *testing.T) {
 	}
 	if !strings.Contains(string(configBytes), `[ci]`) ||
 		!strings.Contains(string(configBytes), `region_code = 'aws-us-east-1'`) ||
+		!strings.Contains(string(configBytes), `project_id = 'virtual-e2e'`) ||
 		strings.Contains(string(configBytes), `cloud_provider`) {
 		t.Fatalf("config did not contain expected ci profile:\n%s", string(configBytes))
 	}
@@ -313,6 +318,7 @@ func TestFSResourceRegistrySelectionAcrossCommandFamilies(t *testing.T) {
 		"TDC_ALLOW_TEST_ENDPOINTS=1",
 		"TDC_TEST_FS_MANIFEST_URL=" + manifestServer.URL,
 	}
+	baseEnv = append(baseEnv, configureIAMEnv(t)...)
 	configured := runTDCWithInput(t, bin, "", append(baseEnv,
 		"TDC_REGION_CODE=aws-us-east-1",
 		"TDC_PUBLIC_KEY=e2e-public",
@@ -459,13 +465,15 @@ func TestOperationLogWritesSafeJSONL(t *testing.T) {
 	bin := tdcBinary(t)
 	home := t.TempDir()
 
-	result := runTDCWithInput(t, bin, "", []string{
+	env := []string{
 		"HOME=" + home,
 		"TDC_LOGGING=on",
 		"TDC_REGION_CODE=aws-us-east-1",
 		"TDC_PUBLIC_KEY=ci-public-secret",
 		"TDC_PRIVATE_KEY=ci-private-secret",
-	}, "configure", "--profile", "ci", "--non-interactive")
+	}
+	env = append(env, configureIAMEnv(t)...)
+	result := runTDCWithInput(t, bin, "", env, "configure", "--profile", "ci", "--non-interactive")
 	result.wantExitCode(0)
 
 	logPath := filepath.Join(home, ".tdc", "logs", "tdc.jsonl")
@@ -477,11 +485,33 @@ func TestOperationLogWritesSafeJSONL(t *testing.T) {
 		t.Fatalf("operation log leaked secret values:\n%s", string(data))
 	}
 	var event map[string]any
-	if err := json.Unmarshal(bytes.TrimSpace(data), &event); err != nil {
-		t.Fatalf("decode operation log: %v\n%s", err, string(data))
+	for _, line := range bytes.Split(bytes.TrimSpace(data), []byte("\n")) {
+		var candidate map[string]any
+		if err := json.Unmarshal(line, &candidate); err != nil {
+			t.Fatalf("decode operation log: %v\n%s", err, string(data))
+		}
+		if candidate["type"] == "command" {
+			event = candidate
+		}
 	}
 	if event["type"] != "command" || event["command"] != "tdc configure" || event["profile"] != "ci" {
 		t.Fatalf("unexpected operation log event: %#v", event)
+	}
+}
+
+func configureIAMEnv(t *testing.T) []string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1beta1/projects" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"projects":[{"id":"virtual-e2e","type":"tidbx_virtual"}]}`))
+	}))
+	t.Cleanup(server.Close)
+	return []string{
+		"TDC_ALLOW_TEST_ENDPOINTS=1",
+		"TDC_TEST_IAM_BASE_URL=" + server.URL,
 	}
 }
 

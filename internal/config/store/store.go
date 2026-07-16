@@ -24,6 +24,7 @@ type ConfigDocument map[string]ConfigProfile
 type ConfigProfile struct {
 	CloudProvider           string `toml:"cloud_provider,omitempty"`
 	RegionCode              string `toml:"region_code,omitempty"`
+	ProjectID               string `toml:"project_id,omitempty"`
 	FSDefaultFileSystemName string `toml:"fs_default_file_system_name,omitempty"`
 	FSResourceName          string `toml:"fs_resource_name,omitempty"`
 	FSTenantID              string `toml:"fs_tenant_id,omitempty"`
@@ -161,6 +162,9 @@ func WriteProfile(homeDir, profileName string, cfg ConfigProfile, creds Credenti
 	if cfg.RegionCode != "" {
 		existingConfig.RegionCode = cfg.RegionCode
 		existingConfig.CloudProvider = ""
+	}
+	if cfg.ProjectID != "" {
+		existingConfig.ProjectID = cfg.ProjectID
 	}
 	if cfg.FSResourceName != "" {
 		existingConfig.FSResourceName = cfg.FSResourceName

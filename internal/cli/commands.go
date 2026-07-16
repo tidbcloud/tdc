@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -30,6 +31,14 @@ func newConfigureCommand(info version.Info) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			profileFlag := cmd.Flag("profile")
+			if profileFlag != nil && profileFlag.Changed {
+				if strings.TrimSpace(profile) == "" {
+					return apperr.New("config.empty_profile", "usage", 2, "--profile cannot be empty")
+				}
+			} else if envProfile := strings.TrimSpace(os.Getenv("TDC_PROFILE")); envProfile != "" {
+				profile = envProfile
+			}
 			regionCode, err := cmd.Flags().GetString("region-code")
 			if err != nil {
 				return err
@@ -46,7 +55,11 @@ func newConfigureCommand(info version.Info) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cfgconfigure.Run(cmd.Context(), cfgconfigure.Options{
+			debug, err := cmd.Flags().GetBool("debug")
+			if err != nil {
+				return err
+			}
+			result, err := cfgconfigure.Run(cmd.Context(), cfgconfigure.Options{
 				Profile:        profile,
 				RegionCode:     regionCode,
 				TDCPublicKey:   publicKey,
@@ -54,7 +67,13 @@ func newConfigureCommand(info version.Info) *cobra.Command {
 				NonInteractive: nonInteractive,
 				In:             cmd.InOrStdin(),
 				Out:            cmd.OutOrStdout(),
+				Debug:          debug,
+				DebugWriter:    cmd.ErrOrStderr(),
 			})
+			if err != nil {
+				return err
+			}
+			return renderStructured(cmd, result)
 		},
 	}, info)
 	cmd.Flags().String("region-code", "", "tdc region code, for example aws-us-east-1 or ali-ap-southeast-1")
@@ -199,7 +218,7 @@ func newDBCreateClusterCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("db-cluster-type", "", "DB cluster type; must be starter")
 	cmd.Flags().String("project-id", "", "TiDB Cloud project id")
 	cmd.Flags().Int32("monthly-spending-limit-usd-cents", -1, "monthly spending limit in USD cents; omit to use the API default")
-	markUsageRequired(cmd, "db-cluster-name", "db-cluster-type", "project-id")
+	markUsageRequired(cmd, "db-cluster-name", "db-cluster-type")
 	return cmd
 }
 
@@ -646,6 +665,7 @@ func createClusterOptions(ctx commandContext, profile *config.Profile) (db.Creat
 		DisplayName:                  name,
 		ClusterType:                  clusterType,
 		ProjectID:                    projectID,
+		ProjectIDExplicit:            ctx.FlagChanged("project-id"),
 		MonthlySpendingLimitUSDCents: spendingLimit,
 	}, nil
 }

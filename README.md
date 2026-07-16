@@ -25,10 +25,18 @@ powershell -ExecutionPolicy Bypass -File $script -InstallDir "$HOME\bin" -Yes
 
 ### Configure
 
-Configure the `tdc` with the TiDB Cloud Public Key and Private Key from the [TiDB Cloud](https://tidbcloud.com/org-settings/api-keys) console. The available region codes are: `aws-us-east-1`, `aws-us-west-2`, and `aws-ap-southeast-1`.
+Configure tdc with a TiDB Cloud Public Key and Private Key from the [TiDB Cloud](https://tidbcloud.com/org-settings/api-keys) console. Supported region codes are `aws-us-east-1`, `aws-us-west-2`, `aws-eu-central-1`, `aws-ap-northeast-1`, `aws-ap-southeast-1`, and `ali-ap-southeast-1`.
 
 ```shell
 tdc configure --non-interactive --region-code <TDC_REGION_CODE> --tdc-public-key <TDC_PUBLIC_KEY> --tdc-private-key <TDC_PRIVATE_KEY>
+```
+
+Configure verifies the API key by listing all accessible projects, requires exactly one project with `type = "tidbx_virtual"`, and stores its ID as the profile's default `project_id` in `~/.tdc/config`. API credentials remain in `~/.tdc/credentials`. Configuration fails without changing the profile when project discovery fails.
+
+```toml
+[default]
+region_code = "aws-us-east-1"
+project_id = "1372813089454645969"
 ```
 
 ### TiDB Cloud Filesystem
@@ -58,6 +66,8 @@ Resource selection uses `--file-system-name`, then `TDC_FS_FILE_SYSTEM_NAME`, th
 ```shell
 tdc db create-db-cluster --db-cluster-name my-distributed-mysql --db-cluster-type starter
 ```
+
+Cluster creation uses the configured `project_id` by default. Use optional `--project-id <project-id>` to create in another accessible project. An explicit empty `--project-id` is rejected instead of falling back to the profile.
 
 ### Organization Projects
 
