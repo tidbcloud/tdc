@@ -22,19 +22,21 @@ type LoadOptions struct {
 }
 
 type Profile struct {
-	Name                  string
-	Source                string
-	PlacementRegionCode   string
-	CloudProvider         string
-	RegionCode            string
-	TDCPublicKey          string
-	TDCPrivateKey         string
-	FSResourceName        string
-	FSTenantID            string
-	FSPlacementRegionCode string
-	FSCloudProvider       string
-	FSRegionCode          string
-	FSAPIKey              string
+	Name                    string
+	HomeDir                 string
+	Source                  string
+	PlacementRegionCode     string
+	CloudProvider           string
+	RegionCode              string
+	TDCPublicKey            string
+	TDCPrivateKey           string
+	FSResourceName          string
+	FSTenantID              string
+	FSPlacementRegionCode   string
+	FSCloudProvider         string
+	FSRegionCode            string
+	FSAPIKey                string
+	FSDefaultFileSystemName string
 }
 
 func Load(ctx context.Context, opts LoadOptions) (*Profile, error) {
@@ -86,19 +88,21 @@ func Load(ctx context.Context, opts LoadOptions) (*Profile, error) {
 	}
 
 	return &Profile{
-		Name:                  profileName,
-		Source:                source,
-		PlacementRegionCode:   placement.Code,
-		CloudProvider:         placement.Provider,
-		RegionCode:            placement.NativeCode,
-		TDCPublicKey:          publicKey,
-		TDCPrivateKey:         privateKey,
-		FSResourceName:        cfg.FSResourceName,
-		FSTenantID:            cfg.FSTenantID,
-		FSPlacementRegionCode: fsPlacement.Code,
-		FSCloudProvider:       fsPlacement.Provider,
-		FSRegionCode:          fsPlacement.NativeCode,
-		FSAPIKey:              creds.FSAPIKey,
+		Name:                    profileName,
+		HomeDir:                 opts.HomeDir,
+		Source:                  source,
+		PlacementRegionCode:     placement.Code,
+		CloudProvider:           placement.Provider,
+		RegionCode:              placement.NativeCode,
+		TDCPublicKey:            publicKey,
+		TDCPrivateKey:           privateKey,
+		FSResourceName:          cfg.FSResourceName,
+		FSTenantID:              cfg.FSTenantID,
+		FSPlacementRegionCode:   fsPlacement.Code,
+		FSCloudProvider:         fsPlacement.Provider,
+		FSRegionCode:            fsPlacement.NativeCode,
+		FSAPIKey:                creds.FSAPIKey,
+		FSDefaultFileSystemName: cfg.FSDefaultFileSystemName,
 	}, nil
 }
 

@@ -1,5 +1,7 @@
 # tdc fs Control Plane
 
+The original 1:1 profile model and flat `fs_*` storage in this spec are superseded by `docs/spec/done/0016-profile-fs-resource-registry.md`.
+
 ## Goal
 
 Provide lifecycle and health operations for tdc fs resources before exposing

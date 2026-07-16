@@ -36,14 +36,36 @@ tdc configure --non-interactive --region-code <TDC_REGION_CODE> --tdc-public-key
 ```shell
 mkdir ~/my-workspace
 tdc fs create-file-system --file-system-name my-workspace
-tdc fs mount-file-system --file-system-name my-workspace --mount-path ~/my-workspace
+tdc fs mount-file-system --mount-path ~/my-workspace
 ```
+
+One profile can manage multiple file systems. The first created file system becomes the profile default; later resources can be selected explicitly or made the default:
+
+```shell
+tdc fs create-file-system --file-system-name scratch
+tdc fs list-file-systems
+tdc fs describe-file-system --file-system-name scratch
+tdc fs set-default-file-system --file-system-name scratch
+tdc fs list-files --path /
+tdc fs list-files --file-system-name my-workspace --path /
+tdc fs unset-default-file-system
+```
+
+Resource selection uses `--file-system-name`, then `TDC_FS_FILE_SYSTEM_NAME`, then the profile default, then the only configured resource. Commands fail with an ambiguity error when multiple resources exist and none is selected. File system metadata and credentials are isolated under `~/.tdc/fs_resources/<profile-key>/<resource-key>/`; API keys are never printed by list or describe commands.
 
 ### TiDB Cloud Starter
 
 ```shell
 tdc db create-db-cluster --db-cluster-name my-distributed-mysql --db-cluster-type starter
 ```
+
+### Organization Projects
+
+```shell
+tdc organization list-projects
+```
+
+Each project includes a `type`: `tidbx` identifies a regular project and `tidbx_virtual` identifies a virtual project.
 
 ## Update
 

@@ -15,6 +15,7 @@ import (
 	"github.com/tidbcloud/tdc/internal/api/endpoints"
 	"github.com/tidbcloud/tdc/internal/apperr"
 	"github.com/tidbcloud/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/fs/fscred"
 )
 
 const (
@@ -36,6 +37,7 @@ type Runner struct {
 
 type RunOptions struct {
 	Profile         *config.Profile
+	ResourceName    string
 	Args            []string
 	CaptureStdout   bool
 	IncludeTDCKeys  bool
@@ -58,7 +60,7 @@ func (r Runner) Run(ctx context.Context, opts RunOptions) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	homeDir, err := r.homeDir()
+	homeDir, err := r.homeDir(opts)
 	if err != nil {
 		return Result{}, err
 	}
@@ -66,8 +68,12 @@ func (r Runner) Run(ctx context.Context, opts RunOptions) (Result, error) {
 		return Result{}, err
 	}
 
+	env, err := r.drive9Env(homeDir, opts)
+	if err != nil {
+		return Result{}, err
+	}
 	cmd := exec.CommandContext(ctx, path, opts.Args...)
-	cmd.Env = r.drive9Env(homeDir, opts)
+	cmd.Env = env
 	if r.Stdin != nil {
 		cmd.Stdin = r.Stdin
 	}
@@ -119,7 +125,7 @@ func (r Runner) CompanionInfo(ctx context.Context, profile *config.Profile) (Com
 	return CompanionInfo{Path: path}, nil
 }
 
-func (r Runner) drive9Env(homeDir string, opts RunOptions) []string {
+func (r Runner) drive9Env(homeDir string, opts RunOptions) ([]string, error) {
 	env := make([]string, 0, len(os.Environ())+8)
 	for _, entry := range os.Environ() {
 		key, _, ok := strings.Cut(entry, "=")
@@ -142,15 +148,18 @@ func (r Runner) drive9Env(homeDir string, opts RunOptions) []string {
 	}
 	if profile := opts.Profile; profile != nil {
 		provider, regionCode, placementCode := fsPlacement(profile)
-		if provider != "" && regionCode != "" {
-			endpoint, err := r.resolver().ResolveFS(provider, regionCode)
-			if err == nil && endpoint.BaseURL != "" {
-				env = append(env, "DRIVE9_SERVER="+endpoint.BaseURL)
-			}
+		if provider == "" || regionCode == "" || placementCode == "" {
+			return nil, apperr.New("fs.resource_credentials_incomplete", "config", 2, fmt.Sprintf("tdc fs resource placement is incomplete for profile %q", profile.Name))
 		}
-		if placementCode != "" {
-			env = append(env, "DRIVE9_REGION_CODE="+placementCode)
+		endpoint, err := r.resolver().ResolveFS(provider, regionCode)
+		if err != nil {
+			return nil, err
 		}
+		if endpoint.BaseURL == "" {
+			return nil, apperr.New("api.fs_endpoint_missing", "config", 2, fmt.Sprintf("tdc fs endpoint is unavailable for %s", placementCode))
+		}
+		env = append(env, "DRIVE9_SERVER="+endpoint.BaseURL)
+		env = append(env, "DRIVE9_REGION_CODE="+placementCode)
 		if opts.IncludeFSAPIKey && strings.TrimSpace(profile.FSAPIKey) != "" {
 			env = append(env, "DRIVE9_API_KEY="+strings.TrimSpace(profile.FSAPIKey))
 		}
@@ -166,7 +175,7 @@ func (r Runner) drive9Env(homeDir string, opts RunOptions) []string {
 	if strings.TrimSpace(opts.VaultToken) != "" {
 		env = append(env, "DRIVE9_VAULT_TOKEN="+strings.TrimSpace(opts.VaultToken))
 	}
-	return env
+	return env, nil
 }
 
 func (r Runner) locateCompanion() (string, error) {
@@ -199,7 +208,7 @@ func (r Runner) locateCompanion() (string, error) {
 	return "", apperr.New("fs.companion_missing", "runtime", 1, "tdc fs requires the Drive9 companion binary; reinstall tdc or set TDC_DRIVE9_BIN to a compatible drive9 binary")
 }
 
-func (r Runner) homeDir() (string, error) {
+func (r Runner) homeDir(opts RunOptions) (string, error) {
 	home := strings.TrimSpace(r.HomeDir)
 	if home == "" {
 		var err error
@@ -208,7 +217,15 @@ func (r Runner) homeDir() (string, error) {
 			return "", apperr.Wrap("fs.home_dir", "config", 1, "cannot determine home directory", err)
 		}
 	}
-	return filepath.Join(home, ".tdc", "drive9-home"), nil
+	resourceName := strings.TrimSpace(opts.ResourceName)
+	profileName := config.DefaultProfile
+	if opts.Profile != nil {
+		profileName = opts.Profile.Name
+		if resourceName == "" {
+			resourceName = opts.Profile.FSResourceName
+		}
+	}
+	return fscred.CompanionHome(home, profileName, resourceName)
 }
 
 func (r Runner) resolver() endpoints.Resolver {

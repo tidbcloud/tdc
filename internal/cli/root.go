@@ -387,6 +387,21 @@ func defaultControlPlaneDryRun(spec controlPlaneCommandSpec) func(commandContext
 		if err != nil {
 			return dryrun.Result{}, err
 		}
+		if isFSCommandPath(ctx.CommandPath()) {
+			_, selected, err := fsServiceAndProfile(ctx)
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			profile = selected
+		}
+		provider := profile.CloudProvider
+		regionCode := profile.RegionCode
+		if profile.FSCloudProvider != "" {
+			provider = profile.FSCloudProvider
+		}
+		if profile.FSRegionCode != "" {
+			regionCode = profile.FSRegionCode
+		}
 
 		return dryrun.New(
 			ctx.CommandPath(),
@@ -402,7 +417,7 @@ func defaultControlPlaneDryRun(spec controlPlaneCommandSpec) func(commandContext
 			dryrun.Check{
 				Name:    "endpoint_selection",
 				Status:  "passed",
-				Message: fmt.Sprintf("%s %s", profile.CloudProvider, profile.RegionCode),
+				Message: fmt.Sprintf("%s %s", provider, regionCode),
 			},
 			dryrun.Check{
 				Name:    "permission_requirement",
@@ -416,6 +431,13 @@ func defaultControlPlaneDryRun(spec controlPlaneCommandSpec) func(commandContext
 			},
 		), nil
 	}
+}
+
+func isFSCommandPath(path string) bool {
+	return strings.HasPrefix(path, "tdc fs ") ||
+		strings.HasPrefix(path, "tdc fs-git ") ||
+		strings.HasPrefix(path, "tdc fs-journal ") ||
+		strings.HasPrefix(path, "tdc fs-vault ")
 }
 
 func renderStructured(cmd *cobra.Command, result any) error {

@@ -116,6 +116,49 @@ max_files = 2
 	}
 }
 
+func TestSetFSDefaultFileSystemPreservesLoggingConfig(t *testing.T) {
+	home := t.TempDir()
+	tdcDir := filepath.Join(home, TDCDirName)
+	if err := os.MkdirAll(tdcDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ConfigPath(home), []byte(`
+[default]
+region_code = "aws-us-east-1"
+
+[logging]
+enabled = false
+max_file_mb = 3
+max_files = 2
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetFSDefaultFileSystem(home, "default", "workspace"); err != nil {
+		t.Fatalf("set default: %v", err)
+	}
+	configDoc, err := ReadConfig(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := configDoc["default"].FSDefaultFileSystemName; got != "workspace" {
+		t.Fatalf("default = %q, want workspace", got)
+	}
+	logging, ok, err := ReadLoggingConfig(home)
+	if err != nil || !ok || logging.Enabled == nil || *logging.Enabled || logging.MaxFileMB != 3 || logging.MaxFiles != 2 {
+		t.Fatalf("logging config was not preserved: ok=%v logging=%#v err=%v", ok, logging, err)
+	}
+	if err := SetFSDefaultFileSystem(home, "default", ""); err != nil {
+		t.Fatalf("unset default: %v", err)
+	}
+	configDoc, err = ReadConfig(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := configDoc["default"].FSDefaultFileSystemName; got != "" {
+		t.Fatalf("default = %q, want empty", got)
+	}
+}
+
 func TestClearFSResourcePreservesTiDBCloudCredentials(t *testing.T) {
 	home := t.TempDir()
 	if err := WriteProfile(home, "stage", ConfigProfile{

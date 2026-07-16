@@ -29,6 +29,7 @@ func TestListProjects(t *testing.T) {
 				{
 					"id": "project-1",
 					"name": "Project 1",
+					"type": "tidbx_virtual",
 					"org_id": "org-1",
 					"cluster_count": 3,
 					"user_count": 4,
@@ -54,6 +55,9 @@ func TestListProjects(t *testing.T) {
 	}
 	if len(response.Projects) != 1 || response.Projects[0].ID != "project-1" {
 		t.Fatalf("unexpected projects: %#v", response.Projects)
+	}
+	if response.Projects[0].Type != "tidbx_virtual" {
+		t.Fatalf("project type = %q, want tidbx_virtual", response.Projects[0].Type)
 	}
 	if !response.Projects[0].AWSCMEKEnabled {
 		t.Fatalf("expected aws_cmek_enabled to be true")

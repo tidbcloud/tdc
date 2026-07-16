@@ -79,8 +79,10 @@ Confirmed API:
 5. Normalize the CLI output field to `next_page_token`.
 6. Render JSON by default; apply `--query` after decoding.
 
-The confirmed project object fields are `id`, `name`, `org_id`,
+The confirmed project object fields are `id`, `name`, `type`, `org_id`,
 `cluster_count`, `user_count`, `create_timestamp`, and `aws_cmek_enabled`.
+`type` is `tidbx` for a regular project and `tidbx_virtual` for a virtual
+project; `tidbx_virtual` is a value, not a separate boolean field.
 
 ## Dependencies And Platform
 

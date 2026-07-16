@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/tidbcloud/tdc/internal/fs/fscred"
 )
 
 func TestHelpAndVersion(t *testing.T) {
@@ -285,6 +287,163 @@ func TestConfigureNonInteractiveFromEnvironment(t *testing.T) {
 		!strings.Contains(string(credentialsBytes), `tdc_private_key = 'ci-private'`) {
 		t.Fatalf("credentials did not contain expected ci keys:\n%s", string(credentialsBytes))
 	}
+}
+
+func TestFSResourceRegistrySelectionAcrossCommandFamilies(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake companion build path is covered by unit tests on Windows")
+	}
+	bin := tdcBinary(t)
+	home := t.TempDir()
+	companion := filepath.Join(t.TempDir(), "tdc-drive9")
+	build := exec.Command("go", "build", "-o", companion, "./testdata/fake-drive9.go")
+	build.Dir = "."
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build fake Drive9 companion: %v\n%s", err, output)
+	}
+	recordPath := filepath.Join(t.TempDir(), "calls.jsonl")
+	manifestServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprint(w, `{"service":"drive9","regions":[{"region_code":"aws-us-east-1","mode":"tidb_cloud_native","server_url":"https://fs-east.test","cloud_provider":"aws","tidb_region":"us-east-1"},{"region_code":"aws-us-west-2","mode":"tidb_cloud_native","server_url":"https://fs-west.test","cloud_provider":"aws","tidb_region":"us-west-2"}]}`)
+	}))
+	defer manifestServer.Close()
+	baseEnv := []string{
+		"HOME=" + home,
+		"TDC_DRIVE9_BIN=" + companion,
+		"FAKE_DRIVE9_RECORD=" + recordPath,
+		"TDC_ALLOW_TEST_ENDPOINTS=1",
+		"TDC_TEST_FS_MANIFEST_URL=" + manifestServer.URL,
+	}
+	configured := runTDCWithInput(t, bin, "", append(baseEnv,
+		"TDC_REGION_CODE=aws-us-east-1",
+		"TDC_PUBLIC_KEY=e2e-public",
+		"TDC_PRIVATE_KEY=e2e-private",
+	), "configure", "--profile", "stage", "--non-interactive")
+	configured.wantExitCode(0)
+
+	createWorkspace := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "create-file-system", "--file-system-name", "workspace")
+	createWorkspace.wantExitCode(0)
+	createWorkspace.wantStdoutContains(`"credentials_stored": true`)
+	createScratch := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "--region", "aws-us-west-2", "fs", "create-file-system", "--file-system-name", "scratch")
+	createScratch.wantExitCode(0)
+	createScratch.wantStdoutContains(`"credentials_stored": true`)
+
+	list := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "list-file-systems")
+	list.wantExitCode(0)
+	list.wantStdoutContains(`"file_system_name": "workspace"`)
+	list.wantStdoutContains(`"file_system_name": "scratch"`)
+	list.wantStdoutNotContains("key-workspace")
+	list.wantStdoutNotContains("key-scratch")
+	describe := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "describe-file-system", "--file-system-name", "scratch")
+	describe.wantExitCode(0)
+	describe.wantStdoutContains(`"tenant_id": "tenant-scratch"`)
+	describe.wantStdoutContains(`"region_code": "aws-us-west-2"`)
+	describe.wantStdoutNotContains("key-scratch")
+	setDefault := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "set-default-file-system", "--file-system-name", "scratch")
+	setDefault.wantExitCode(0)
+	setDefault.wantStdoutContains(`"default_file_system_name": "scratch"`)
+	selectedDefault := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "list-files", "--path", "/")
+	selectedDefault.wantExitCode(0)
+
+	unset := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "unset-default-file-system")
+	unset.wantExitCode(0)
+	callsBeforeAmbiguousCommands := len(readFakeDrive9Calls(t, recordPath))
+	for _, args := range [][]string{
+		{"fs", "list-files", "--path", "/"},
+		{"fs-vault", "list-secrets"},
+		{"fs-journal", "read-journal-entries", "--journal-id", "jrn-e2e"},
+		{"fs-git", "hydrate-git-workspace", "--target-path", filepath.Join(home, "ambiguous-workspace")},
+	} {
+		ambiguous := runTDCWithInput(t, bin, "", baseEnv, append([]string{"--profile", "stage"}, args...)...)
+		ambiguous.wantExitCode(2)
+		ambiguous.wantStderrContains("multiple tdc fs resources are configured")
+	}
+	if calls := readFakeDrive9Calls(t, recordPath); len(calls) != callsBeforeAmbiguousCommands {
+		t.Fatalf("ambiguous resource selection must fail before invoking Drive9: calls before=%d after=%d", callsBeforeAmbiguousCommands, len(calls))
+	}
+	ambiguousDryRun := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "create-directory", "--path", "/tmp", "--dry-run")
+	ambiguousDryRun.wantExitCode(2)
+	ambiguousDryRun.wantStderrContains("multiple tdc fs resources are configured")
+
+	dataPlane := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "list-files", "--file-system-name", "scratch", "--path", "/")
+	dataPlane.wantExitCode(0)
+	vault := runTDCWithInput(t, bin, "", append(baseEnv, "TDC_FS_FILE_SYSTEM_NAME=workspace"), "--profile", "stage", "fs-vault", "list-secrets")
+	vault.wantExitCode(0)
+	journal := runTDCWithInput(t, bin, "", append(baseEnv, "TDC_FS_FILE_SYSTEM_NAME=workspace"), "--profile", "stage", "fs-journal", "create-journal", "--file-system-name", "scratch", "--journal-id", "jrn-e2e")
+	journal.wantExitCode(0)
+	git := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs-git", "hydrate-git-workspace", "--file-system-name", "scratch", "--target-path", filepath.Join(home, "workspace"))
+	git.wantExitCode(0)
+	mount := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "mount-file-system", "--file-system-name", "scratch", "--mount-path", filepath.Join(home, "mount"), "--foreground")
+	mount.wantExitCode(0)
+
+	calls := readFakeDrive9Calls(t, recordPath)
+	assertFakeDrive9Call(t, calls, []string{"create", "--json", "--name", "workspace"}, "", home, "stage", "workspace", "https://fs-east.test", "aws-us-east-1")
+	assertFakeDrive9Call(t, calls, []string{"create", "--json", "--name", "scratch"}, "", home, "stage", "scratch", "https://fs-west.test", "aws-us-west-2")
+	assertFakeDrive9Call(t, calls, []string{"fs", "ls"}, "key-scratch", home, "stage", "scratch", "https://fs-west.test", "aws-us-west-2")
+	assertFakeDrive9Call(t, calls, []string{"vault", "ls"}, "key-workspace", home, "stage", "workspace", "https://fs-east.test", "aws-us-east-1")
+	assertFakeDrive9Call(t, calls, []string{"journal", "new"}, "key-scratch", home, "stage", "scratch", "https://fs-west.test", "aws-us-west-2")
+	assertFakeDrive9Call(t, calls, []string{"git", "hydrate"}, "key-scratch", home, "stage", "scratch", "https://fs-west.test", "aws-us-west-2")
+	assertFakeDrive9Call(t, calls, []string{"mount"}, "key-scratch", home, "stage", "scratch", "https://fs-west.test", "aws-us-west-2")
+
+	deleteScratch := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "delete-file-system", "--file-system-name", "scratch", "--confirm-file-system-name", "scratch")
+	deleteScratch.wantExitCode(0)
+	afterDelete := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "list-file-systems")
+	afterDelete.wantExitCode(0)
+	afterDelete.wantStdoutContains(`"file_system_name": "workspace"`)
+	afterDelete.wantStdoutNotContains(`"file_system_name": "scratch"`)
+	assertFakeDrive9Call(t, readFakeDrive9Calls(t, recordPath), []string{"delete", "--json", "--yes"}, "key-scratch", home, "stage", "scratch", "https://fs-west.test", "aws-us-west-2")
+}
+
+type fakeDrive9Call struct {
+	Args       []string `json:"args"`
+	Home       string   `json:"home"`
+	APIKey     string   `json:"api_key"`
+	Server     string   `json:"server"`
+	RegionCode string   `json:"region_code"`
+}
+
+func readFakeDrive9Calls(t *testing.T, path string) []fakeDrive9Call {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls []fakeDrive9Call
+	for _, line := range bytes.Split(bytes.TrimSpace(data), []byte("\n")) {
+		var call fakeDrive9Call
+		if err := json.Unmarshal(line, &call); err != nil {
+			t.Fatalf("decode fake Drive9 call: %v", err)
+		}
+		calls = append(calls, call)
+	}
+	return calls
+}
+
+func assertFakeDrive9Call(t *testing.T, calls []fakeDrive9Call, prefix []string, apiKey, home, profileName, resourceName, server, regionCode string) {
+	t.Helper()
+	wantHome, err := fscred.CompanionHome(home, profileName, resourceName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range calls {
+		if len(call.Args) < len(prefix) {
+			continue
+		}
+		matches := true
+		for i := range prefix {
+			if call.Args[i] != prefix[i] {
+				matches = false
+				break
+			}
+		}
+		if !matches {
+			continue
+		}
+		if call.APIKey != apiKey || call.Home != wantHome || call.Server != server || call.RegionCode != regionCode {
+			t.Fatalf("unexpected fake Drive9 environment for %v: %#v, want api_key=%q home=%q server=%q region=%q", prefix, call, apiKey, wantHome, server, regionCode)
+		}
+		return
+	}
+	t.Fatalf("missing fake Drive9 call with prefix %v in %#v", prefix, calls)
 }
 
 func tdcBinary(t *testing.T) string {

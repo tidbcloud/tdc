@@ -40,6 +40,7 @@ type ListSQLUsersResponse struct {
 type Project struct {
 	ID              string `json:"id"`
 	Name            string `json:"name"`
+	Type            string `json:"type"`
 	OrgID           string `json:"org_id"`
 	ClusterCount    int32  `json:"cluster_count"`
 	UserCount       int32  `json:"user_count"`
