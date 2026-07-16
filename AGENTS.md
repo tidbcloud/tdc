@@ -33,6 +33,8 @@ Implemented:
   `docs/spec/done/0007-starter-db-branch-lifecycle.md`
 - Starter DB SQL access and query from
   `docs/spec/done/0008-starter-db-sql-access-and-query.md`
+- Default virtual project discovery and DB create resolution from
+  `docs/spec/done/0017-default-virtual-project-resolution.md`
 - tdc fs Unix-style command aliases from
   `docs/spec/done/0014-tdc-fs-unix-command-aliases.md`
 - tdc fs control plane from
@@ -177,8 +179,9 @@ live target; live e2e is the full live suite.
 Live e2e must strictly cover every implemented interface and command for the
 current project stage, including real create/update/delete flows when those
 commands are implemented. For Starter DB clusters, the live suite creates a
-uniquely named `tdc-e2e-*` cluster without a spending limit and deletes only
-that cluster. For Starter DB branches, the live suite creates, reads, lists,
+uniquely named `tdc-e2e-*` cluster without a spending limit or explicit
+`--project-id`, verifies its project label matches the configured default, and
+deletes only that cluster. For Starter DB branches, the live suite creates, reads, lists,
 and deletes only a `tdc-e2e-branch-*` branch on the cluster created by the same
 test run. For Starter DB SQL access, the live suite prepares tdc-managed
 read-only, read-write, and admin SQL users on the temporary cluster, verifies
@@ -345,8 +348,9 @@ Implemented command behavior:
 - `tdc organization list-projects`
 - `tdc organization list-projects --query 'projects[0].id'`
 - `tdc organization list-projects --output text`
+- `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter`
+- `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --dry-run`
 - `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id>`
-- `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id> --dry-run`
 - `tdc db list-db-clusters`
 - `tdc db list-db-clusters --query 'clusters[].id'`
 - `tdc db describe-db-cluster --db-cluster-id <cluster-id>`
@@ -557,7 +561,8 @@ All tdc local state belongs under `~/.tdc/`.
 - The global `--profile` flag selects a profile when explicitly provided.
 - The global `--region` flag selects command-scope placement when explicitly
   provided and must reject an explicit empty value.
-- `tdc configure` writes canonical `region_code`, `tdc_public_key`, and
+- `tdc configure` writes canonical `region_code`, discovers the unique
+  `tidbx_virtual` project as `project_id`, and writes `tdc_public_key` and
   `tdc_private_key`.
 - `tdc configure --non-interactive` must not prompt. It reads values from flags
   first, then `TDC_REGION_CODE`, `TDC_PUBLIC_KEY`, and `TDC_PRIVATE_KEY`.
@@ -575,6 +580,7 @@ Minimum current keys:
 # ~/.tdc/config
 [default]
 region_code = "aws-us-east-1"
+project_id = "..."
 
 # ~/.tdc/credentials
 [default]
@@ -655,9 +661,10 @@ region manifest at
 profile's cloud provider and region against `tidb_cloud_native` entries. If the
 manifest does not contain the profile placement, return a clear unsupported
 endpoint error; do not add a user-facing raw server URL flag or config key.
-Tests may override only the manifest URL with `TDC_TEST_FS_MANIFEST_URL`, and
-only when `TDC_ALLOW_TEST_ENDPOINTS=1`; these are hidden test controls, not
-supported user configuration.
+Tests may override the IAM base URL with `TDC_TEST_IAM_BASE_URL` and the fs
+manifest URL with `TDC_TEST_FS_MANIFEST_URL`, only when
+`TDC_ALLOW_TEST_ENDPOINTS=1`; these are hidden test controls, not supported
+user configuration.
 
 Local profile namespace lookup order for authenticated commands:
 
@@ -678,6 +685,19 @@ Placement lookup order for authenticated commands:
    this command only.
 2. If `TDC_REGION_CODE` is set, use it for this command only.
 3. Otherwise use the selected profile's `region_code`.
+
+Starter DB cluster creation project lookup order is:
+
+1. Explicit non-empty `--project-id`.
+2. The selected profile's `project_id`, discovered by `tdc configure` from the
+   unique accessible project whose type is `tidbx_virtual`.
+3. Otherwise fail before making a Starter API request. Never silently omit the
+   `tidb.cloud/project` label.
+
+An explicitly empty `--project-id` is an error and must not use the profile
+fallback. Other DB commands identify existing resources by cluster or branch
+ID and do not send `project_id`. Drive9-backed tdc fs commands do not consume
+this DB project default.
 
 Environment credentials are a credential source only; they must not change the
 local profile namespace and must not cause tdc to write local `[env]` sections.

@@ -48,6 +48,27 @@ func TestResolveIAMEndpoint(t *testing.T) {
 	}
 }
 
+func TestResolveIAMTestOverrideRequiresOptIn(t *testing.T) {
+	t.Setenv("TDC_TEST_IAM_BASE_URL", "https://iam.test")
+	t.Setenv("TDC_ALLOW_TEST_ENDPOINTS", "")
+	endpoint, err := NewResolver().ResolveIAM()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if endpoint.BaseURL != DefaultIAMBaseURL {
+		t.Fatalf("test override used without opt-in: %q", endpoint.BaseURL)
+	}
+
+	t.Setenv("TDC_ALLOW_TEST_ENDPOINTS", "1")
+	endpoint, err = NewResolver().ResolveIAM()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if endpoint.BaseURL != "https://iam.test" {
+		t.Fatalf("test override not applied: %q", endpoint.BaseURL)
+	}
+}
+
 func TestResolveFSWithTestOverrides(t *testing.T) {
 	resolver := NewResolver()
 	resolver.FSBaseURLs = map[ProviderRegion]string{

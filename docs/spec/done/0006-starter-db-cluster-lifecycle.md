@@ -17,7 +17,7 @@ Initial command set:
 Primary create shape:
 
 ```bash
-tdc db create-db-cluster --db-cluster-name <name> --db-cluster-type starter --project-id <project-id>
+tdc db create-db-cluster --db-cluster-name <name> --db-cluster-type starter
 ```
 
 ## Behavior
@@ -37,7 +37,8 @@ tdc db create-db-cluster --db-cluster-name <name> --db-cluster-type starter --pr
 - Requires credentials and region routing.
 - Common identifiers should use explicit names such as `--db-cluster-id` and
   `--db-cluster-name`.
-- Create requires `--project-id`; tdc does not guess a default project.
+- Project resolution follows `0017-default-virtual-project-resolution.md`:
+  explicit `--project-id` overrides the profile's configured `project_id`.
 - Optional create parameters should map directly to available Starter API
   fields. Do not invent unsupported fields.
 
@@ -61,7 +62,8 @@ Users can create and manage Starter clusters in the configured cloud provider
 and region:
 
 ```bash
-tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id> --dry-run
+tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --dry-run
+tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter
 tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id>
 tdc db list-db-clusters --query 'clusters[].id'
 tdc db describe-db-cluster --db-cluster-id <id>
@@ -102,7 +104,8 @@ Command mapping:
   3. Filter or validate Starter-only behavior using returned cluster metadata.
 - `tdc db create-db-cluster`
   1. Validate `--db-cluster-type starter`.
-  2. Require `--project-id` and set label `tidb.cloud/project`.
+  2. Resolve explicit `--project-id` or the profile's configured `project_id`
+     and set label `tidb.cloud/project`.
   3. Call `POST /v1beta1/clusters` with `displayName`, project label, region
      name such as `regions/aws-us-east-1`, and only other confirmed fields.
 - `tdc db describe-db-cluster`

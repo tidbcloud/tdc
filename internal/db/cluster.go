@@ -47,6 +47,7 @@ type CreateClusterOptions struct {
 	DisplayName                  string
 	ClusterType                  string
 	ProjectID                    string
+	ProjectIDExplicit            bool
 	MonthlySpendingLimitUSDCents int32
 }
 
@@ -286,7 +287,8 @@ func (s Service) createRequestAndEndpoint(opts CreateClusterOptions) (apistarter
 	if err := validate.ClusterName(opts.DisplayName); err != nil {
 		return apistarter.CreateClusterRequest{}, endpoints.Endpoint{}, err
 	}
-	if err := validate.Required("--project-id", opts.ProjectID); err != nil {
+	projectID, err := resolveCreateProjectID(opts)
+	if err != nil {
 		return apistarter.CreateClusterRequest{}, endpoints.Endpoint{}, err
 	}
 	if err := validate.OptionalNonNegative("--monthly-spending-limit-usd-cents", opts.MonthlySpendingLimitUSDCents); err != nil {
@@ -299,9 +301,32 @@ func (s Service) createRequestAndEndpoint(opts CreateClusterOptions) (apistarter
 	return apistarter.CreateClusterRequest{
 		DisplayName:   opts.DisplayName,
 		RegionName:    endpoint.RegionName,
-		ProjectID:     opts.ProjectID,
+		ProjectID:     projectID,
 		SpendingLimit: spendingLimit(opts.MonthlySpendingLimitUSDCents),
 	}, endpoint, nil
+}
+
+func resolveCreateProjectID(opts CreateClusterOptions) (string, error) {
+	projectID := strings.TrimSpace(opts.ProjectID)
+	if opts.ProjectIDExplicit && projectID == "" {
+		return "", apperr.New("db.empty_project_id", "usage", 2, "--project-id cannot be empty")
+	}
+	if projectID != "" {
+		return projectID, nil
+	}
+	if opts.Profile != nil {
+		projectID = strings.TrimSpace(opts.Profile.ProjectID)
+	}
+	if projectID != "" {
+		return projectID, nil
+	}
+	profileName := profileName(opts.Profile)
+	return "", apperr.New(
+		"db.missing_project_id",
+		"config",
+		2,
+		fmt.Sprintf("project id is required: run `tdc configure --profile %s` to discover the default virtual project, or provide `--project-id`", profileName),
+	)
 }
 
 func (s Service) updateRequest(opts UpdateClusterOptions) (string, apistarter.UpdateClusterRequest, error) {

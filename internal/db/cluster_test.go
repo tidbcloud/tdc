@@ -29,6 +29,10 @@ func TestCreateCluster(t *testing.T) {
 		if region["name"] != "regions/aws-us-east-1" {
 			t.Fatalf("unexpected region: %#v", region)
 		}
+		labels := body["labels"].(map[string]any)
+		if labels["tidb.cloud/project"] != "project-1" {
+			t.Fatalf("unexpected project label: %#v", labels)
+		}
 		_, _ = w.Write([]byte(`{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER","region":{"name":"regions/aws-us-east-1"}}`))
 	}))
 	defer server.Close()
@@ -46,6 +50,56 @@ func TestCreateCluster(t *testing.T) {
 	if result.ID != "cluster-1" || result.DisplayName != "demo-cluster" {
 		t.Fatalf("unexpected result: %#v", result)
 	}
+}
+
+func TestCreateClusterUsesProfileProjectAndAllowsExplicitOverride(t *testing.T) {
+	var projectIDs []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		labels := body["labels"].(map[string]any)
+		projectIDs = append(projectIDs, labels["tidb.cloud/project"].(string))
+		_, _ = w.Write([]byte(`{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER"}`))
+	}))
+	defer server.Close()
+
+	profile := testProfile()
+	profile.ProjectID = "profile-project"
+	for _, opts := range []CreateClusterOptions{
+		{Profile: profile, DisplayName: "demo-cluster", ClusterType: "starter", MonthlySpendingLimitUSDCents: -1},
+		{Profile: profile, DisplayName: "demo-cluster", ClusterType: "starter", ProjectID: "explicit-project", ProjectIDExplicit: true, MonthlySpendingLimitUSDCents: -1},
+	} {
+		if _, err := testService(server.URL).CreateCluster(context.Background(), opts); err != nil {
+			t.Fatalf("CreateCluster failed: %v", err)
+		}
+	}
+	if got := strings.Join(projectIDs, ","); got != "profile-project,explicit-project" {
+		t.Fatalf("unexpected project resolution %q", got)
+	}
+}
+
+func TestCreateClusterProjectResolutionErrors(t *testing.T) {
+	t.Run("explicit empty", func(t *testing.T) {
+		profile := testProfile()
+		profile.ProjectID = "profile-project"
+		_, err := Service{}.DryRunCreateCluster(context.Background(), "tdc db create-db-cluster", CreateClusterOptions{
+			Profile: profile, DisplayName: "demo", ClusterType: "starter", ProjectIDExplicit: true, MonthlySpendingLimitUSDCents: -1,
+		})
+		if apperr.CodeFor(err) != "db.empty_project_id" {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("missing default", func(t *testing.T) {
+		_, err := Service{}.DryRunCreateCluster(context.Background(), "tdc db create-db-cluster", CreateClusterOptions{
+			Profile: testProfile(), DisplayName: "demo", ClusterType: "starter", MonthlySpendingLimitUSDCents: -1,
+		})
+		if apperr.CodeFor(err) != "db.missing_project_id" || !strings.Contains(apperr.MessageFor(err), "tdc configure --profile test") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
 }
 
 func TestListClusters(t *testing.T) {

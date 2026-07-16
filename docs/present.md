@@ -42,14 +42,7 @@ jq --version
 bin/tdc organization list-projects --output text
 ```
 
-取一个 project id，后续创建 Starter cluster 会用到：
-
-```bash
-export PROJECT_ID="$(bin/tdc organization list-projects | jq -r '.projects[0].id')"
-echo "$PROJECT_ID"
-```
-
-可以说明：`organization` 是只读 control plane，适合脚本和 agent 先发现当前账号可操作的 TiDB Cloud 项目。
+可以说明：`organization` 是只读 control plane，适合脚本和 agent 查看当前账号可操作的 TiDB Cloud 项目。`configure` 已经自动发现 `type = "tidbx_virtual"` 的项目并将其保存为默认 `project_id`，创建 Starter cluster 时不需要重复传入。
 
 ## 2. DB Control Plane：Starter 集群增删改查
 
@@ -66,7 +59,6 @@ export CLUSTER_NAME="tdc-demo-${DEMO_ID}"
 bin/tdc db create-db-cluster \
   --db-cluster-name "$CLUSTER_NAME" \
   --db-cluster-type starter \
-  --project-id "$PROJECT_ID" \
   --dry-run
 ```
 
@@ -75,8 +67,7 @@ bin/tdc db create-db-cluster \
 ```bash
 bin/tdc db create-db-cluster \
   --db-cluster-name "$CLUSTER_NAME" \
-  --db-cluster-type starter \
-  --project-id "$PROJECT_ID"
+  --db-cluster-type starter
 ```
 
 查询列表并取出刚创建的 cluster id：

@@ -31,6 +31,20 @@ func TestLoadExplicitProfile(t *testing.T) {
 	}
 }
 
+func TestLoadReadsProjectID(t *testing.T) {
+	home := t.TempDir()
+	if err := store.WriteProfile(home, "stage", store.ConfigProfile{RegionCode: "aws-us-east-1", ProjectID: "virtual-1"}, store.CredentialsProfile{TDCPublicKey: "public", TDCPrivateKey: "private"}); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := Load(context.Background(), LoadOptions{Profile: "stage", ProfileExplicit: true, HomeDir: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profile.ProjectID != "virtual-1" {
+		t.Fatalf("project id = %q, want virtual-1", profile.ProjectID)
+	}
+}
+
 func TestLoadRegionOverrideWinsOverExplicitProfile(t *testing.T) {
 	home := t.TempDir()
 	writeProfile(t, home, "stage", "aws-us-west-2", "stage-public", "stage-private")

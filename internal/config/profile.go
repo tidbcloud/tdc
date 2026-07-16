@@ -28,6 +28,7 @@ type Profile struct {
 	PlacementRegionCode     string
 	CloudProvider           string
 	RegionCode              string
+	ProjectID               string
 	TDCPublicKey            string
 	TDCPrivateKey           string
 	FSResourceName          string
@@ -94,6 +95,7 @@ func Load(ctx context.Context, opts LoadOptions) (*Profile, error) {
 		PlacementRegionCode:     placement.Code,
 		CloudProvider:           placement.Provider,
 		RegionCode:              placement.NativeCode,
+		ProjectID:               cfg.ProjectID,
 		TDCPublicKey:            publicKey,
 		TDCPrivateKey:           privateKey,
 		FSResourceName:          cfg.FSResourceName,
