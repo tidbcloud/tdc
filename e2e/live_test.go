@@ -53,7 +53,7 @@ func TestLiveProfileConfigured(t *testing.T) {
 	}
 }
 
-func TestLiveTiDBCloudAPIReadOnlyProbes(t *testing.T) {
+func TestLiveDBAPIReadOnlyProbes(t *testing.T) {
 	requireLive(t)
 
 	profile := liveProfile(t)
@@ -66,6 +66,13 @@ func TestLiveTiDBCloudAPIReadOnlyProbes(t *testing.T) {
 	starter := liveDigestClient(t, profile, starterEndpoint, authz.StarterClusterRead)
 	liveGETJSON(t, starter, "/v1beta1/regions")
 	liveGETJSON(t, starter, "/v1beta1/regions:listCloudProviders")
+}
+
+func TestLiveOrganizationAPIReadOnlyProbes(t *testing.T) {
+	requireLive(t)
+
+	profile := liveProfile(t)
+	resolver := endpoints.NewResolver()
 
 	iamEndpoint, err := resolver.ResolveIAM()
 	if err != nil {
@@ -154,186 +161,24 @@ func TestLiveFSResourceRegistryLifecycle(t *testing.T) {
 	created[names[1]] = false
 }
 
-func TestLiveCurrentCommandSurface(t *testing.T) {
+func TestLiveCLICommandSurface(t *testing.T) {
 	requireLive(t)
+	bin := tdcBinary(t)
+	testLiveHelpCommands(t, bin, [][]string{{"help"}, {"update", "help"}})
 
+	checkUpdateHelp := runTDC(t, bin, "update", "help")
+	checkUpdateHelp.wantExitCode(0)
+	checkUpdateHelp.wantStdoutContains("--check")
+	checkUpdateHelp.wantStdoutContains("--fail-if-update-available")
+	checkUpdateHelp.wantStdoutContains("--yes")
+}
+
+func TestLiveOrganizationCommandSurface(t *testing.T) {
+	requireLive(t)
 	bin := tdcBinary(t)
 	profileName := liveProfileName(t)
-	fileSystemName := liveFileSystemName(t)
-	ensureLiveFSResource(t, bin, profileName)
-
-	helpCommands := [][]string{
-		{"help"},
-		{"update", "help"},
-		{"db", "help"},
-		{"fs", "help"},
-		{"fs-git", "help"},
-		{"fs-journal", "help"},
-		{"fs-vault", "help"},
-		{"organization", "help"},
-		{"db", "create-db-cluster", "help"},
-		{"db", "list-db-clusters", "help"},
-		{"fs", "create-file-system", "help"},
-		{"fs", "list-file-systems", "help"},
-		{"fs", "describe-file-system", "help"},
-		{"fs", "set-default-file-system", "help"},
-		{"fs", "unset-default-file-system", "help"},
-		{"fs", "copy-file", "help"},
-		{"fs", "read-file", "help"},
-		{"fs", "chmod-file", "help"},
-		{"fs", "create-symlink", "help"},
-		{"fs", "create-hardlink", "help"},
-		{"fs", "create-layer", "help"},
-		{"fs", "list-layers", "help"},
-		{"fs", "describe-layer", "help"},
-		{"fs", "diff-layer", "help"},
-		{"fs", "create-layer-checkpoint", "help"},
-		{"fs", "rollback-layer", "help"},
-		{"fs", "commit-layer", "help"},
-		{"fs", "pack-file-system", "help"},
-		{"fs", "unpack-file-system", "help"},
-		{"fs", "drain-file-system", "help"},
-		{"fs", "cp", "help"},
-		{"fs", "cat", "help"},
-		{"fs", "ls", "help"},
-		{"fs", "stat", "help"},
-		{"fs", "mv", "help"},
-		{"fs", "rm", "help"},
-		{"fs", "mkdir", "help"},
-		{"fs", "chmod", "help"},
-		{"fs", "symlink", "help"},
-		{"fs", "hardlink", "help"},
-		{"fs", "grep", "help"},
-		{"fs", "find", "help"},
-		{"fs", "mount", "help"},
-		{"fs", "drain", "help"},
-		{"fs", "umount", "help"},
-		{"fs-vault", "create-secret", "help"},
-		{"fs-vault", "replace-secret", "help"},
-		{"fs-vault", "read-secret", "help"},
-		{"fs-vault", "list-secrets", "help"},
-		{"fs-vault", "delete-secret", "help"},
-		{"fs-vault", "create-grant", "help"},
-		{"fs-vault", "delete-grant", "help"},
-		{"fs-vault", "list-audit-events", "help"},
-		{"fs-vault", "run-with-secret", "help"},
-		{"fs-vault", "mount-vault", "help"},
-		{"fs-vault", "unmount-vault", "help"},
-		{"fs-journal", "create-journal", "help"},
-		{"fs-journal", "append-journal-entries", "help"},
-		{"fs-journal", "read-journal-entries", "help"},
-		{"fs-journal", "search-journal-entries", "help"},
-		{"fs-journal", "verify-journal", "help"},
-		{"fs-git", "clone-git-workspace", "help"},
-		{"fs-git", "hydrate-git-workspace", "help"},
-		{"fs-git", "add-git-worktree", "help"},
-		{"fs-git", "remove-git-worktree", "help"},
-	}
-	for _, args := range helpCommands {
-		result := runTDC(t, bin, args...)
-		result.wantExitCode(0)
-		result.wantStdoutContains("Usage:")
-	}
-
-	mutatingDryRunCommands := [][]string{
-		{"db", "create-db-cluster-branch", "--db-cluster-id", "cluster-1", "--db-cluster-branch-name", "dev"},
-		{"db", "delete-db-cluster-branch", "--db-cluster-id", "cluster-1", "--db-cluster-branch-id", "branch-1"},
-		{"db", "create-db-sql-users", "--db-cluster-id", "cluster-1"},
-		{"fs", "create-file-system", "--file-system-name", fileSystemName},
-		{"fs", "delete-file-system", "--file-system-name", fileSystemName, "--confirm-file-system-name", fileSystemName},
-		{"fs", "create-layer", "--layer-id", "layer-1", "--base-root-path", "/workspace", "--layer-name", "dev"},
-		{"fs", "create-layer-checkpoint", "--layer-id", "layer-1", "--checkpoint-id", "cp-1"},
-		{"fs", "rollback-layer", "--layer-id", "layer-1"},
-		{"fs", "commit-layer", "--layer-id", "layer-1"},
-		{"fs", "pack-file-system", "--local-root", "/tmp/tdc-e2e-pack", "--remote-root", "/workspace", "--mount-profile", "portable"},
-		{"fs", "unpack-file-system", "--local-root", "/tmp/tdc-e2e-pack", "--remote-root", "/workspace", "--mount-profile", "portable"},
-		{"fs", "mount-file-system", "--mount-path", "/tmp/tdc-e2e-mount", "--driver", "webdav"},
-		{"fs", "unmount-file-system", "--mount-path", "/tmp/tdc-e2e-mount"},
-		{"fs-vault", "create-secret", "--secret-name", "tdc-e2e-secret", "--field", "DB_URL=mysql://example"},
-		{"fs-vault", "replace-secret", "--secret-path", "/n/vault/tdc-e2e-secret", "--from-directory", "/tmp"},
-		{"fs-vault", "delete-secret", "--secret-name", "tdc-e2e-secret"},
-		{"fs-vault", "create-grant", "--agent-id", "tdc-live-e2e", "--scope", "tdc-e2e-secret/DB_URL", "--permission", "read", "--ttl", "10m"},
-		{"fs-vault", "delete-grant", "--grant-id", "grant-1"},
-		{"fs-vault", "mount-vault", "--mount-path", "/tmp/tdc-e2e-vault"},
-		{"fs-vault", "unmount-vault", "--mount-path", "/tmp/tdc-e2e-vault"},
-		{"fs-journal", "create-journal", "--journal-id", "jrn-tdc-e2e", "--journal-kind", "agent"},
-		{"fs-journal", "append-journal-entries", "--journal-id", "jrn-tdc-e2e", "--entry-json", `{"type":"task.started"}`},
-	}
-	for _, args := range mutatingDryRunCommands {
-		fullArgs := append([]string{"--profile", profileName}, args...)
-		fullArgs = append(fullArgs, "--dry-run", "--query", "checks[].name")
-		result := runTDC(t, bin, fullArgs...)
-		result.wantExitCode(0)
-		result.wantStdoutContains("config_and_credentials")
-		result.wantStdoutContains("endpoint_selection")
-		result.wantStdoutContains("permission_requirement")
-		result.wantStdoutContains("remote_mutation")
-	}
-	for _, args := range [][]string{
-		{"fs", "set-default-file-system", "--file-system-name", fileSystemName},
-		{"fs", "unset-default-file-system"},
-	} {
-		fullArgs := append([]string{"--profile", profileName}, args...)
-		fullArgs = append(fullArgs, "--dry-run")
-		result := runTDC(t, bin, fullArgs...)
-		result.wantExitCode(0)
-		result.wantStdoutContains(`"local_resource_registry"`)
-	}
-
-	dataPlaneDryRunCommands := [][]string{
-		{"fs", "copy-file", "--from-remote", "/workspace/source.txt", "--to-remote", "/workspace/target.txt"},
-		{"fs", "move-file", "--from-remote", "/workspace/source.txt", "--to-remote", "/workspace/target.txt"},
-		{"fs", "delete-file", "--path", "/workspace/source.txt"},
-		{"fs", "create-directory", "--path", "/workspace/newdir"},
-		{"fs", "chmod-file", "--path", "/workspace/source.txt", "--mode", "0600"},
-		{"fs", "create-symlink", "--target", "source.txt", "--link-path", "/workspace/link.txt"},
-		{"fs", "create-hardlink", "--source-path", "/workspace/source.txt", "--link-path", "/workspace/hard.txt"},
-	}
-	for _, args := range dataPlaneDryRunCommands {
-		fullArgs := append([]string{"--profile", profileName}, args...)
-		fullArgs = append(fullArgs, "--dry-run", "--query", "checks[].name")
-		result := runTDC(t, bin, fullArgs...)
-		result.wantExitCode(0)
-		result.wantStdoutContains("config_and_credentials")
-		result.wantStdoutContains("endpoint_selection")
-		result.wantStdoutContains("permission_requirement")
-		result.wantStdoutContains("request_construction")
-	}
-
-	readOnlyCommands := [][]string{
-		{"organization", "list-projects"},
-		{"db", "list-db-clusters"},
-		{"db", "describe-db-cluster"},
-		{"db", "list-db-cluster-branches"},
-		{"db", "describe-db-cluster-branch"},
-		{"db", "format-db-connection-string"},
-		{"db", "execute-sql-statement"},
-		{"fs", "check-file-system"},
-		{"fs", "list-file-systems"},
-		{"fs", "describe-file-system"},
-		{"fs", "read-file"},
-		{"fs", "list-files"},
-		{"fs", "describe-file"},
-		{"fs", "search-file-content"},
-		{"fs", "find-files"},
-		{"fs", "list-layers"},
-		{"fs", "describe-layer"},
-		{"fs", "diff-layer"},
-		{"fs-vault", "read-secret"},
-		{"fs-vault", "list-secrets"},
-		{"fs-vault", "list-audit-events"},
-		{"fs-vault", "run-with-secret"},
-		{"fs-journal", "read-journal-entries"},
-		{"fs-journal", "search-journal-entries"},
-		{"fs-journal", "verify-journal"},
-	}
-	for _, args := range readOnlyCommands {
-		fullArgs := append([]string{"--profile", profileName}, args...)
-		fullArgs = append(fullArgs, "--dry-run")
-		result := runTDC(t, bin, fullArgs...)
-		result.wantExitCode(2)
-		result.wantStderrContains("unknown flag: --dry-run")
-	}
+	testLiveHelpCommands(t, bin, [][]string{{"organization", "help"}})
+	testLiveReadOnlyDryRunRejections(t, bin, profileName, [][]string{{"organization", "list-projects"}})
 
 	projects := runTDC(t, bin, "--profile", profileName, "organization", "list-projects", "--page-size", "1")
 	projects.wantExitCode(0)
@@ -363,6 +208,30 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 	text.wantStdoutContains("TYPE")
 	text.wantStdoutContains(projectList.Projects[0].ID)
 	text.wantStdoutContains(projectList.Projects[0].Type)
+}
+
+func TestLiveDBCommandSurface(t *testing.T) {
+	requireLive(t)
+	bin := tdcBinary(t)
+	profileName := liveProfileName(t)
+	testLiveHelpCommands(t, bin, [][]string{
+		{"db", "help"},
+		{"db", "create-db-cluster", "help"},
+		{"db", "list-db-clusters", "help"},
+	})
+	testLiveMutatingDryRuns(t, bin, profileName, [][]string{
+		{"db", "create-db-cluster-branch", "--db-cluster-id", "cluster-1", "--db-cluster-branch-name", "dev"},
+		{"db", "delete-db-cluster-branch", "--db-cluster-id", "cluster-1", "--db-cluster-branch-id", "branch-1"},
+		{"db", "create-db-sql-users", "--db-cluster-id", "cluster-1"},
+	}, "remote_mutation")
+	testLiveReadOnlyDryRunRejections(t, bin, profileName, [][]string{
+		{"db", "list-db-clusters"},
+		{"db", "describe-db-cluster"},
+		{"db", "list-db-cluster-branches"},
+		{"db", "describe-db-cluster-branch"},
+		{"db", "format-db-connection-string"},
+		{"db", "execute-sql-statement"},
+	})
 
 	clusters := runTDC(t, bin, "--profile", profileName, "db", "list-db-clusters", "--page-size", "1")
 	clusters.wantExitCode(0)
@@ -390,13 +259,230 @@ func TestLiveCurrentCommandSurface(t *testing.T) {
 		describe.wantStdoutContains(`"id"`)
 		describe.wantStdoutContains(clusterList.Clusters[0].ID)
 	}
+}
 
-	checkUpdateHelp := runTDC(t, bin, "update", "help")
-	checkUpdateHelp.wantExitCode(0)
-	checkUpdateHelp.wantStdoutContains("--check")
-	checkUpdateHelp.wantStdoutContains("--fail-if-update-available")
+func TestLiveFSCommandSurface(t *testing.T) {
+	requireLive(t)
+	bin := tdcBinary(t)
+	profileName := liveProfileName(t)
+	fileSystemName := liveFileSystemName(t)
+	ensureLiveFSResource(t, bin, profileName)
+	testLiveHelpCommands(t, bin, [][]string{
+		{"fs", "help"},
+		{"fs", "create-file-system", "help"}, {"fs", "list-file-systems", "help"},
+		{"fs", "describe-file-system", "help"}, {"fs", "set-default-file-system", "help"},
+		{"fs", "unset-default-file-system", "help"}, {"fs", "copy-file", "help"},
+		{"fs", "read-file", "help"}, {"fs", "chmod-file", "help"},
+		{"fs", "create-symlink", "help"}, {"fs", "create-hardlink", "help"},
+		{"fs", "create-layer", "help"}, {"fs", "list-layers", "help"},
+		{"fs", "describe-layer", "help"}, {"fs", "diff-layer", "help"},
+		{"fs", "create-layer-checkpoint", "help"}, {"fs", "rollback-layer", "help"},
+		{"fs", "commit-layer", "help"}, {"fs", "pack-file-system", "help"},
+		{"fs", "unpack-file-system", "help"}, {"fs", "drain-file-system", "help"},
+		{"fs", "cp", "help"}, {"fs", "cat", "help"}, {"fs", "ls", "help"},
+		{"fs", "stat", "help"}, {"fs", "mv", "help"}, {"fs", "rm", "help"},
+		{"fs", "mkdir", "help"}, {"fs", "chmod", "help"}, {"fs", "symlink", "help"},
+		{"fs", "hardlink", "help"}, {"fs", "grep", "help"}, {"fs", "find", "help"},
+		{"fs", "mount", "help"}, {"fs", "drain", "help"}, {"fs", "umount", "help"},
+	})
+	testLiveMutatingDryRuns(t, bin, profileName, [][]string{
+		{"fs", "create-file-system", "--file-system-name", fileSystemName},
+		{"fs", "delete-file-system", "--file-system-name", fileSystemName, "--confirm-file-system-name", fileSystemName},
+		{"fs", "create-layer", "--layer-id", "layer-1", "--base-root-path", "/workspace", "--layer-name", "dev"},
+		{"fs", "create-layer-checkpoint", "--layer-id", "layer-1", "--checkpoint-id", "cp-1"},
+		{"fs", "rollback-layer", "--layer-id", "layer-1"}, {"fs", "commit-layer", "--layer-id", "layer-1"},
+		{"fs", "pack-file-system", "--local-root", "/tmp/tdc-e2e-pack", "--remote-root", "/workspace", "--mount-profile", "portable"},
+		{"fs", "unpack-file-system", "--local-root", "/tmp/tdc-e2e-pack", "--remote-root", "/workspace", "--mount-profile", "portable"},
+		{"fs", "mount-file-system", "--mount-path", "/tmp/tdc-e2e-mount", "--driver", "webdav"},
+		{"fs", "unmount-file-system", "--mount-path", "/tmp/tdc-e2e-mount"},
+	}, "remote_mutation")
+	testLiveMutatingDryRuns(t, bin, profileName, [][]string{
+		{"fs", "copy-file", "--from-remote", "/workspace/source.txt", "--to-remote", "/workspace/target.txt"},
+		{"fs", "move-file", "--from-remote", "/workspace/source.txt", "--to-remote", "/workspace/target.txt"},
+		{"fs", "delete-file", "--path", "/workspace/source.txt"},
+		{"fs", "create-directory", "--path", "/workspace/newdir"},
+		{"fs", "chmod-file", "--path", "/workspace/source.txt", "--mode", "0600"},
+		{"fs", "create-symlink", "--target", "source.txt", "--link-path", "/workspace/link.txt"},
+		{"fs", "create-hardlink", "--source-path", "/workspace/source.txt", "--link-path", "/workspace/hard.txt"},
+	}, "request_construction")
+	for _, args := range [][]string{
+		{"fs", "set-default-file-system", "--file-system-name", fileSystemName},
+		{"fs", "unset-default-file-system"},
+	} {
+		result := runTDC(t, bin, append(append([]string{"--profile", profileName}, args...), "--dry-run")...)
+		result.wantExitCode(0)
+		result.wantStdoutContains(`"local_resource_registry"`)
+	}
+	testLiveReadOnlyDryRunRejections(t, bin, profileName, [][]string{
+		{"fs", "check-file-system"}, {"fs", "list-file-systems"}, {"fs", "describe-file-system"},
+		{"fs", "read-file"}, {"fs", "list-files"}, {"fs", "describe-file"},
+		{"fs", "search-file-content"}, {"fs", "find-files"}, {"fs", "list-layers"},
+		{"fs", "describe-layer"}, {"fs", "diff-layer"},
+	})
+}
 
-	checkUpdateHelp.wantStdoutContains("--yes")
+func TestLiveFSVaultCommandSurface(t *testing.T) {
+	requireLive(t)
+	bin := tdcBinary(t)
+	profileName := liveProfileName(t)
+	ensureLiveFSResource(t, bin, profileName)
+	testLiveHelpCommands(t, bin, [][]string{
+		{"fs-vault", "help"}, {"fs-vault", "create-secret", "help"},
+		{"fs-vault", "replace-secret", "help"}, {"fs-vault", "read-secret", "help"},
+		{"fs-vault", "list-secrets", "help"}, {"fs-vault", "delete-secret", "help"},
+		{"fs-vault", "create-grant", "help"}, {"fs-vault", "delete-grant", "help"},
+		{"fs-vault", "list-audit-events", "help"}, {"fs-vault", "run-with-secret", "help"},
+		{"fs-vault", "mount-vault", "help"}, {"fs-vault", "unmount-vault", "help"},
+	})
+	testLiveMutatingDryRuns(t, bin, profileName, [][]string{
+		{"fs-vault", "create-secret", "--secret-name", "tdc-e2e-secret", "--field", "DB_URL=mysql://example"},
+		{"fs-vault", "replace-secret", "--secret-path", "/n/vault/tdc-e2e-secret", "--from-directory", "/tmp"},
+		{"fs-vault", "delete-secret", "--secret-name", "tdc-e2e-secret"},
+		{"fs-vault", "create-grant", "--agent-id", "tdc-live-e2e", "--scope", "tdc-e2e-secret/DB_URL", "--permission", "read", "--ttl", "10m"},
+		{"fs-vault", "delete-grant", "--grant-id", "grant-1"},
+		{"fs-vault", "mount-vault", "--mount-path", "/tmp/tdc-e2e-vault"},
+		{"fs-vault", "unmount-vault", "--mount-path", "/tmp/tdc-e2e-vault"},
+	}, "remote_mutation")
+	testLiveReadOnlyDryRunRejections(t, bin, profileName, [][]string{
+		{"fs-vault", "read-secret"}, {"fs-vault", "list-secrets"},
+		{"fs-vault", "list-audit-events"}, {"fs-vault", "run-with-secret"},
+	})
+}
+
+func TestLiveFSJournalCommandSurface(t *testing.T) {
+	requireLive(t)
+	bin := tdcBinary(t)
+	profileName := liveProfileName(t)
+	ensureLiveFSResource(t, bin, profileName)
+	testLiveHelpCommands(t, bin, [][]string{
+		{"fs-journal", "help"}, {"fs-journal", "create-journal", "help"},
+		{"fs-journal", "append-journal-entries", "help"}, {"fs-journal", "read-journal-entries", "help"},
+		{"fs-journal", "search-journal-entries", "help"}, {"fs-journal", "verify-journal", "help"},
+	})
+	testLiveMutatingDryRuns(t, bin, profileName, [][]string{
+		{"fs-journal", "create-journal", "--journal-id", "jrn-tdc-e2e", "--journal-kind", "agent"},
+		{"fs-journal", "append-journal-entries", "--journal-id", "jrn-tdc-e2e", "--entry-json", `{"type":"task.started"}`},
+	}, "remote_mutation")
+	testLiveReadOnlyDryRunRejections(t, bin, profileName, [][]string{
+		{"fs-journal", "read-journal-entries"}, {"fs-journal", "search-journal-entries"},
+		{"fs-journal", "verify-journal"},
+	})
+}
+
+func TestLiveFSGitCommandSurface(t *testing.T) {
+	requireLive(t)
+	testLiveHelpCommands(t, tdcBinary(t), [][]string{
+		{"fs-git", "help"}, {"fs-git", "clone-git-workspace", "help"},
+		{"fs-git", "hydrate-git-workspace", "help"}, {"fs-git", "add-git-worktree", "help"},
+		{"fs-git", "remove-git-worktree", "help"},
+	})
+}
+
+func TestLiveFSGitLifecycle(t *testing.T) {
+	requireLive(t)
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("tdc fs-git live e2e requires a FUSE-capable macOS or Linux host")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("tdc fs-git live e2e requires git")
+	}
+
+	bin := tdcBinary(t)
+	profileName := liveProfileName(t)
+	ensureLiveFSResource(t, bin, profileName)
+	suffix := fmt.Sprintf("%s-%d", time.Now().UTC().Format("20060102150405"), os.Getpid())
+	remoteRoot := "/tdc-e2e-git-" + suffix
+	mountPath := filepath.Join(t.TempDir(), "mount")
+	if err := os.MkdirAll(mountPath, 0o755); err != nil {
+		t.Fatalf("create fs-git mount path: %v", err)
+	}
+	unmounted := false
+	remoteDeleted := false
+	defer func() {
+		if !unmounted {
+			cleanupUnmount := runTDC(t, bin, "--profile", profileName, "fs", "unmount-file-system", "--mount-path", mountPath, "--ignore-absent", "--force")
+			if cleanupUnmount.exitCode != 0 {
+				t.Logf("cleanup fs-git unmount failed for %s: exit=%d stdout=%s stderr=%s", mountPath, cleanupUnmount.exitCode, cleanupUnmount.stdout, cleanupUnmount.stderr)
+			}
+		}
+		if !remoteDeleted {
+			cleanupRemote := runTDC(t, bin, "--profile", profileName, "fs", "delete-file", "--path", remoteRoot, "--recursive")
+			if cleanupRemote.exitCode != 0 && cleanupRemote.exitCode != 5 {
+				t.Logf("cleanup fs-git remote path failed for %s: exit=%d stdout=%s stderr=%s", remoteRoot, cleanupRemote.exitCode, cleanupRemote.stdout, cleanupRemote.stderr)
+			}
+		}
+	}()
+
+	createDir := runTDC(t, bin, "--profile", profileName, "fs", "create-directory", "--path", remoteRoot, "--mode", "0755")
+	createDir.wantExitCode(0)
+	mount := runTDC(t, bin, "--profile", profileName, "fs", "mount-file-system", "--mount-path", mountPath, "--remote-path", remoteRoot, "--driver", "fuse", "--ready-timeout", "30s")
+	mount.wantExitCode(0)
+
+	repoPath := filepath.Join(mountPath, "hello-world")
+	clone := runTDC(t, bin, "--profile", profileName, "fs-git", "clone-git-workspace", "--repo-url", "https://github.com/octocat/Hello-World.git", "--target-path", repoPath, "--blobless", "--hydrate", "sync")
+	clone.wantExitCode(0)
+	clone.wantStdoutContains(`"operation": "clone_git_workspace"`)
+	if _, err := os.Stat(filepath.Join(repoPath, ".git")); err != nil {
+		t.Fatalf("cloned fs-git workspace is missing .git: %v", err)
+	}
+
+	hydrate := runTDC(t, bin, "--profile", profileName, "fs-git", "hydrate-git-workspace", "--target-path", repoPath, "--timeout", "5m")
+	hydrate.wantExitCode(0)
+	hydrate.wantStdoutContains(`"operation": "hydrate_git_workspace"`)
+
+	worktreePath := filepath.Join(mountPath, "hello-world-worktree")
+	branchName := "tdc-e2e-" + suffix
+	addWorktree := runTDC(t, bin, "--profile", profileName, "fs-git", "add-git-worktree", "--base-path", repoPath, "--worktree-path", worktreePath, "--branch-name", branchName, "--hydrate", "sync")
+	addWorktree.wantExitCode(0)
+	addWorktree.wantStdoutContains(`"operation": "add_git_worktree"`)
+	if _, err := os.Stat(filepath.Join(worktreePath, ".git")); err != nil {
+		t.Fatalf("fs-git linked worktree is missing .git: %v", err)
+	}
+
+	removeWorktree := runTDC(t, bin, "--profile", profileName, "fs-git", "remove-git-worktree", "--worktree-path", worktreePath, "--force")
+	removeWorktree.wantExitCode(0)
+	removeWorktree.wantStdoutContains(`"status": "removed"`)
+
+	unmount := runTDC(t, bin, "--profile", profileName, "fs", "unmount-file-system", "--mount-path", mountPath)
+	unmount.wantExitCode(0)
+	unmounted = true
+	deleteRoot := runTDC(t, bin, "--profile", profileName, "fs", "delete-file", "--path", remoteRoot, "--recursive")
+	deleteRoot.wantExitCode(0)
+	remoteDeleted = true
+}
+
+func testLiveHelpCommands(t *testing.T, bin string, commands [][]string) {
+	t.Helper()
+	for _, args := range commands {
+		result := runTDC(t, bin, args...)
+		result.wantExitCode(0)
+		result.wantStdoutContains("Usage:")
+	}
+}
+
+func testLiveMutatingDryRuns(t *testing.T, bin, profileName string, commands [][]string, finalCheck string) {
+	t.Helper()
+	for _, args := range commands {
+		fullArgs := append([]string{"--profile", profileName}, args...)
+		fullArgs = append(fullArgs, "--dry-run", "--query", "checks[].name")
+		result := runTDC(t, bin, fullArgs...)
+		result.wantExitCode(0)
+		result.wantStdoutContains("config_and_credentials")
+		result.wantStdoutContains("endpoint_selection")
+		result.wantStdoutContains("permission_requirement")
+		result.wantStdoutContains(finalCheck)
+	}
+}
+
+func testLiveReadOnlyDryRunRejections(t *testing.T, bin, profileName string, commands [][]string) {
+	t.Helper()
+	for _, args := range commands {
+		fullArgs := append([]string{"--profile", profileName}, args...)
+		fullArgs = append(fullArgs, "--dry-run")
+		result := runTDC(t, bin, fullArgs...)
+		result.wantExitCode(2)
+		result.wantStderrContains("unknown flag: --dry-run")
+	}
 }
 
 func resolveLiveFSResource(t *testing.T, profile *config.Profile, name string) *config.Profile {
@@ -724,7 +810,15 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	commitLayer.wantStdoutContains(`"status"`)
 	layerClosed = true
 	waitLiveRemoteRead(t, bin, profileName, layerCopyPath, layerCopyContent, 30*time.Second)
+	testLiveFSDataPlaneContinuation(t, bin, profileName, rootPath, sourcePath, copyPath, movedPath, suffix, fullContent, &deleted)
+}
 
+func TestLiveFSVaultLifecycle(t *testing.T) {
+	requireLive(t)
+	bin := tdcBinary(t)
+	profileName := liveProfileName(t)
+	ensureLiveFSResource(t, bin, profileName)
+	suffix := time.Now().UTC().Format("20060102150405")
 	vaultSecretName := "tdc-e2e-vault-" + suffix
 	vaultDeleted := false
 	defer func() {
@@ -860,7 +954,15 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	deleteVaultSecret.wantExitCode(0)
 	deleteVaultSecret.wantStdoutContains(`"status": "deleted"`)
 	vaultDeleted = true
+}
 
+func TestLiveFSJournalLifecycle(t *testing.T) {
+	requireLive(t)
+	bin := tdcBinary(t)
+	profileName := liveProfileName(t)
+	ensureLiveFSResource(t, bin, profileName)
+	suffix := time.Now().UTC().Format("20060102150405")
+	rootPath := "/tdc-e2e-journal-" + suffix
 	journalID := "jrn-tdc-e2e-" + suffix
 	appendID := "app-tdc-e2e-" + suffix
 	createJournal := runTDC(
@@ -915,7 +1017,10 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	verifyJournal := runTDC(t, bin, "--profile", profileName, "fs-journal", "verify-journal", "--journal-id", journalID, "--output", "text")
 	verifyJournal.wantExitCode(0)
 	verifyJournal.wantStdoutContains("ok journal=" + journalID)
+}
 
+func testLiveFSDataPlaneContinuation(t *testing.T, bin, profileName, rootPath, sourcePath, copyPath, movedPath, suffix, fullContent string, deleted *bool) {
+	t.Helper()
 	waitLiveFSResult(t, bin, []string{"--profile", profileName, "fs", "search-file-content", "--path", rootPath, "--pattern", "tdc fs live e2e", "--limit", "5"}, "README.md", 5*time.Minute, "find uploaded file content")
 	waitLiveFSResult(t, bin, []string{"--profile", profileName, "fs", "find-files", "--path", rootPath, "--file-name-pattern", "*.md", "--limit", "5"}, "README.md", 2*time.Minute, "find uploaded file by name")
 
@@ -1029,7 +1134,7 @@ func TestLiveFSDataPlaneLifecycle(t *testing.T) {
 	deleteRoot := runTDC(t, bin, "--profile", profileName, "fs", "delete-file", "--path", rootPath, "--recursive")
 	deleteRoot.wantExitCode(0)
 	deleteRoot.wantStdoutContains(`"status": "deleted"`)
-	deleted = true
+	*deleted = true
 }
 
 func TestLiveFSMountRuntime(t *testing.T) {
