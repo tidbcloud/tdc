@@ -119,6 +119,123 @@ func TestResolveOnlyResourceAndMissingResource(t *testing.T) {
 	}
 }
 
+func TestResolveAuthenticatedConfigurationFree(t *testing.T) {
+	home := t.TempDir()
+	profile := &config.Profile{Name: "ephemeral", HomeDir: home}
+	selected, resource, err := ResolveAuthenticated(home, profile, ResolveAuthOptions{
+		TokenRequired: true,
+		Env: map[string]string{
+			"TDC_FS_FILE_SYSTEM_NAME": "workspace",
+			"TDC_FS_TOKEN":            "drive9-secret",
+			"TDC_REGION_CODE":         "aws-us-east-1",
+		},
+		RegionOverride: "aws-us-east-1",
+	})
+	if err != nil {
+		t.Fatalf("ResolveAuthenticated failed: %v", err)
+	}
+	if selected.FSResourceName != "workspace" || selected.FSAPIKey != "drive9-secret" || selected.FSPlacementRegionCode != "aws-us-east-1" {
+		t.Fatalf("unexpected selected profile: %#v", selected)
+	}
+	if resource.TenantID != "" || !resource.HasAPIKey {
+		t.Fatalf("unexpected ephemeral resource: %#v", resource)
+	}
+	if _, err := os.Stat(filepath.Join(home, store.TDCDirName)); !os.IsNotExist(err) {
+		t.Fatalf("configuration-free resolution wrote local state: %v", err)
+	}
+}
+
+func TestResolveAuthenticatedPrecedenceAndMixedSources(t *testing.T) {
+	home := t.TempDir()
+	profile := registryProfile(home)
+	if err := Store(home, profile, "workspace", "tenant-1", "aws", "aws-us-west-2", "stored-token", true); err != nil {
+		t.Fatal(err)
+	}
+	profile.FSDefaultFileSystemName = "workspace"
+	profile.PlacementRegionCode = "aws-eu-central-1"
+
+	selected, _, err := ResolveAuthenticated(home, profile, ResolveAuthOptions{
+		Selector:         "workspace",
+		SelectorExplicit: true,
+		Token:            "flag-token",
+		TokenExplicit:    true,
+		RegionOverride:   "aws-ap-southeast-1",
+		TokenRequired:    true,
+		Env: map[string]string{
+			"TDC_FS_TOKEN":    "env-token",
+			"TDC_REGION_CODE": "aws-us-east-1",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.FSAPIKey != "flag-token" || selected.FSPlacementRegionCode != "aws-ap-southeast-1" {
+		t.Fatalf("flag precedence failed: %#v", selected)
+	}
+
+	selected, _, err = ResolveAuthenticated(home, profile, ResolveAuthOptions{
+		TokenRequired: true,
+		Env:           map[string]string{"TDC_FS_TOKEN": "env-token"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.FSAPIKey != "env-token" || selected.FSPlacementRegionCode != "aws-us-west-2" {
+		t.Fatalf("mixed env/registry resolution failed: %#v", selected)
+	}
+}
+
+func TestResolveAuthenticatedErrorsAndDelegatedTokenMode(t *testing.T) {
+	profile := &config.Profile{Name: "ephemeral", HomeDir: t.TempDir()}
+	tests := []struct {
+		name string
+		opts ResolveAuthOptions
+		code string
+	}{
+		{
+			name: "missing name",
+			opts: ResolveAuthOptions{TokenRequired: true, RegionOverride: "aws-us-east-1", Env: map[string]string{"TDC_FS_TOKEN": "token"}},
+			code: "fs.missing_file_system_name",
+		},
+		{
+			name: "missing token",
+			opts: ResolveAuthOptions{Selector: "workspace", SelectorExplicit: true, TokenRequired: true, RegionOverride: "aws-us-east-1"},
+			code: "fs.missing_token",
+		},
+		{
+			name: "missing region",
+			opts: ResolveAuthOptions{Selector: "workspace", SelectorExplicit: true, Token: "token", TokenExplicit: true, TokenRequired: true},
+			code: "fs.missing_region",
+		},
+		{
+			name: "empty token flag",
+			opts: ResolveAuthOptions{Selector: "workspace", SelectorExplicit: true, TokenExplicit: true, TokenRequired: true, RegionOverride: "aws-us-east-1"},
+			code: "fs.empty_token",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := ResolveAuthenticated(profile.HomeDir, profile, tt.opts)
+			if apperr.CodeFor(err) != tt.code {
+				t.Fatalf("error = %v, want %s", err, tt.code)
+			}
+		})
+	}
+
+	selected, _, err := ResolveAuthenticated(profile.HomeDir, profile, ResolveAuthOptions{
+		Selector:         "workspace",
+		SelectorExplicit: true,
+		RegionOverride:   "aws-us-east-1",
+		TokenRequired:    false,
+	})
+	if err != nil {
+		t.Fatalf("delegated token mode failed: %v", err)
+	}
+	if selected.FSAPIKey != "" {
+		t.Fatalf("delegated token mode unexpectedly selected owner token")
+	}
+}
+
 func TestLegacyFlatResourceMigration(t *testing.T) {
 	home := t.TempDir()
 	if err := store.WriteProfile(home, "stage", store.ConfigProfile{

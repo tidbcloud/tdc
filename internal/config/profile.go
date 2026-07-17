@@ -108,6 +108,90 @@ func Load(ctx context.Context, opts LoadOptions) (*Profile, error) {
 	}, nil
 }
 
+// LoadLocal loads a profile namespace and any locally available placement and
+// filesystem state without requiring TiDB Cloud API credentials.
+func LoadLocal(ctx context.Context, opts LoadOptions) (*Profile, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if opts.HomeDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, apperr.Wrap("config.home_dir", "config", 1, "cannot determine home directory", err)
+		}
+		opts.HomeDir = home
+	}
+
+	profileName := opts.Profile
+	if profileName == "" {
+		profileName = DefaultProfile
+	}
+	configDoc, err := store.ReadConfig(opts.HomeDir)
+	if err != nil {
+		return nil, apperr.Wrap("config.read_config", "config", 1, err.Error(), err)
+	}
+	credentialsDoc, err := store.ReadCredentials(opts.HomeDir)
+	if err != nil {
+		return nil, apperr.Wrap("config.read_credentials", "config", 1, err.Error(), err)
+	}
+	cfg, hasConfig := configDoc[profileName]
+	creds, hasCreds := credentialsDoc[profileName]
+
+	placement, hasPlacement, err := resolveOptionalPlacement(cfg, opts.RegionOverride, opts.Env)
+	if err != nil {
+		return nil, err
+	}
+	var fsPlacement region.Placement
+	if cfg.FSRegionCode != "" {
+		fsPlacement, err = parsePlacement(cfg.FSRegionCode)
+		if err != nil {
+			return nil, err
+		}
+	}
+	source := "local"
+	if hasConfig || hasCreds {
+		source = "profile"
+	}
+	profile := &Profile{
+		Name:                    profileName,
+		HomeDir:                 opts.HomeDir,
+		Source:                  source,
+		ProjectID:               cfg.ProjectID,
+		FSResourceName:          cfg.FSResourceName,
+		FSTenantID:              cfg.FSTenantID,
+		FSPlacementRegionCode:   fsPlacement.Code,
+		FSCloudProvider:         fsPlacement.Provider,
+		FSRegionCode:            fsPlacement.NativeCode,
+		FSAPIKey:                creds.FSAPIKey,
+		FSDefaultFileSystemName: cfg.FSDefaultFileSystemName,
+	}
+	if hasPlacement {
+		profile.PlacementRegionCode = placement.Code
+		profile.CloudProvider = placement.Provider
+		profile.RegionCode = placement.NativeCode
+	}
+	return profile, nil
+}
+
+func resolveOptionalPlacement(cfg store.ConfigProfile, regionOverride string, env map[string]string) (region.Placement, bool, error) {
+	regionCode := strings.TrimSpace(regionOverride)
+	if regionCode == "" {
+		regionCode = strings.TrimSpace(envValue(env, "TDC_REGION_CODE"))
+	}
+	if regionCode == "" {
+		regionCode = strings.TrimSpace(cfg.RegionCode)
+	}
+	if regionCode == "" {
+		return region.Placement{}, false, nil
+	}
+	placement, err := parsePlacement(regionCode)
+	if err != nil {
+		return region.Placement{}, false, err
+	}
+	return placement, true, nil
+}
+
 func resolvePlacement(homeDir, profileName string, cfg store.ConfigProfile, hasConfig bool, regionOverride string, env map[string]string) (region.Placement, error) {
 	regionCode := strings.TrimSpace(regionOverride)
 	if regionCode == "" {

@@ -45,7 +45,7 @@ live-e2e-db: build
 	$(LIVE_E2E_RUN) -run '^TestLiveDB'
 
 live-e2e-fs: build
-	$(LIVE_E2E_RUN) -run '^TestLive(FSResourceRegistryLifecycle|FSCommandSurface|FSDataPlaneLifecycle|FSMountRuntime|FSWebDAVMountRuntime)$$'
+	$(LIVE_E2E_RUN) -run '^TestLive(FSResourceRegistryLifecycle|FSCommandSurface|FSConfigurationFreeAccess|FSDataPlaneLifecycle|FSMountRuntime|FSWebDAVMountRuntime)$$'
 
 live-e2e-fs-git: build
 	$(LIVE_E2E_RUN) -run '^TestLiveFSGit'

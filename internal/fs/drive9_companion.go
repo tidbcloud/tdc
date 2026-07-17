@@ -16,7 +16,9 @@ import (
 	apifs "github.com/tidbcloud/tdc/internal/api/fs"
 	"github.com/tidbcloud/tdc/internal/apperr"
 	"github.com/tidbcloud/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/config/region"
 	"github.com/tidbcloud/tdc/internal/fs/fscred"
+	"github.com/tidbcloud/tdc/internal/fs/mountlocator"
 	"github.com/tidbcloud/tdc/internal/fswrap"
 )
 
@@ -157,6 +159,7 @@ func (s Service) drive9CreateFileSystem(ctx context.Context, opts CreateFileSyst
 			TenantID:          existing.TenantID,
 			CloudProvider:     existing.CloudProvider,
 			RegionCode:        existing.RegionCode,
+			FSToken:           existing.APIKey,
 			Status:            "exists",
 			CredentialsStored: true,
 		}, nil
@@ -202,6 +205,7 @@ func (s Service) drive9CreateFileSystem(ctx context.Context, opts CreateFileSyst
 		TenantID:          out.TenantID,
 		CloudProvider:     cloudProvider,
 		RegionCode:        regionCode,
+		FSToken:           out.APIKey,
 		Status:            status,
 		CredentialsStored: true,
 	}, nil
@@ -244,15 +248,15 @@ func (s Service) drive9DeleteFileSystem(ctx context.Context, opts DeleteFileSyst
 }
 
 func (s Service) drive9CheckFileSystem(ctx context.Context, opts CheckFileSystemOptions) (CheckResult, error) {
-	if err := validateProfile(opts.Profile); err != nil {
-		return CheckResult{}, err
+	if opts.Profile == nil {
+		return CheckResult{}, apperr.New("fs.missing_profile", "config", 2, "active profile is required")
 	}
 	checks := []Check{
-		{Name: "config_and_credentials", Status: "passed", Message: fmt.Sprintf("profile %q loaded", profileName(opts.Profile))},
+		{Name: "config_and_credentials", Status: "passed", Message: fmt.Sprintf("tdc fs credentials for profile namespace %q loaded", profileName(opts.Profile))},
 	}
 	resource := fscred.FromProfile(opts.Profile)
-	if resource.Name == "" || resource.TenantID == "" || !resource.HasAPIKey {
-		checks = append(checks, Check{Name: "fs_resource_credentials", Status: "warning", Message: "tdc fs resource credentials are not fully configured; run tdc fs create-file-system"})
+	if resource.Name == "" || !resource.HasAPIKey {
+		checks = append(checks, Check{Name: "fs_resource_credentials", Status: "warning", Message: "tdc fs resource name or FS token is missing"})
 	} else {
 		checks = append(checks, Check{Name: "fs_resource_credentials", Status: "passed", Message: resource.Name})
 	}
@@ -1021,6 +1025,12 @@ func (s Service) drive9MountVault(ctx context.Context, opts VaultMountOptions) (
 	if _, err := s.drive9Runner().Run(ctx, fswrap.RunOptions{Profile: opts.Profile, Args: args, IncludeFSAPIKey: true, VaultToken: opts.VaultToken}); err != nil {
 		return MountResult{}, err
 	}
+	if !opts.Foreground {
+		if err := s.writeDrive9MountLocator(opts.Profile, opts.MountPath, "vault"); err != nil {
+			_, _ = s.drive9Run(ctx, opts.Profile, []string{"umount", opts.MountPath}, false)
+			return MountResult{}, err
+		}
+	}
 	return MountResult{Status: "mounted", Profile: profileName(opts.Profile), FileSystemName: "vault", MountPath: opts.MountPath, RemotePath: "/n/vault", Driver: "fuse"}, nil
 }
 
@@ -1112,27 +1122,44 @@ func (s Service) drive9MountFileSystem(ctx context.Context, opts MountFileSystem
 	if err != nil {
 		return MountResult{}, err
 	}
+	if !opts.Foreground {
+		if err := s.writeDrive9MountLocator(opts.Profile, opts.MountPath, "fs"); err != nil {
+			_, _ = s.drive9Run(ctx, opts.Profile, []string{"umount", opts.MountPath}, false)
+			return MountResult{}, err
+		}
+	}
 	endpoint, _ := s.resolveFS(opts.Profile)
 	driver := drive9MountedDriver(result.Stderr, opts.Driver)
 	if driver == "" {
 		driver = "auto"
 	}
-	return MountResult{Status: "mounted", Profile: profileName(opts.Profile), FileSystemName: opts.FileSystemName, MountPath: opts.MountPath, RemotePath: remotePath, Driver: driver, Endpoint: &endpoint, MountProfile: opts.MountProfile, LocalRoot: opts.LocalRoot, PackPaths: opts.PackPaths, WriteBackCache: opts.WriteBackCache}, nil
+	return MountResult{Status: "mounted", Profile: profileName(opts.Profile), FileSystemName: opts.Profile.FSResourceName, MountPath: opts.MountPath, RemotePath: remotePath, Driver: driver, Endpoint: &endpoint, MountProfile: opts.MountProfile, LocalRoot: opts.LocalRoot, PackPaths: opts.PackPaths, WriteBackCache: opts.WriteBackCache}, nil
 }
 
 func (s Service) drive9DrainFileSystem(ctx context.Context, opts DrainFileSystemOptions) (DrainResult, error) {
+	profile, err := s.drive9MountLocatorProfile(opts.Profile, opts.MountPath)
+	if err != nil {
+		return DrainResult{}, err
+	}
 	args := []string{"mount", "drain", "--json"}
 	if opts.Timeout > 0 {
 		args = append(args, "--timeout", opts.Timeout.String())
 	}
 	args = append(args, opts.MountPath)
-	if _, err := s.drive9Run(ctx, opts.Profile, args, true); err != nil {
+	if _, err := s.drive9Run(ctx, profile, args, true); err != nil {
 		return DrainResult{}, err
 	}
 	return DrainResult{Status: "drained", MountPath: opts.MountPath}, nil
 }
 
 func (s Service) drive9UnmountFileSystem(ctx context.Context, opts UnmountFileSystemOptions) (UnmountResult, error) {
+	profile, err := s.drive9MountLocatorProfile(opts.Profile, opts.MountPath)
+	if err != nil {
+		if opts.IgnoreAbsent && apperr.CodeFor(err) == "fs.mount_locator_not_found" {
+			return UnmountResult{Status: "absent", MountPath: opts.MountPath}, nil
+		}
+		return UnmountResult{}, err
+	}
 	args := []string{"umount"}
 	if opts.Timeout > 0 {
 		args = append(args, "--timeout", opts.Timeout.String())
@@ -1144,13 +1171,86 @@ func (s Service) drive9UnmountFileSystem(ctx context.Context, opts UnmountFileSy
 		args = append(args, "--no-auto-pack")
 	}
 	args = append(args, opts.MountPath)
-	if _, err := s.drive9Run(ctx, opts.Profile, args, false); err != nil {
+	if _, err := s.drive9Run(ctx, profile, args, false); err != nil {
 		if opts.IgnoreAbsent {
+			homeDir, homeErr := s.homeDir()
+			if homeErr != nil {
+				return UnmountResult{}, homeErr
+			}
+			if removeErr := mountlocator.Remove(homeDir, opts.MountPath); removeErr != nil {
+				return UnmountResult{}, apperr.Wrap("fs.remove_mount_locator", "runtime", 1, "remove stale tdc fs mount locator", removeErr)
+			}
 			return UnmountResult{Status: "absent", MountPath: opts.MountPath}, nil
 		}
 		return UnmountResult{}, err
 	}
+	homeDir, err := s.homeDir()
+	if err != nil {
+		return UnmountResult{}, err
+	}
+	if err := mountlocator.Remove(homeDir, opts.MountPath); err != nil {
+		return UnmountResult{}, apperr.Wrap("fs.remove_mount_locator", "runtime", 1, "remove tdc fs mount locator", err)
+	}
 	return UnmountResult{Status: "unmounted", MountPath: opts.MountPath}, nil
+}
+
+func (s Service) writeDrive9MountLocator(profile *config.Profile, mountPath, kind string) error {
+	if profile == nil {
+		return apperr.New("fs.missing_profile", "config", 2, "active profile is required")
+	}
+	homeDir, err := s.homeDir()
+	if err != nil {
+		return err
+	}
+	companionHome, err := fscred.CompanionHome(homeDir, profile.Name, profile.FSResourceName)
+	if err != nil {
+		return err
+	}
+	locator, err := mountlocator.New(profile.Name, profile.FSResourceName, profile.FSPlacementRegionCode, companionHome, mountPath, kind)
+	if err != nil {
+		return apperr.Wrap("fs.write_mount_locator", "runtime", 1, "construct tdc fs mount locator", err)
+	}
+	if _, err := mountlocator.Write(homeDir, locator); err != nil {
+		return apperr.Wrap("fs.write_mount_locator", "runtime", 1, "write tdc fs mount locator", err)
+	}
+	return nil
+}
+
+func (s Service) drive9MountLocatorProfile(base *config.Profile, mountPath string) (*config.Profile, error) {
+	homeDir, err := s.homeDir()
+	if err != nil {
+		return nil, err
+	}
+	locator, _, err := mountlocator.Read(homeDir, mountPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, apperr.New("fs.mount_locator_not_found", "runtime", 1, fmt.Sprintf("no tdc fs mount locator found for %q", mountPath))
+		}
+		return nil, apperr.Wrap("fs.read_mount_locator", "runtime", 1, fmt.Sprintf("read tdc fs mount locator for %q", mountPath), err)
+	}
+	expectedHome, err := fscred.CompanionHome(homeDir, locator.Profile, locator.FileSystemName)
+	if err != nil {
+		return nil, err
+	}
+	if filepath.Clean(expectedHome) != filepath.Clean(locator.CompanionHome) {
+		return nil, apperr.New("fs.mount_locator_invalid", "config", 2, "tdc fs mount locator companion home does not match its profile and file system")
+	}
+	placement, err := region.ParsePlacementCode(locator.RegionCode)
+	if err != nil {
+		return nil, apperr.Wrap("fs.mount_locator_invalid", "config", 2, "tdc fs mount locator has an invalid region", err)
+	}
+	profile := config.Profile{HomeDir: homeDir}
+	if base != nil {
+		profile = *base
+	}
+	profile.Name = locator.Profile
+	profile.HomeDir = homeDir
+	profile.FSResourceName = locator.FileSystemName
+	profile.FSPlacementRegionCode = placement.Code
+	profile.FSCloudProvider = placement.Provider
+	profile.FSRegionCode = placement.NativeCode
+	profile.FSAPIKey = ""
+	return &profile, nil
 }
 
 func drive9CopyArgs(opts CopyFileOptions) ([]string, string, string, error) {

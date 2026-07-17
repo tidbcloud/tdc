@@ -61,6 +61,33 @@ tdc fs unset-default-file-system
 
 Resource selection uses `--file-system-name`, then `TDC_FS_FILE_SYSTEM_NAME`, then the profile default, then the only configured resource. Commands fail with an ambiguity error when multiple resources exist and none is selected. File system metadata and credentials are isolated under `~/.tdc/fs_resources/<profile-key>/<resource-key>/`; API keys are never printed by list or describe commands.
 
+`create-file-system` returns an `fs_token` in its JSON result. This is the resource owner credential and must be handled as a secret. A configured machine can provision a file system and capture the token without printing the full result:
+
+```shell
+export TDC_FS_TOKEN="$(tdc fs create-file-system --file-system-name agent-workspace --query fs_token --output text)"
+```
+
+An ephemeral machine can use that existing file system without `tdc configure`, TiDB Cloud API keys, or pre-existing files under `~/.tdc/`:
+
+```shell
+export TDC_FS_TOKEN="<FS_TOKEN>"
+export TDC_REGION_CODE="aws-us-east-1"
+export TDC_FS_FILE_SYSTEM_NAME="agent-workspace"
+
+tdc fs list-files --path /
+tdc fs mount-file-system --mount-path /workspace
+tdc fs-git hydrate-git-workspace --target-path /workspace/repository
+tdc fs-journal read-journal-entries --journal-id <JOURNAL_ID>
+tdc fs-vault list-secrets
+```
+
+The three values can be mixed with command flags and local configuration. Explicit `--file-system-name`, global `--region`, and command-local `--fs-token` take precedence over environment and local state; environment variables are preferred for tokens because flags can remain in shell history or process listings. Token-authenticated FS, mount, Git, journal, and owner vault commands do not require TiDB Cloud public/private keys. Provisioning and deletion still require the TiDB Cloud keys, and deletion also requires the locally registered resource. A successful background mount records only a non-secret locator under `~/.tdc/mounts/`, so drain and unmount work from the same `HOME` without resupplying the token:
+
+```shell
+tdc fs drain-file-system --mount-path /workspace
+tdc fs unmount-file-system --mount-path /workspace
+```
+
 ### TiDB Cloud Starter
 
 ```shell

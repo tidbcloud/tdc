@@ -223,39 +223,48 @@ func (s Service) DrainFileSystem(ctx context.Context, opts DrainFileSystemOption
 }
 
 func (s Service) DryRunDrainFileSystem(ctx context.Context, commandPath string, opts DrainFileSystemOptions) (dryrun.Result, error) {
-	state, _, _, checks, err := s.readDrainMountState(opts.MountPath)
+	profile, err := s.drive9MountLocatorProfile(opts.Profile, opts.MountPath)
 	if err != nil {
 		return dryrun.Result{}, err
-	}
-	dryChecks := make([]dryrun.Check, 0, len(checks)+4)
-	for _, check := range checks {
-		dryChecks = append(dryChecks, dryrun.Check{Name: check.Name, Status: check.Status, Message: check.Message})
-	}
-	if opts.Profile != nil {
-		dryChecks = append(dryChecks, dryrun.Check{Name: "config_and_credentials", Status: "passed", Message: fmt.Sprintf("profile %q loaded", opts.Profile.Name)})
-	}
-	if state.Driver != "fuse" {
-		dryChecks = append(dryChecks, dryrun.Check{Name: "mount_driver", Status: "failed", Message: state.Driver})
-	} else {
-		dryChecks = append(dryChecks, dryrun.Check{Name: "mount_driver", Status: "passed", Message: state.Driver})
-	}
-	if strings.TrimSpace(state.ControlSocket) == "" {
-		dryChecks = append(dryChecks, dryrun.Check{Name: "mount_control", Status: "failed", Message: "missing control socket"})
-	} else {
-		dryChecks = append(dryChecks, dryrun.Check{Name: "mount_control", Status: "passed", Message: state.ControlSocket})
 	}
 	return dryrun.New(
 		commandPath,
 		"drain_file_system",
 		dryrun.RequestSummary{
-			Description: "normal execution connects to the FUSE mount control socket and flushes dirty open handles and pending write-back cache",
-			Method:      "CONNECT",
-			Path:        state.ControlSocket,
-			Body: map[string]int64{
-				"timeout_ms": drainTimeout(opts.Timeout).Milliseconds(),
-			},
+			Description: "normal execution delegates mount drain to the resource-scoped tdc-drive9 companion runtime",
+			Method:      "LOCAL",
+			Path:        opts.MountPath,
 		},
-		dryChecks...,
+		dryrun.Check{Name: "mount_locator", Status: "passed", Message: opts.MountPath},
+		dryrun.Check{Name: "file_system_name", Status: "passed", Message: profile.FSResourceName},
+		dryrun.Check{Name: "region", Status: "passed", Message: profile.FSPlacementRegionCode},
+	), nil
+}
+
+func (s Service) DryRunUnmountFileSystem(ctx context.Context, commandPath string, opts UnmountFileSystemOptions) (dryrun.Result, error) {
+	profile, err := s.drive9MountLocatorProfile(opts.Profile, opts.MountPath)
+	if err != nil {
+		if opts.IgnoreAbsent && apperr.CodeFor(err) == "fs.mount_locator_not_found" {
+			return dryrun.New(
+				commandPath,
+				"unmount_file_system",
+				dryrun.RequestSummary{Description: "no mount locator exists; normal execution would return absent"},
+				dryrun.Check{Name: "mount_locator", Status: "warning", Message: opts.MountPath},
+			), nil
+		}
+		return dryrun.Result{}, err
+	}
+	return dryrun.New(
+		commandPath,
+		"unmount_file_system",
+		dryrun.RequestSummary{
+			Description: "normal execution delegates unmount to the resource-scoped tdc-drive9 companion runtime and removes the locator after success",
+			Method:      "LOCAL",
+			Path:        opts.MountPath,
+		},
+		dryrun.Check{Name: "mount_locator", Status: "passed", Message: opts.MountPath},
+		dryrun.Check{Name: "file_system_name", Status: "passed", Message: profile.FSResourceName},
+		dryrun.Check{Name: "region", Status: "passed", Message: profile.FSPlacementRegionCode},
 	), nil
 }
 

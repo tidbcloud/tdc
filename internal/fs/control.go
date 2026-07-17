@@ -70,6 +70,7 @@ type FileSystemResult struct {
 	TenantID          string `json:"tenant_id,omitempty"`
 	CloudProvider     string `json:"cloud_provider,omitempty"`
 	RegionCode        string `json:"region_code,omitempty"`
+	FSToken           string `json:"fs_token,omitempty"`
 	Status            string `json:"status"`
 	CredentialsStored bool   `json:"credentials_stored"`
 }

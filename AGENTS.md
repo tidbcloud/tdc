@@ -47,6 +47,8 @@ Implemented:
   `docs/spec/done/0011-ext01-fuse-cache-and-open-handle-correctness.md`
 - profile-scoped 1:N tdc fs resource registry from
   `docs/spec/done/0016-profile-fs-resource-registry.md`
+- FS token authentication and configuration-free access from
+  `docs/spec/done/0018-fs-token-auth-and-config-free-access.md`
 - install and update distribution from
   `docs/spec/done/0012-install-and-update-distribution.md`
 - `tdc configure`
@@ -268,6 +270,7 @@ internal/db/validate/       DB flag and request validation helpers
 internal/dryrun/            shared dry-run result envelope
 internal/fs/                tdc fs control-plane, data-plane, and mount use cases
 internal/fs/fscred/         profile-scoped tdc fs registry, selection, and migration
+internal/fs/mountlocator/   non-secret Drive9 background mount routing state
 internal/oplog/             local JSONL operation log writer
 internal/output/            structured JSON/text/raw rendering
 internal/organization/      organization project command use cases
@@ -622,6 +625,11 @@ contain only `api_key`, use mode `0600`, and must never be written to the main
 `~/.tdc/credentials` file. Profile and resource path segments are safely
 encoded; always use the stored `file_system_name` for user-facing output.
 
+`tdc fs create-file-system` returns the stored owner credential as `fs_token`;
+this is the only ordinary command result that may reveal it. Treat `fs_token`
+as a secret and never include it in logs, telemetry, debug output, errors,
+mount locators, non-secret config, or test diagnostics.
+
 Legacy flat `fs_resource_name`, `fs_tenant_id`, `fs_cloud_provider`,
 `fs_region_code`, and `fs_api_key` fields are migration input only. The first fs
 command migrates a complete legacy resource into the registry and clears the
@@ -725,6 +733,21 @@ tdc fs resource selection order is:
 5. Otherwise fail with `fs.resource_ambiguous` or
    `fs.resource_not_configured`.
 
+Remote tdc fs, fs-git, fs-journal, and owner fs-vault commands use this FS
+credential lookup order:
+
+1. Explicit command-local `--fs-token`.
+2. `TDC_FS_TOKEN`.
+3. The selected resource's `api_key` in its resource-scoped credentials file.
+
+Those commands do not require TiDB Cloud public/private keys. A clean machine
+can use an existing resource with a file-system name, canonical region, and FS
+token supplied independently through flags or environment variables. Do not
+persist ephemeral flag/environment credentials or create a synthetic `[env]`
+profile. `tdc fs create-file-system` and `tdc fs delete-file-system` remain
+TiDB Cloud-authenticated; deletion also requires the selected locally
+registered resource and its owner token.
+
 The selector is available on tdc fs data-plane/runtime commands and all
 `fs-git`, `fs-journal`, and `fs-vault` subcommands. Creation, deletion,
 description, and setting the default require an explicit resource name where
@@ -799,6 +822,11 @@ The companion runs with resource-scoped isolated state under
 `~/.tdc/drive9-home/<profile-key>/<resource-key>`; do not write or require user
 edits to `~/.drive9`. Never use a shared Drive9 `current_context` as the source
 of truth for tdc resource selection.
+
+Background FS and vault mounts write only a non-secret locator under
+`~/.tdc/mounts/`. Drain and unmount must route through that locator to the
+original resource-scoped companion HOME without requiring the FS token again.
+Successful unmount removes the locator; failed unmount preserves it for retry.
 
 Do not implement or expose tdc commands for Drive9 internal APIs that are not
 part of Drive9's public CLI. In particular, do not reintroduce low-level layer

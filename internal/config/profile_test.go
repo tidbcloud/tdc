@@ -285,6 +285,49 @@ func TestLoadReadsFSCredentials(t *testing.T) {
 	}
 }
 
+func TestLoadLocalDoesNotRequireProfileOrTiDBCloudCredentials(t *testing.T) {
+	home := t.TempDir()
+	profile, err := LoadLocal(context.Background(), LoadOptions{
+		HomeDir: home,
+		Env: map[string]string{
+			"TDC_REGION_CODE": "aws-us-east-1",
+			"TDC_PUBLIC_KEY":  "ignored-without-private-key",
+		},
+	})
+	if err != nil {
+		t.Fatalf("LoadLocal failed: %v", err)
+	}
+	if profile.Name != DefaultProfile || profile.HomeDir != home || profile.PlacementRegionCode != "aws-us-east-1" {
+		t.Fatalf("unexpected local profile: %#v", profile)
+	}
+	if profile.TDCPublicKey != "" || profile.TDCPrivateKey != "" {
+		t.Fatalf("local loader must not load TiDB Cloud credentials: %#v", profile)
+	}
+	if _, err := os.Stat(filepath.Join(home, store.TDCDirName)); !os.IsNotExist(err) {
+		t.Fatalf("LoadLocal wrote local state: %v", err)
+	}
+}
+
+func TestLoadLocalAllowsMissingPlacement(t *testing.T) {
+	profile, err := LoadLocal(context.Background(), LoadOptions{HomeDir: t.TempDir(), Profile: "ephemeral"})
+	if err != nil {
+		t.Fatalf("LoadLocal failed: %v", err)
+	}
+	if profile.Name != "ephemeral" || profile.PlacementRegionCode != "" {
+		t.Fatalf("unexpected local profile: %#v", profile)
+	}
+}
+
+func TestLoadLocalRejectsMalformedEnvironmentPlacement(t *testing.T) {
+	_, err := LoadLocal(context.Background(), LoadOptions{
+		HomeDir: t.TempDir(),
+		Env:     map[string]string{"TDC_REGION_CODE": "aws-not-a-region"},
+	})
+	if apperr.CodeFor(err) != "config.invalid_region" {
+		t.Fatalf("error = %v, want config.invalid_region", err)
+	}
+}
+
 func writeProfile(t *testing.T, home, name, regionCode, publicKey, privateKey string) {
 	t.Helper()
 	err := store.WriteProfile(home, name, store.ConfigProfile{

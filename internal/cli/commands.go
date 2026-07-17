@@ -867,7 +867,16 @@ func newFSCommand(info version.Info) *cobra.Command {
 		newFSDrainFileSystemCommand(info),
 		newFSUnmountFileSystemCommand(info),
 	}
-	addFSSelectorFlags(commands, "create-file-system", "list-file-systems", "unset-default-file-system")
+	addFSSelectorFlags(commands, "create-file-system", "list-file-systems", "unset-default-file-system", "drain-file-system", "unmount-file-system")
+	addFSAuthFlags(commands,
+		"create-file-system",
+		"list-file-systems",
+		"describe-file-system",
+		"set-default-file-system",
+		"unset-default-file-system",
+		"drain-file-system",
+		"unmount-file-system",
+	)
 	cmd.AddCommand(commands...)
 	return cmd
 }
@@ -887,6 +896,21 @@ func addFSSelectorFlags(commands []*cobra.Command, excluded ...string) {
 	}
 }
 
+func addFSAuthFlags(commands []*cobra.Command, excluded ...string) {
+	skip := make(map[string]struct{}, len(excluded))
+	for _, name := range excluded {
+		skip[name] = struct{}{}
+	}
+	for _, command := range commands {
+		if _, ok := skip[command.Name()]; ok {
+			continue
+		}
+		if command.Flags().Lookup("fs-token") == nil {
+			command.Flags().String("fs-token", "", "tdc fs owner token; prefer TDC_FS_TOKEN for automation")
+		}
+	}
+}
+
 func newFSCreateFileSystemCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-file-system",
@@ -894,7 +918,7 @@ func newFSCreateFileSystemCommand(info version.Info) *cobra.Command {
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVolumeCreate,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsBaseServiceAndProfile(ctx)
+			service, profile, err := fsTDCServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -916,7 +940,7 @@ func newFSCreateFileSystemCommand(info version.Info) *cobra.Command {
 			})
 		},
 		DryRun: func(ctx commandContext) (dryrun.Result, error) {
-			service, profile, err := fsBaseServiceAndProfile(ctx)
+			service, profile, err := fsTDCServiceAndProfile(ctx)
 			if err != nil {
 				return dryrun.Result{}, err
 			}
@@ -948,7 +972,7 @@ func newFSListFileSystemsCommand(info version.Info) *cobra.Command {
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSVolumeRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsBaseServiceAndProfile(ctx)
+			service, profile, err := fsLocalServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -964,7 +988,7 @@ func newFSDescribeFileSystemCommand(info version.Info) *cobra.Command {
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSVolumeRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsRegistryServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -983,14 +1007,14 @@ func newFSSetDefaultFileSystemCommand(info version.Info) *cobra.Command {
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVolumeRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsRegistryServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
 			return service.SetDefaultFileSystem(ctx.cmd.Context(), profile)
 		},
 		DryRun: func(ctx commandContext) (dryrun.Result, error) {
-			_, profile, err := fsServiceAndProfile(ctx)
+			_, profile, err := fsRegistryServiceAndProfile(ctx)
 			if err != nil {
 				return dryrun.Result{}, err
 			}
@@ -1009,14 +1033,14 @@ func newFSUnsetDefaultFileSystemCommand(info version.Info) *cobra.Command {
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVolumeRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsBaseServiceAndProfile(ctx)
+			service, profile, err := fsLocalServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
 			return service.UnsetDefaultFileSystem(ctx.cmd.Context(), profile)
 		},
 		DryRun: func(ctx commandContext) (dryrun.Result, error) {
-			_, profile, err := fsBaseServiceAndProfile(ctx)
+			_, profile, err := fsLocalServiceAndProfile(ctx)
 			if err != nil {
 				return dryrun.Result{}, err
 			}
@@ -1042,7 +1066,7 @@ func newFSDeleteFileSystemCommand(info version.Info) *cobra.Command {
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVolumeDelete,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsTDCResourceServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -1057,7 +1081,7 @@ func newFSDeleteFileSystemCommand(info version.Info) *cobra.Command {
 			})
 		},
 		DryRun: func(ctx commandContext) (dryrun.Result, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsTDCResourceServiceAndProfile(ctx)
 			if err != nil {
 				return dryrun.Result{}, err
 			}
@@ -1868,43 +1892,26 @@ func newFSUnmountFileSystemCommand(info version.Info) *cobra.Command {
 		Mutation:   mutatingCommand,
 		Permission: authz.FSMount,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsLocalServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
-			mountPath, err := ctx.StringFlag("mount-path")
+			opts, err := fsUnmountOptions(ctx, profile)
 			if err != nil {
 				return nil, err
 			}
-			timeout, err := ctx.DurationFlag("timeout")
+			return service.UnmountFileSystem(ctx.cmd.Context(), opts)
+		},
+		DryRun: func(ctx commandContext) (dryrun.Result, error) {
+			service, profile, err := fsLocalServiceAndProfile(ctx)
 			if err != nil {
-				return nil, err
+				return dryrun.Result{}, err
 			}
-			force, err := ctx.BoolFlag("force")
+			opts, err := fsUnmountOptions(ctx, profile)
 			if err != nil {
-				return nil, err
+				return dryrun.Result{}, err
 			}
-			ignoreAbsent, err := ctx.BoolFlag("ignore-absent")
-			if err != nil {
-				return nil, err
-			}
-			packArchivePath, err := ctx.StringFlag("pack-archive-path")
-			if err != nil {
-				return nil, err
-			}
-			noAutoPack, err := ctx.BoolFlag("no-auto-pack")
-			if err != nil {
-				return nil, err
-			}
-			return service.UnmountFileSystem(ctx.cmd.Context(), tdcfs.UnmountFileSystemOptions{
-				Profile:         profile,
-				MountPath:       mountPath,
-				Timeout:         timeout,
-				Force:           force,
-				IgnoreAbsent:    ignoreAbsent,
-				PackArchivePath: packArchivePath,
-				NoAutoPack:      noAutoPack,
-			})
+			return service.DryRunUnmountFileSystem(ctx.cmd.Context(), ctx.CommandPath(), opts)
 		},
 	}, info)
 	cmd.Flags().String("mount-path", "", "local mount path")
@@ -1917,6 +1924,42 @@ func newFSUnmountFileSystemCommand(info version.Info) *cobra.Command {
 	return cmd
 }
 
+func fsUnmountOptions(ctx commandContext, profile *config.Profile) (tdcfs.UnmountFileSystemOptions, error) {
+	mountPath, err := ctx.StringFlag("mount-path")
+	if err != nil {
+		return tdcfs.UnmountFileSystemOptions{}, err
+	}
+	timeout, err := ctx.DurationFlag("timeout")
+	if err != nil {
+		return tdcfs.UnmountFileSystemOptions{}, err
+	}
+	force, err := ctx.BoolFlag("force")
+	if err != nil {
+		return tdcfs.UnmountFileSystemOptions{}, err
+	}
+	ignoreAbsent, err := ctx.BoolFlag("ignore-absent")
+	if err != nil {
+		return tdcfs.UnmountFileSystemOptions{}, err
+	}
+	packArchivePath, err := ctx.StringFlag("pack-archive-path")
+	if err != nil {
+		return tdcfs.UnmountFileSystemOptions{}, err
+	}
+	noAutoPack, err := ctx.BoolFlag("no-auto-pack")
+	if err != nil {
+		return tdcfs.UnmountFileSystemOptions{}, err
+	}
+	return tdcfs.UnmountFileSystemOptions{
+		Profile:         profile,
+		MountPath:       mountPath,
+		Timeout:         timeout,
+		Force:           force,
+		IgnoreAbsent:    ignoreAbsent,
+		PackArchivePath: packArchivePath,
+		NoAutoPack:      noAutoPack,
+	}, nil
+}
+
 func newFSDrainFileSystemCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "drain-file-system",
@@ -1925,7 +1968,7 @@ func newFSDrainFileSystemCommand(info version.Info) *cobra.Command {
 		Mutation:   mutatingCommand,
 		Permission: authz.FSMount,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsLocalServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -1944,7 +1987,7 @@ func newFSDrainFileSystemCommand(info version.Info) *cobra.Command {
 			})
 		},
 		DryRun: func(ctx commandContext) (dryrun.Result, error) {
-			service, profile, err := fsServiceAndProfile(ctx)
+			service, profile, err := fsLocalServiceAndProfile(ctx)
 			if err != nil {
 				return dryrun.Result{}, err
 			}
@@ -2341,11 +2384,23 @@ func fsMountOptions(ctx commandContext, profile *config.Profile) (tdcfs.MountFil
 	}, nil
 }
 
-func fsBaseServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {
+func fsTDCServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {
 	profile, err := ctx.LoadProfile()
 	if err != nil {
 		return tdcfs.Service{}, nil, err
 	}
+	return fsService(ctx, profile)
+}
+
+func fsLocalServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {
+	profile, err := ctx.LoadLocalProfile()
+	if err != nil {
+		return tdcfs.Service{}, nil, err
+	}
+	return fsService(ctx, profile)
+}
+
+func fsService(ctx commandContext, profile *config.Profile) (tdcfs.Service, *config.Profile, error) {
 	debug, err := ctx.BoolFlag("debug")
 	if err != nil {
 		return tdcfs.Service{}, nil, err
@@ -2363,7 +2418,38 @@ func fsBaseServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile
 }
 
 func fsServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {
-	service, profile, err := fsBaseServiceAndProfile(ctx)
+	return fsAuthenticatedServiceAndProfile(ctx, true)
+}
+
+func fsTDCResourceServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {
+	service, profile, err := fsTDCServiceAndProfile(ctx)
+	if err != nil {
+		return tdcfs.Service{}, nil, err
+	}
+	selected, err := fsResolveAuthenticatedProfile(ctx, profile, true)
+	if err != nil {
+		return tdcfs.Service{}, nil, err
+	}
+	if _, err := fscred.Get(profile.HomeDir, profile.Name, selected.FSResourceName); err != nil {
+		return tdcfs.Service{}, nil, err
+	}
+	return service, selected, nil
+}
+
+func fsAuthenticatedServiceAndProfile(ctx commandContext, tokenRequired bool) (tdcfs.Service, *config.Profile, error) {
+	service, profile, err := fsLocalServiceAndProfile(ctx)
+	if err != nil {
+		return tdcfs.Service{}, nil, err
+	}
+	selected, err := fsResolveAuthenticatedProfile(ctx, profile, tokenRequired)
+	if err != nil {
+		return tdcfs.Service{}, nil, err
+	}
+	return service, selected, nil
+}
+
+func fsRegistryServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {
+	service, profile, err := fsLocalServiceAndProfile(ctx)
 	if err != nil {
 		return tdcfs.Service{}, nil, err
 	}
@@ -2389,6 +2475,57 @@ func fsServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, er
 
 func fsAdjunctServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {
 	return fsServiceAndProfile(ctx)
+}
+
+func fsVaultServiceAndProfile(ctx commandContext) (tdcfs.Service, *config.Profile, error) {
+	token, err := vaultToken(ctx)
+	if err != nil {
+		return tdcfs.Service{}, nil, err
+	}
+	return fsAuthenticatedServiceAndProfile(ctx, strings.TrimSpace(token) == "")
+}
+
+func fsResolveAuthenticatedProfile(ctx commandContext, profile *config.Profile, tokenRequired bool) (*config.Profile, error) {
+	selector := ""
+	selectorExplicit := false
+	if ctx.cmd.Flag("file-system-name") != nil {
+		var err error
+		selector, err = ctx.StringFlag("file-system-name")
+		if err != nil {
+			return nil, err
+		}
+		selectorExplicit = ctx.FlagChanged("file-system-name")
+	}
+	token := ""
+	tokenExplicit := false
+	if ctx.cmd.Flag("fs-token") != nil {
+		var err error
+		token, err = ctx.StringFlag("fs-token")
+		if err != nil {
+			return nil, err
+		}
+		tokenExplicit = ctx.FlagChanged("fs-token")
+	}
+	regionOverride := ""
+	if flag := ctx.cmd.Flag("region"); flag != nil && flag.Changed {
+		regionOverride = strings.TrimSpace(flag.Value.String())
+	} else {
+		regionOverride = strings.TrimSpace(os.Getenv("TDC_REGION_CODE"))
+	}
+	dryRun, _ := ctx.BoolFlag("dry-run")
+	selected, _, err := fscred.ResolveAuthenticated(profile.HomeDir, profile, fscred.ResolveAuthOptions{
+		Selector:         selector,
+		SelectorExplicit: selectorExplicit,
+		Token:            token,
+		TokenExplicit:    tokenExplicit,
+		RegionOverride:   regionOverride,
+		TokenRequired:    tokenRequired,
+		DryRun:           dryRun,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return selected, nil
 }
 
 func fsDeleteFlags(ctx commandContext) (string, string, error) {
@@ -2418,7 +2555,8 @@ func newFSVaultCommand(info version.Info) *cobra.Command {
 		newVaultMountCommand(info),
 		newVaultUnmountCommand(info),
 	}
-	addFSSelectorFlags(commands)
+	addFSSelectorFlags(commands, "unmount-vault")
+	addFSAuthFlags(commands, "unmount-vault")
 	cmd.AddCommand(commands...)
 	return cmd
 }
@@ -2495,7 +2633,7 @@ func newVaultReadSecretCommand(info version.Info) *cobra.Command {
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSVaultSecretRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
+			service, profile, err := fsVaultServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -2546,7 +2684,7 @@ func newVaultListSecretsCommand(info version.Info) *cobra.Command {
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSVaultSecretRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
+			service, profile, err := fsVaultServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -2701,7 +2839,7 @@ func newVaultRunWithSecretCommand(info version.Info) *cobra.Command {
 		Short: "Run a command with one tdc fs-vault secret injected into its environment.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := commandContext{cmd: cmd}
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
+			service, profile, err := fsVaultServiceAndProfile(ctx)
 			if err != nil {
 				return err
 			}
@@ -2738,7 +2876,7 @@ func newVaultMountCommand(info version.Info) *cobra.Command {
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVaultSecretRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
+			service, profile, err := fsVaultServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -2749,7 +2887,7 @@ func newVaultMountCommand(info version.Info) *cobra.Command {
 			return service.MountVault(ctx.cmd.Context(), opts)
 		},
 		DryRun: func(ctx commandContext) (dryrun.Result, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
+			service, profile, err := fsVaultServiceAndProfile(ctx)
 			if err != nil {
 				return dryrun.Result{}, err
 			}
@@ -2775,7 +2913,7 @@ func newVaultUnmountCommand(info version.Info) *cobra.Command {
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVaultSecretRead,
 		Run: func(ctx commandContext) (any, error) {
-			service, profile, err := fsAdjunctServiceAndProfile(ctx)
+			service, profile, err := fsLocalServiceAndProfile(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -2796,6 +2934,36 @@ func newVaultUnmountCommand(info version.Info) *cobra.Command {
 				return nil, err
 			}
 			return service.UnmountFileSystem(ctx.cmd.Context(), tdcfs.UnmountFileSystemOptions{
+				Profile:      profile,
+				MountPath:    mountPath,
+				Timeout:      timeout,
+				Force:        force,
+				IgnoreAbsent: ignoreAbsent,
+				NoAutoPack:   true,
+			})
+		},
+		DryRun: func(ctx commandContext) (dryrun.Result, error) {
+			service, profile, err := fsLocalServiceAndProfile(ctx)
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			mountPath, err := ctx.StringFlag("mount-path")
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			timeout, err := ctx.DurationFlag("timeout")
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			force, err := ctx.BoolFlag("force")
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			ignoreAbsent, err := ctx.BoolFlag("ignore-absent")
+			if err != nil {
+				return dryrun.Result{}, err
+			}
+			return service.DryRunUnmountFileSystem(ctx.cmd.Context(), ctx.CommandPath(), tdcfs.UnmountFileSystemOptions{
 				Profile:      profile,
 				MountPath:    mountPath,
 				Timeout:      timeout,
@@ -2887,6 +3055,7 @@ func newFSGitCommand(info version.Info) *cobra.Command {
 		newGitRemoveWorktreeCommand(info),
 	}
 	addFSSelectorFlags(commands)
+	addFSAuthFlags(commands)
 	cmd.AddCommand(commands...)
 	return cmd
 }
@@ -3073,6 +3242,7 @@ func newFSJournalCommand(info version.Info) *cobra.Command {
 		newJournalVerifyCommand(info),
 	}
 	addFSSelectorFlags(commands)
+	addFSAuthFlags(commands)
 	cmd.AddCommand(commands...)
 	return cmd
 }

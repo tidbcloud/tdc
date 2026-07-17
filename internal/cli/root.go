@@ -284,6 +284,10 @@ func (c commandContext) LoadProfile() (*config.Profile, error) {
 	return loadProfileForCommand(c.cmd)
 }
 
+func (c commandContext) LoadLocalProfile() (*config.Profile, error) {
+	return loadLocalProfileForCommand(c.cmd)
+}
+
 func (c commandContext) Permission() authz.Permission {
 	permission, _ := authz.ForCommand(c.cmd.CommandPath())
 	return permission
@@ -464,33 +468,49 @@ func stringFlag(cmd *cobra.Command, name string) (string, error) {
 }
 
 func loadProfileForCommand(cmd *cobra.Command) (*config.Profile, error) {
-	profileName, err := stringFlag(cmd, "profile")
+	opts, err := loadOptionsForCommand(cmd)
 	if err != nil {
 		return nil, err
+	}
+	return auth.LoadProfile(cmd.Context(), opts)
+}
+
+func loadLocalProfileForCommand(cmd *cobra.Command) (*config.Profile, error) {
+	opts, err := loadOptionsForCommand(cmd)
+	if err != nil {
+		return nil, err
+	}
+	return config.LoadLocal(cmd.Context(), opts)
+}
+
+func loadOptionsForCommand(cmd *cobra.Command) (config.LoadOptions, error) {
+	profileName, err := stringFlag(cmd, "profile")
+	if err != nil {
+		return config.LoadOptions{}, err
 	}
 	regionOverride, err := stringFlag(cmd, "region")
 	if err != nil {
-		return nil, err
+		return config.LoadOptions{}, err
 	}
 	regionFlag := cmd.Flag("region")
 	if regionFlag != nil && regionFlag.Changed && strings.TrimSpace(regionOverride) == "" {
-		return nil, apperr.New("config.empty_region", "usage", 2, "--region cannot be empty")
+		return config.LoadOptions{}, apperr.New("config.empty_region", "usage", 2, "--region cannot be empty")
 	}
 	profileFlag := cmd.Flag("profile")
 	profileExplicit := profileFlag != nil && profileFlag.Changed
 	if profileExplicit {
 		if strings.TrimSpace(profileName) == "" {
-			return nil, apperr.New("config.empty_profile", "usage", 2, "--profile cannot be empty")
+			return config.LoadOptions{}, apperr.New("config.empty_profile", "usage", 2, "--profile cannot be empty")
 		}
 	} else if envProfile := strings.TrimSpace(os.Getenv("TDC_PROFILE")); envProfile != "" {
 		profileName = envProfile
 		profileExplicit = true
 	}
-	return auth.LoadProfile(cmd.Context(), config.LoadOptions{
+	return config.LoadOptions{
 		Profile:         profileName,
 		ProfileExplicit: profileExplicit,
 		RegionOverride:  regionOverride,
-	})
+	}, nil
 }
 
 func applyCommandDefaults(cmd *cobra.Command, info version.Info) {
