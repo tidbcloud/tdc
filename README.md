@@ -1,5 +1,6 @@
 # tdc
 
+
 `tdc` is the command-line interface for TiDB Cloud Filesystem and TiDB Cloud Starter.
 
 - TiDB Cloud Filesystem is a distributed file system designed specifically for AI coding agent workloads.
