@@ -162,8 +162,12 @@ CLI v2 for TiDB Cloud \| Init Date: 2026\-05\-18 \|@Todd Bao
 
     - Update checks are explicit, for example `tdc update --check`\.
 
-    - Self\-update is explicit, for example `tdc update --yes`, and must
+    - Self\-update is explicit, for example `tdc update`, and must
       refuse package\-manager installs with actionable instructions\.
+
+    - Direct installers place binaries in the user\-owned `~/.tdc/bin`
+      directory\. Installation and update must not require sudo; users add
+      `export PATH="$HOME/.tdc/bin:$PATH"` to their shell environment\.
 
 5. `--output`
 

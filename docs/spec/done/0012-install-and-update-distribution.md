@@ -9,14 +9,14 @@ Make `tdc` installable and updatable through deterministic GitHub Releases artif
 - `tdc update --check`
 - `tdc update --check --fail-if-update-available`
 - `tdc update --dry-run`
-- `tdc update --yes`
-- `tdc update --target-version v0.1.0 --yes`
+- `tdc update`
+- `tdc update --target-version v0.1.1`
 
 External installers:
 
 - `scripts/install.sh --version latest --yes`
-- `scripts/install.sh --version latest --install-dir "$HOME/.local/bin" --yes`
-- `scripts/install.ps1 -Version latest -InstallDir "$HOME\bin" -Yes`
+- `scripts/install.sh --version latest --install-dir "$HOME/.tdc/bin" --yes`
+- `scripts/install.ps1 -Version latest -InstallDir "$HOME\.tdc\bin" -Yes`
 
 The installer scripts use `--version` because they are not Cobra commands. The `tdc update` command uses `--target-version` so it does not shadow the global `--version` flag that works at every CLI level.
 
@@ -34,16 +34,17 @@ The installer scripts use `--version` because they are not Cobra commands. The `
   - `install.ps1`
 - `scripts/install.sh` and `scripts/install.ps1` download archives from GitHub Releases, verify `tdc_checksums.txt`, extract `tdc`, install it into the selected directory, and run `tdc --version`.
 - Install scripts support pinned versions and `latest`. For `latest`, they use `https://github.com/tidbcloud/tdc/releases/latest/download/<asset>`. For pinned versions, they use `https://github.com/tidbcloud/tdc/releases/download/<tag>/<asset>`.
-- Install scripts prefer upgrading the active `tdc`/`tdc.exe` binary found on `PATH` unless `--install-dir` or `TDC_INSTALL_DIR` is set.
-- On macOS/Linux, if no active binary exists and no install directory is supplied, `scripts/install.sh` installs to `/usr/local/bin`. It creates the directory or moves the binary with `sudo` when the current user cannot write there.
-- Install scripts detect PATH shadowing after installation and report both the installed path and the path currently resolved by `PATH`.
+- Install scripts default to the stable user-owned `~/.tdc/bin` directory on macOS, Linux, and Windows. `--install-dir`/`-InstallDir` or `TDC_INSTALL_DIR` may select another user-writable directory.
+- Install scripts do not prefer or overwrite an active tdc found on `PATH`, invoke sudo, create system-directory symlinks, or edit shell profiles. This makes installation deterministic and migrates legacy `/usr/local/bin` users by installing the new binary under `~/.tdc/bin`.
+- Install scripts detect PATH shadowing after installation, report both the installed path and the path currently resolved by `PATH`, and print the exact current-shell command needed to prepend the install directory.
 - Install scripts bootstrap `~/.tdc/config` only when it is missing, writing a default `[default]` profile with `region_code = 'aws-us-east-1'`. They do not write `~/.tdc/credentials`.
 - Install scripts print DB config regions, fetch and print tdc fs regions from `https://drive9.ai/manifest/regions/drive9-regions.json` when available, and finish with clear next-step commands.
 - `tdc update --check` calls the GitHub Releases API `GET /repos/tidbcloud/tdc/releases/latest`, matches the current OS/arch release asset, compares the local version with the latest tag, and prints structured output.
 - `tdc update` updates only binaries built with `install_source=archive` or `install_source=script`. Local builds and unknown installs are refused. Package-manager installs are refused with package-manager-specific guidance.
 - `tdc update --dry-run` resolves the target release, artifact, checksum, and target path, but does not download or replace the binary.
-- `tdc update --yes` downloads the target archive and `tdc_checksums.txt`, verifies SHA-256, extracts the binary, atomically replaces the current binary on Unix-like platforms, and validates the new binary by running `tdc --version`.
-- Windows self-update cannot safely replace the running executable yet. On Windows, `tdc update --check` and install scripts are supported; `tdc update --yes` returns an actionable error telling the user to rerun the PowerShell installer.
+- `tdc update` is explicit update intent and does not require a separate `--yes` confirmation. It downloads the target archive, `tdc_checksums.txt`, and the tdc fs companion, verifies both SHA-256 checksums, extracts to user-owned temporary directories, atomically replaces each binary on Unix-like platforms, and validates the new tdc binary by running `tdc --version`.
+- `tdc update` never invokes sudo. If the resolved executable is a legacy protected installation such as `/usr/local/bin/tdc`, it returns `update.permission_denied` and tells the user to rerun the installer once to migrate to `~/.tdc/bin`.
+- Windows self-update cannot safely replace the running executable yet. On Windows, `tdc update --check` and install scripts are supported; `tdc update` returns an actionable error telling the user to rerun the PowerShell installer.
 - No command performs background or silent auto-update.
 - Update never reads, modifies, or uploads `~/.tdc/config`, `~/.tdc/credentials`, DB SQL credentials, tdc fs credentials, SQL text, file contents, or API response payloads.
 
@@ -60,11 +61,10 @@ The installer scripts use `--version` because they are not Cobra commands. The `
 - `--check`
 - `--target-version <latest|vX.Y.Z>`, default `latest`
 - `--dry-run`
-- `--yes`
 - `--output json|text`
 - `--query <jmespath-expression>`
 
-`--check` switches `tdc update` into read-only update-check mode. It must not be combined with `--target-version`, `--dry-run`, or `--yes`. `--fail-if-update-available` is valid only with `--check`.
+`--check` switches `tdc update` into read-only update-check mode. It must not be combined with `--target-version` or `--dry-run`. `--fail-if-update-available` is valid only with `--check`.
 
 Build metadata exposed through `internal/version`:
 
@@ -117,7 +117,7 @@ Install source values:
   "artifact_name": "tdc_darwin_arm64.tar.gz",
   "download_url": "https://github.com/tidbcloud/tdc/releases/download/v0.1.1/tdc_darwin_arm64.tar.gz",
   "checksum_sha256": "<hex-sha256>",
-  "target_path": "/Users/me/.local/bin/tdc",
+  "target_path": "/Users/me/.tdc/bin/tdc",
   "release_url": "https://github.com/tidbcloud/tdc/releases/tag/v0.1.1",
   "release_notes_url": "https://github.com/tidbcloud/tdc/releases/tag/v0.1.1"
 }
@@ -126,10 +126,9 @@ Install source values:
 Stable error codes:
 
 - `update.available`: `tdc update --check --fail-if-update-available` found a newer release
-- `update.confirmation_required`: `tdc update` was run without `--yes` or `--dry-run`
 - `update.managed_install`: Homebrew/Scoop/Winget or another package manager owns the install
 - `update.unknown_install`: local, unknown, or otherwise not update-owned install
-- `update.permission_denied`: target path or directory cannot be replaced by the current user
+- `update.permission_denied`: the install directory is not user-writable, staging failed, or a verified binary could not be replaced; legacy protected installs are instructed to migrate with the installer
 - `update.network_error`: GitHub release metadata, checksum, or artifact download failed
 - `update.release_not_found`: requested release tag was not found
 - `update.artifact_not_found`: the release does not include the OS/arch asset
@@ -146,16 +145,18 @@ Users and agents can install from GitHub Releases:
 
 ```bash
 curl -fsSL https://github.com/tidbcloud/tdc/releases/latest/download/install.sh | sh -s -- --yes
+export PATH="$HOME/.tdc/bin:$PATH"
 tdc --version
 tdc update --check --output json
 tdc update --dry-run
-tdc update --yes
+tdc update
 ```
 
 Pinned install:
 
 ```bash
 curl -fsSL https://github.com/tidbcloud/tdc/releases/download/v0.1.0/install.sh | sh -s -- --version v0.1.0 --yes
+export PATH="$HOME/.tdc/bin:$PATH"
 ```
 
 Windows users can run the PowerShell installer:
@@ -163,7 +164,8 @@ Windows users can run the PowerShell installer:
 ```powershell
 $script = "$env:TEMP\install-tdc.ps1"
 iwr https://github.com/tidbcloud/tdc/releases/latest/download/install.ps1 -OutFile $script
-powershell -ExecutionPolicy Bypass -File $script -InstallDir "$HOME\bin" -Yes
+powershell -ExecutionPolicy Bypass -File $script -Yes
+$env:Path = "$HOME\.tdc\bin;$env:Path"
 tdc --version
 ```
 
@@ -174,7 +176,7 @@ tdc --version
 - `scripts/install.sh` supports macOS/Linux `amd64` and `arm64`.
 - `scripts/install.ps1` supports Windows `amd64`.
 - `internal/version` carries release metadata through Go linker variables.
-- `internal/update` owns GitHub release lookup, semantic version comparison, artifact selection, checksum verification, archive extraction, install-source checks, and atomic Unix replacement.
+- `internal/update` owns GitHub release lookup, semantic version comparison, artifact selection, checksum verification, archive extraction, install-source checks, user-owned target staging, and Unix replacement.
 - `internal/cli` wires `tdc update --check` and `tdc update` as normal structured-output commands.
 - Release builds set `installSource=archive`; local Makefile builds set `installSource=local`.
 
@@ -199,26 +201,26 @@ This spec adds no TiDB Cloud product API calls.
 5. Download only `tdc_checksums.txt`.
 6. Render the planned artifact, checksum, and target path.
 
-`tdc update --yes`:
+`tdc update`:
 
 1. Run the dry-run resolution path.
-2. Download the selected archive.
-3. Verify SHA-256 against `tdc_checksums.txt`.
-4. Extract `tdc` or `tdc.exe`.
-5. Replace the current binary on Unix-like platforms.
-6. Run `tdc --version` on the new binary.
+2. Verify that the resolved target directory is user-writable; otherwise fail with migration guidance before downloading artifacts.
+3. Download the selected archive and tdc fs companion as the current user.
+4. Verify SHA-256 against the tdc and companion checksum manifests and extract both binaries into user-owned temporary directories.
+5. Stage both binaries in the target directory so replacement does not depend on cross-filesystem rename behavior.
+6. Replace the staged binaries and run `tdc --version` on the new binary.
 
 Installer scripts:
 
 1. Detect OS and arch.
-2. Resolve the install directory from `--install-dir`, `TDC_INSTALL_DIR`, the active `tdc`/`tdc.exe` on `PATH`, or the platform default.
+2. Resolve the install directory from `--install-dir`/`-InstallDir`, `TDC_INSTALL_DIR`, or the default `~/.tdc/bin`; never reuse an active system-level installation implicitly.
 3. Compose deterministic GitHub Releases download URLs.
 4. Download archive and `tdc_checksums.txt`.
 5. Verify SHA-256.
-6. Extract and install the binary, using `sudo` on macOS/Linux only when needed.
+6. Extract and install both binaries into the user-writable install directory without sudo.
 7. Run `tdc --version`.
 8. Bootstrap `~/.tdc/config` if missing.
-9. Report PATH shadowing, supported DB regions, supported tdc fs regions, and next steps.
+9. Report PATH shadowing, print the command that prepends the install directory to PATH, then print supported DB regions, supported tdc fs regions, and next steps.
 
 ## Dependencies And Platform
 
@@ -247,13 +249,15 @@ Installer scripts:
 - GoReleaser snapshot builds can be generated from a clean checkout with `make release-snapshot` when GoReleaser is installed.
 - Install scripts support pinned version and latest installs.
 - Install scripts verify `tdc_checksums.txt`.
-- Install scripts upgrade the active binary by default and detect PATH shadowing.
+- Install scripts default to `~/.tdc/bin`, never invoke sudo, and detect PATH shadowing without overwriting the shadowing installation.
+- Install scripts print `export PATH="$HOME/.tdc/bin:$PATH"` on macOS/Linux and the equivalent current-session command on Windows.
 - Install scripts bootstrap missing `~/.tdc/config` without touching credentials.
 - Install scripts print DB and tdc fs region lists plus clear next steps.
 - `tdc update --check` reports update availability without reading credentials.
 - `tdc update --dry-run` reports the planned update without changing files.
-- `tdc update --yes` updates an owned archive/script install on Unix-like platforms.
-- `tdc update` refuses package-managed, local, unknown, and non-writable installs with actionable guidance.
+- `tdc update` updates an owned archive/script install on Unix-like platforms without requiring `--yes`.
+- `tdc update` never requests sudo; protected legacy installs fail without changing binaries and direct users to rerun the installer for migration.
+- `tdc update` refuses package-managed, local, and unknown installs with actionable guidance.
 - README documents install/update commands and the current package-manager deferral.
 
 ## Out Of Scope

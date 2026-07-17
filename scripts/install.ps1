@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Repo = "tidbcloud/tdc"
-$DefaultInstallDir = Join-Path $HOME "bin"
+$DefaultInstallDir = Join-Path (Join-Path $HOME ".tdc") "bin"
 
 function Fail($Message) {
     Write-Error "tdc install [ERROR]: $Message"
@@ -32,14 +32,7 @@ function Resolve-InstallDir {
         return $env:TDC_INSTALL_DIR
     }
 
-    $existing = Get-Command tdc -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($existing -and $existing.Source) {
-        $existingDir = Split-Path -Parent $existing.Source
-        Info "Upgrading active tdc in $existingDir"
-        return $existingDir
-    } else {
-        Info "Install dir: $DefaultInstallDir"
-    }
+    Info "Install dir: $DefaultInstallDir (default user install)"
     return $DefaultInstallDir
 }
 
@@ -63,15 +56,15 @@ function Report-PathStatus {
     $active = Get-Command tdc -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $active -or -not $active.Source) {
         Warn "tdc is installed at $Target, but $InstallDir is not on your PATH"
-        Warn "Run $Target directly or add $InstallDir to PATH"
-        Warn "PowerShell: `$env:Path = `"$InstallDir;`$env:Path`""
-        return
-    }
-    if ($active.Source -ne $Target) {
+    } elseif ($active.Source -ne $Target) {
         Warn "PATH shadowing detected: tdc resolves to $($active.Source)"
         Warn "Installed binary: $Target"
-        Warn "Re-run with TDC_INSTALL_DIR=$(Split-Path -Parent $active.Source) to replace the active binary"
+    } else {
+        return
     }
+    Warn "Add tdc to the current PowerShell PATH:"
+    Warn ('$env:Path = "{0};$env:Path"' -f $InstallDir)
+    Warn "Add $InstallDir to your user PATH to persist it"
 }
 
 function Print-Regions {
@@ -104,17 +97,20 @@ function Print-NextSteps {
     Write-Output ""
     Write-Output "  Get started:"
     Write-Output ""
-    Write-Output "    1. Configure credentials"
+    Write-Output "    1. Add tdc to PATH"
+    Write-Output ('       $env:Path = "{0};$env:Path"' -f $InstallDir)
+    Write-Output ""
+    Write-Output "    2. Configure credentials"
     Write-Output "       tdc configure"
     Write-Output ""
-    Write-Output "    2. List projects"
-    Write-Output "       tdc organization list-projects --output human"
+    Write-Output "    3. List projects"
+    Write-Output "       tdc organization list-projects --output text"
     Write-Output ""
-    Write-Output "    3. Create or check tdc fs"
+    Write-Output "    4. Create or check tdc fs"
     Write-Output "       tdc fs create-file-system --file-system-name workspace"
-    Write-Output "       tdc fs check-file-system --output human"
+    Write-Output "       tdc fs check-file-system --output text"
     Write-Output ""
-    Write-Output "    4. Mount tdc fs when FUSE is available"
+    Write-Output "    5. Mount tdc fs when FUSE is available"
     Write-Output "       tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace"
     Write-Output ""
     Write-Output "  Docs: https://github.com/tidbcloud/tdc"
@@ -157,6 +153,7 @@ if ($DryRun) {
     Write-Output "companion_artifact: $CompanionArtifact"
     Write-Output "companion_url: $CompanionUrl"
     Write-Output "companion_target: $CompanionTarget"
+    Write-Output ('path_command: $env:Path = "{0};$env:Path"' -f $InstallDir)
     exit 0
 }
 

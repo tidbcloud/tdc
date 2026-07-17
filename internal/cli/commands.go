@@ -129,14 +129,9 @@ func newUpdateCommand(info version.Info) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			yes, err := cmd.Flags().GetBool("yes")
-			if err != nil {
-				return err
-			}
 			result, err := update.Apply(cmd.Context(), info, update.ApplyOptions{
 				Version: targetVersion,
 				DryRun:  dryRun,
-				Yes:     yes,
 			})
 			if err != nil {
 				return err
@@ -148,12 +143,11 @@ func newUpdateCommand(info version.Info) *cobra.Command {
 	cmd.Flags().Bool("fail-if-update-available", false, "with --check, exit with code 1 when an update is available")
 	cmd.Flags().String("target-version", "latest", "target tdc version, such as latest or v0.1.0")
 	cmd.Flags().Bool("dry-run", false, "show the update plan without changing the local binary")
-	cmd.Flags().Bool("yes", false, "confirm replacing the local tdc binary")
 	return cmd
 }
 
 func rejectCheckUpdateFlagCombinations(cmd *cobra.Command) error {
-	for _, flagName := range []string{"target-version", "dry-run", "yes"} {
+	for _, flagName := range []string{"target-version", "dry-run"} {
 		if cmd.Flags().Changed(flagName) {
 			return apperr.New(
 				"update.incompatible_flag",

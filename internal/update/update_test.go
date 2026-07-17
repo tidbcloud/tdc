@@ -113,10 +113,15 @@ func TestApplyReplacesOwnedUnixBinary(t *testing.T) {
 	}
 
 	archiveBytes := tarGzBinary(t, "tdc", "#!/bin/sh\necho 'tdc 0.2.0 (test, now, linux/amd64)'\n")
+	companionArtifact, err := drive9ArtifactName(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		t.Fatal(err)
+	}
 	server := fakeReleaseServer(t, releaseFixture{
 		tag: "v0.2.0",
 		assets: map[string][]byte{
 			artifactForRuntime(t): archiveBytes,
+			companionArtifact:     []byte("#!/bin/sh\necho companion\n"),
 		},
 	})
 	current := filepath.Join(t.TempDir(), "tdc")
@@ -130,8 +135,8 @@ func TestApplyReplacesOwnedUnixBinary(t *testing.T) {
 		Arch:          runtime.GOARCH,
 		InstallSource: "archive",
 	}, ApplyOptions{
-		Yes:               true,
 		ReleaseAPIBaseURL: server.URL,
+		Drive9ReleaseURL:  server.URL + "/assets",
 		ExecutablePath:    current,
 	})
 	if err != nil {
@@ -146,6 +151,74 @@ func TestApplyReplacesOwnedUnixBinary(t *testing.T) {
 	}
 	if !strings.Contains(string(updated), "0.2.0") {
 		t.Fatalf("binary was not replaced:\n%s", string(updated))
+	}
+	companion, err := os.ReadFile(filepath.Join(filepath.Dir(current), companionBinaryName()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(companion), "companion") {
+		t.Fatalf("companion was not replaced:\n%s", string(companion))
+	}
+}
+
+func TestApplyRefusesProtectedTargetWithoutChangingFiles(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows self-update is unsupported")
+	}
+
+	archiveBytes := tarGzBinary(t, "tdc", "#!/bin/sh\necho 'tdc 0.2.0 (test, now, linux/amd64)'\n")
+	companionArtifact, err := drive9ArtifactName(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := fakeReleaseServer(t, releaseFixture{
+		tag: "v0.2.0",
+		assets: map[string][]byte{
+			artifactForRuntime(t): archiveBytes,
+			companionArtifact:     []byte("#!/bin/sh\necho companion-protected\n"),
+		},
+	})
+	current := filepath.Join(t.TempDir(), "tdc")
+	if err := os.WriteFile(current, []byte("#!/bin/sh\necho current\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	companion := filepath.Join(filepath.Dir(current), companionBinaryName())
+	if err := os.WriteFile(companion, []byte("old companion"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = Apply(context.Background(), version.Info{
+		Version:       "0.1.0",
+		OS:            runtime.GOOS,
+		Arch:          runtime.GOARCH,
+		InstallSource: "archive",
+	}, ApplyOptions{
+		ReleaseAPIBaseURL: server.URL,
+		Drive9ReleaseURL:  server.URL + "/assets",
+		ExecutablePath:    current,
+		targetWritable: func(string) (bool, error) {
+			return false, nil
+		},
+	})
+	if err == nil {
+		t.Fatal("expected a protected installation to be refused")
+	}
+	if got := apperr.CodeFor(err); got != "update.permission_denied" {
+		t.Fatalf("unexpected error code %q", got)
+	}
+	if got := apperr.MessageFor(err); !strings.Contains(got, "migrate to ~/.tdc/bin") {
+		t.Fatalf("unexpected error message %q", got)
+	}
+	currentBytes, err := os.ReadFile(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	companionBytes, err := os.ReadFile(companion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(currentBytes) != "#!/bin/sh\necho current\n" || string(companionBytes) != "old companion" {
+		t.Fatalf("targets changed after protected update refusal: tdc=%q companion=%q", currentBytes, companionBytes)
 	}
 }
 
@@ -176,6 +249,9 @@ func fakeReleaseServer(t *testing.T, fixture releaseFixture) *httptest.Server {
 		writeReleaseJSON(t, w, server.URL, fixture, checksums)
 	})
 	mux.HandleFunc("/assets/tdc_checksums.txt", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(checksums))
+	})
+	mux.HandleFunc("/assets/"+drive9ChecksumAssetName, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(checksums))
 	})
 	for name, data := range fixture.assets {

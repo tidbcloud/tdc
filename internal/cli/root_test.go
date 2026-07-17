@@ -227,6 +227,14 @@ func TestHelpUsageShowsRequiredFirstAndOptionalBracketed(t *testing.T) {
 	if !strings.Contains(stdout, "    [--project-id <string>]") {
 		t.Fatalf("expected --project-id to be optional, got:\n%s", stdout)
 	}
+
+	stdout, _, err = executeForTest("update", "help")
+	if err != nil {
+		t.Fatalf("expected update help to succeed, got %v", err)
+	}
+	if strings.Contains(stdout, "--yes") {
+		t.Fatalf("update help should not expose the removed --yes flag:\n%s", stdout)
+	}
 }
 
 func TestNoCommandDefinesShortFlags(t *testing.T) {

@@ -201,7 +201,7 @@ Installer requirements:
 `tdc update` must handle companion compatibility:
 
 - `tdc update --check` reports the tdc version, companion version, required companion range, and compatibility status.
-- `tdc update --yes` upgrades both tdc and the companion when the direct installer channel owns the installation.
+- `tdc update` upgrades both tdc and the companion when the direct installer channel owns the installation.
 - Package-manager installs from a future Homebrew/Scoop spec must refuse in-place replacement and tell the user to use the package manager.
 - If the companion is missing or incompatible, fs commands fail with `update.required` or a similarly stable actionable error instead of running an unknown binary.
 
@@ -344,7 +344,7 @@ The user-facing experience remains tdc, but filesystem correctness and advanced 
 
 - tdc installer installs `tdc` and a compatible Drive9 companion binary with checksum verification.
 - `tdc update --check` reports companion compatibility.
-- `tdc update --yes` updates the companion for direct-installer installs.
+- `tdc update` updates the companion for direct-installer installs.
 - `tdc fs create-file-system` provisions through the companion and writes only tdc-owned state under `~/.tdc`.
 - `tdc fs check-file-system` succeeds for a configured profile without requiring user-visible `~/.drive9` setup.
 - All retained public `tdc fs` and Unix-alias commands route through the companion.

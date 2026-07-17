@@ -335,13 +335,19 @@ Follow these rules unless `docs/priciples.md` is updated:
 - `tdc update` may replace only tdc-owned archive/script installs. It must
   refuse local, unknown, Homebrew, Scoop, Winget, or other package-manager
   installs with actionable guidance.
-- Installer scripts prefer upgrading the active `tdc`/`tdc.exe` found on
-  `PATH` unless `--install-dir` or `TDC_INSTALL_DIR` overrides it. On
-  macOS/Linux, no active binary means defaulting to `/usr/local/bin` and using
-  `sudo` for directory creation or binary replacement when needed.
+- `tdc update` is itself explicit update intent and must not require `--yes`.
+  It downloads, extracts, verifies, stages, and replaces artifacts as the
+  current user and must never invoke sudo or another privilege escalation
+  mechanism.
+- Installer scripts default to the stable user-owned `~/.tdc/bin` directory on
+  macOS, Linux, and Windows unless `--install-dir`/`-InstallDir` or
+  `TDC_INSTALL_DIR` overrides it. They must not prefer or overwrite an active
+  system-level tdc found on PATH, invoke sudo, create system-directory
+  symlinks, or modify shell profile files automatically.
 - Installer scripts must detect PATH shadowing, bootstrap `~/.tdc/config` only
-  when missing, print DB and tdc fs region lists, and show clear next steps.
-  They must never write `~/.tdc/credentials`.
+  when missing, print the exact command that prepends `~/.tdc/bin` to PATH,
+  print DB and tdc fs region lists, and show clear next steps. They must never
+  write `~/.tdc/credentials`.
 
 ## Commands
 
@@ -358,8 +364,8 @@ Implemented command behavior:
 - `tdc update --check`
 - `tdc update --check --fail-if-update-available`
 - `tdc update --dry-run`
-- `tdc update --yes`
-- `tdc update --target-version v0.1.0 --yes`
+- `tdc update`
+- `tdc update --target-version v0.1.1`
 - `tdc organization list-projects`
 - `tdc organization list-projects --query 'projects[0].id'`
 - `tdc organization list-projects --output text`
