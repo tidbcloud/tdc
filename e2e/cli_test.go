@@ -145,6 +145,11 @@ func TestErrorsAreRenderedAtCLIBoundary(t *testing.T) {
 	update.wantExitCode(1)
 	update.wantStderrContains("tdc [ERROR]: tdc install source")
 
+	directUpdate := runTDC(t, bin, "update")
+	directUpdate.wantExitCode(1)
+	directUpdate.wantStderrContains("tdc [ERROR]: tdc install source")
+	directUpdate.wantStderrNotContains("requires --yes")
+
 	invalidQuery := runTDCWithInput(t, bin, "", tdcConfigEnv(), append(createClusterDryRunArgs(), "--query", "command[")...)
 	invalidQuery.wantExitCode(2)
 	invalidQuery.wantStderrContains("tdc [ERROR]: invalid --query expression")
@@ -734,6 +739,13 @@ func (r commandResult) wantStderrContains(want string) {
 	r.t.Helper()
 	if !strings.Contains(r.stderr, want) {
 		r.fail("stderr should contain %q", want)
+	}
+}
+
+func (r commandResult) wantStderrNotContains(want string) {
+	r.t.Helper()
+	if strings.Contains(r.stderr, want) {
+		r.fail("stderr should not contain %q", want)
 	}
 }
 

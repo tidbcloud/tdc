@@ -26,7 +26,7 @@ Existing `tdc` commands keep the same behavior:
 ```bash
 tdc update --check
 tdc update --dry-run
-tdc update --yes
+tdc update
 ```
 
 For Homebrew and Scoop installs, `tdc update` must not replace the binary. It returns `update.managed_install` with the correct package-manager command.
@@ -59,13 +59,13 @@ No user `~/.tdc/` config or credentials are required for package-manager install
 
 ## Output And Errors
 
-`tdc update --yes` from a Homebrew install:
+`tdc update` from a Homebrew install:
 
 ```text
 tdc [ERROR]: tdc is managed by homebrew; update it with `brew upgrade tidbcloud/tap/tdc`
 ```
 
-`tdc update --yes` from a Scoop install:
+`tdc update` from a Scoop install:
 
 ```text
 tdc [ERROR]: tdc is managed by scoop; update it with `scoop update tdc`
@@ -78,7 +78,8 @@ The structured error code remains `update.managed_install`.
 Users can choose between direct GitHub Releases installers and package-manager installs:
 
 ```bash
-curl -fsSL https://github.com/tidbcloud/tdc/releases/latest/download/install.sh | sh -s -- --install-dir "$HOME/.local/bin" --yes
+curl -fsSL https://github.com/tidbcloud/tdc/releases/latest/download/install.sh | sh -s -- --yes
+export PATH="$HOME/.tdc/bin:$PATH"
 brew install tidbcloud/tap/tdc
 ```
 
@@ -86,7 +87,8 @@ Windows users can choose between the PowerShell installer and Scoop:
 
 ```powershell
 iwr https://github.com/tidbcloud/tdc/releases/latest/download/install.ps1 -OutFile $env:TEMP\install-tdc.ps1
-powershell -ExecutionPolicy Bypass -File $env:TEMP\install-tdc.ps1 -InstallDir "$HOME\bin" -Yes
+powershell -ExecutionPolicy Bypass -File $env:TEMP\install-tdc.ps1 -Yes
+$env:Path = "$HOME\.tdc\bin;$env:Path"
 scoop bucket add icemap https://github.com/tidbcloud/scoop-bucket
 scoop install tdc
 ```
@@ -153,7 +155,7 @@ Runtime update call chain from package-managed installs:
 - `scoop bucket add icemap https://github.com/tidbcloud/scoop-bucket` and `scoop install tdc` install `tdc.exe` on Windows.
 - `scoop update tdc` upgrades to a newer release.
 - `tdc update --check` works from Homebrew and Scoop installs.
-- `tdc update --yes` refuses Homebrew and Scoop installs with `update.managed_install`.
+- `tdc update` refuses Homebrew and Scoop installs with `update.managed_install`.
 - README documents Homebrew and Scoop as optional package-manager channels.
 
 ## Out Of Scope

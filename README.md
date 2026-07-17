@@ -11,14 +11,20 @@ macOS and Linux users:
 
 ```bash
 curl -fsSL https://github.com/tidbcloud/tdc/releases/latest/download/install.sh | sh -s -- --yes
+export PATH="$HOME/.tdc/bin:$PATH"
+tdc --version
 ```
+
+The installer writes `tdc` and `tdc-drive9` to `~/.tdc/bin` without sudo. Add the `export PATH=...` line to your shell profile to make it persistent.
 
 Windows users:
 
 ```powershell
 $script = "$env:TEMP\install-tdc.ps1"
 iwr https://github.com/tidbcloud/tdc/releases/latest/download/install.ps1 -OutFile $script
-powershell -ExecutionPolicy Bypass -File $script -InstallDir "$HOME\bin" -Yes
+powershell -ExecutionPolicy Bypass -File $script -Yes
+$env:Path = "$HOME\.tdc\bin;$env:Path"
+tdc --version
 ```
 
 ## Quick Start Guide
@@ -109,9 +115,11 @@ Each project includes a `type`: `tidbx` identifies a regular project and `tidbx_
 ```bash
 tdc update --check
 tdc update --dry-run
-tdc update --yes
-tdc update --target-version v0.1.0 --yes
+tdc update
+tdc update --target-version v0.1.1
 ```
+
+`tdc update` downloads and verifies both `tdc` and its `tdc-drive9` companion before replacing either binary in the user-writable install directory. It never requests sudo. Legacy installations under `/usr/local/bin` must run the installer once to migrate to `~/.tdc/bin`.
 
 ## Build from source
 

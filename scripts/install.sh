@@ -2,7 +2,6 @@
 set -eu
 
 REPO="tidbcloud/tdc"
-DEFAULT_INSTALL_DIR="/usr/local/bin"
 VERSION="latest"
 INSTALL_DIR=""
 INSTALL_DIR_EXPLICIT=0
@@ -140,16 +139,9 @@ resolve_install_dir() {
     return
   fi
 
-  EXISTING="$(command -v tdc 2>/dev/null || true)"
-  if [ -n "$EXISTING" ] && [ -x "$EXISTING" ]; then
-    EXISTING_DIR="$(dirname "$EXISTING")"
-    INSTALL_DIR="$EXISTING_DIR"
-    info "Upgrading active tdc in ${INSTALL_DIR}"
-    return
-  fi
-
-  INSTALL_DIR="$DEFAULT_INSTALL_DIR"
-  info "Install dir: ${INSTALL_DIR}"
+  [ -n "${HOME:-}" ] || error "HOME is required when --install-dir and TDC_INSTALL_DIR are not set"
+  INSTALL_DIR="${HOME}/.tdc/bin"
+  info "Install dir: ${INSTALL_DIR} (default user install)"
 }
 
 resolve_install_dir
@@ -184,6 +176,7 @@ target: ${TARGET}
 companion_artifact: ${COMPANION_ARTIFACT}
 companion_url: ${COMPANION_URL}
 companion_target: ${COMPANION_TARGET}
+path_export: export PATH="${INSTALL_DIR}:\$PATH"
 EOF
   exit 0
 fi
@@ -218,59 +211,36 @@ CONF
   fi
 }
 
-install_binary() {
-  if [ ! -d "$INSTALL_DIR" ]; then
-    mkdir -p "$INSTALL_DIR" 2>/dev/null || {
-      command -v sudo >/dev/null 2>&1 || error "cannot create ${INSTALL_DIR}; install to a user-writable directory with --install-dir"
-      info "Creating ${INSTALL_DIR} with sudo"
-      sudo mkdir -p "$INSTALL_DIR"
-    }
-  fi
-
-  if [ -w "$INSTALL_DIR" ]; then
-    mv "$1" "$TARGET"
-  else
-    command -v sudo >/dev/null 2>&1 || error "cannot write to ${INSTALL_DIR}; install to a user-writable directory with --install-dir"
-    info "Installing to ${INSTALL_DIR} with sudo"
-    sudo mv "$1" "$TARGET"
-  fi
-}
-
-install_companion_binary() {
-  if [ ! -d "$INSTALL_DIR" ]; then
-    mkdir -p "$INSTALL_DIR" 2>/dev/null || {
-      command -v sudo >/dev/null 2>&1 || error "cannot create ${INSTALL_DIR}; install to a user-writable directory with --install-dir"
-      info "Creating ${INSTALL_DIR} with sudo"
-      sudo mkdir -p "$INSTALL_DIR"
-    }
-  fi
-
-  if [ -w "$INSTALL_DIR" ]; then
-    mv "$1" "$COMPANION_TARGET"
-  else
-    command -v sudo >/dev/null 2>&1 || error "cannot write to ${INSTALL_DIR}; install to a user-writable directory with --install-dir"
-    info "Installing tdc-drive9 to ${INSTALL_DIR} with sudo"
-    sudo mv "$1" "$COMPANION_TARGET"
-  fi
+install_file() {
+  source_path="$1"
+  target_path="$2"
+  mkdir -p "$INSTALL_DIR" 2>/dev/null || error "cannot create ${INSTALL_DIR}; choose a user-writable directory with --install-dir"
+  [ -w "$INSTALL_DIR" ] || error "cannot write to ${INSTALL_DIR}; choose a user-writable directory with --install-dir"
+  stage_path="$(mktemp "${INSTALL_DIR}/.tdc-install.XXXXXX")" || error "cannot stage installation in ${INSTALL_DIR}"
+  cp "$source_path" "$stage_path" || {
+    rm -f "$stage_path"
+    error "cannot copy binary into ${INSTALL_DIR}"
+  }
+  chmod 0755 "$stage_path" || {
+    rm -f "$stage_path"
+    error "cannot make staged binary executable"
+  }
+  mv -f "$stage_path" "$target_path" || {
+    rm -f "$stage_path"
+    error "cannot replace ${target_path}"
+  }
 }
 
 report_path_status() {
   ACTIVE="$(command -v tdc 2>/dev/null || true)"
-  if [ -z "$ACTIVE" ]; then
-    warn "tdc is installed at ${TARGET}, but ${INSTALL_DIR} is not on your PATH"
-    warn "Run ${TARGET} directly or add ${INSTALL_DIR} to PATH"
-    case "$INSTALL_DIR" in
-      "$HOME"/*)
-        warn "For zsh/bash: export PATH=\"${INSTALL_DIR}:\$PATH\""
-        ;;
-    esac
-    return
-  fi
-
-  if [ "$ACTIVE" != "$TARGET" ]; then
+  if [ -n "$ACTIVE" ] && [ "$ACTIVE" != "$TARGET" ]; then
     warn "PATH shadowing detected: tdc resolves to ${ACTIVE}"
     warn "Installed binary: ${TARGET}"
-    warn "Re-run with TDC_INSTALL_DIR=$(dirname "$ACTIVE") to replace the active binary"
+  fi
+  if [ "$ACTIVE" != "$TARGET" ]; then
+    warn "Add tdc to the current shell PATH:"
+    warn "export PATH=\"${INSTALL_DIR}:\$PATH\""
+    warn "Add the same line to your shell profile to persist it"
   fi
 }
 
@@ -317,17 +287,20 @@ print_next_steps() {
   printf "\n"
   printf "  ${BOLD}Get started:${RESET}\n"
   printf "\n"
-  printf "    ${BOLD}1.${RESET} Configure credentials\n"
+  printf "    ${BOLD}1.${RESET} Add tdc to PATH\n"
+  printf "       ${DIM}\$${RESET} export PATH=\"${INSTALL_DIR}:\$PATH\"\n"
+  printf "\n"
+  printf "    ${BOLD}2.${RESET} Configure credentials\n"
   printf "       ${DIM}\$${RESET} tdc configure\n"
   printf "\n"
-  printf "    ${BOLD}2.${RESET} List projects\n"
-  printf "       ${DIM}\$${RESET} tdc organization list-projects --output human\n"
+  printf "    ${BOLD}3.${RESET} List projects\n"
+  printf "       ${DIM}\$${RESET} tdc organization list-projects --output text\n"
   printf "\n"
-  printf "    ${BOLD}3.${RESET} Create or check tdc fs\n"
+  printf "    ${BOLD}4.${RESET} Create or check tdc fs\n"
   printf "       ${DIM}\$${RESET} tdc fs create-file-system --file-system-name workspace\n"
-  printf "       ${DIM}\$${RESET} tdc fs check-file-system --output human\n"
+  printf "       ${DIM}\$${RESET} tdc fs check-file-system --output text\n"
   printf "\n"
-  printf "    ${BOLD}4.${RESET} Mount tdc fs when FUSE is available\n"
+  printf "    ${BOLD}5.${RESET} Mount tdc fs when FUSE is available\n"
   printf "       ${DIM}\$${RESET} tdc fs mount-file-system --file-system-name workspace --mount-path ./workspace\n"
   printf "\n"
   printf "  Docs: ${DIM}https://github.com/tidbcloud/tdc${RESET}\n"
@@ -389,8 +362,8 @@ if [ -z "$FOUND" ]; then
 fi
 chmod 0755 "$FOUND"
 chmod 0755 "${TMP_DIR}/${COMPANION_ARTIFACT}"
-install_binary "$FOUND"
-install_companion_binary "${TMP_DIR}/${COMPANION_ARTIFACT}"
+install_file "$FOUND" "$TARGET"
+install_file "${TMP_DIR}/${COMPANION_ARTIFACT}" "$COMPANION_TARGET"
 
 "$TARGET" --version
 success "tdc installed to ${TARGET}"

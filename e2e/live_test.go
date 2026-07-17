@@ -170,7 +170,7 @@ func TestLiveCLICommandSurface(t *testing.T) {
 	checkUpdateHelp.wantExitCode(0)
 	checkUpdateHelp.wantStdoutContains("--check")
 	checkUpdateHelp.wantStdoutContains("--fail-if-update-available")
-	checkUpdateHelp.wantStdoutContains("--yes")
+	checkUpdateHelp.wantStdoutNotContains("--yes")
 }
 
 func TestLiveOrganizationCommandSurface(t *testing.T) {

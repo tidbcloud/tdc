@@ -42,10 +42,12 @@ type CheckOptions struct {
 type ApplyOptions struct {
 	Version           string
 	DryRun            bool
-	Yes               bool
 	ReleaseAPIBaseURL string
+	Drive9ReleaseURL  string
 	HTTPClient        *http.Client
 	ExecutablePath    string
+
+	targetWritable func(string) (bool, error)
 }
 
 type CheckResult struct {
@@ -172,15 +174,6 @@ func Check(ctx context.Context, info version.Info, opts CheckOptions) (CheckResu
 }
 
 func Apply(ctx context.Context, info version.Info, opts ApplyOptions) (ApplyResult, error) {
-	if !opts.DryRun && !opts.Yes {
-		return ApplyResult{}, apperr.New(
-			"update.confirmation_required",
-			"usage",
-			2,
-			"tdc update requires --yes for filesystem changes; use --dry-run to preview the update",
-		)
-	}
-
 	targetPath, err := executablePath(opts.ExecutablePath)
 	if err != nil {
 		return ApplyResult{}, err
@@ -265,9 +258,23 @@ func Apply(ctx context.Context, info version.Info, opts ApplyOptions) (ApplyResu
 		return result, nil
 	}
 
-	if err := ensureWritableTarget(targetPath); err != nil {
+	writableCheck := opts.targetWritable
+	if writableCheck == nil {
+		writableCheck = isTargetWritable
+	}
+	writable, err := writableCheck(targetPath)
+	if err != nil {
 		return ApplyResult{}, err
 	}
+	if !writable {
+		return ApplyResult{}, apperr.New(
+			"update.permission_denied",
+			"runtime",
+			1,
+			fmt.Sprintf("tdc cannot update the protected installation at %s; rerun the installer to migrate to ~/.tdc/bin", targetPath),
+		)
+	}
+
 	archiveBytes, err := c.download(ctx, artifact.BrowserDownloadURL)
 	if err != nil {
 		return ApplyResult{}, err
@@ -281,10 +288,27 @@ func Apply(ctx context.Context, info version.Info, opts ApplyOptions) (ApplyResu
 	}
 	defer cleanup()
 
-	if err := replaceBinary(ctx, extracted, targetPath); err != nil {
+	companion, companionCleanup, err := c.downloadDrive9Companion(ctx, opts.Drive9ReleaseURL)
+	if err != nil {
 		return ApplyResult{}, err
 	}
-	if err := c.installDrive9Companion(ctx, targetPath); err != nil {
+	defer companionCleanup()
+
+	stagedTDC, err := stageBinary(extracted, targetPath)
+	if err != nil {
+		return ApplyResult{}, err
+	}
+	defer os.Remove(stagedTDC)
+	companionTarget := companionPathForExecutable(targetPath)
+	stagedCompanion, err := stageBinary(companion.Path, companionTarget)
+	if err != nil {
+		return ApplyResult{}, err
+	}
+	defer os.Remove(stagedCompanion)
+	if err := replaceBinary(ctx, stagedTDC, targetPath); err != nil {
+		return ApplyResult{}, err
+	}
+	if err := replaceFile(stagedCompanion, companionTarget); err != nil {
 		return ApplyResult{}, err
 	}
 	result.Updated = true
@@ -568,29 +592,71 @@ func executablePath(override string) (string, error) {
 	return path, nil
 }
 
-func ensureWritableTarget(path string) error {
+type downloadedBinary struct {
+	Path   string
+	SHA256 string
+}
+
+func isTargetWritable(path string) (bool, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return apperr.Wrap("update.permission_denied", "runtime", 1, "check current tdc binary", err)
+		return false, apperr.Wrap("update.permission_denied", "runtime", 1, "check current tdc binary", err)
 	}
 	if info.IsDir() {
-		return apperr.New("update.permission_denied", "runtime", 1, "current tdc executable path is a directory")
+		return false, apperr.New("update.permission_denied", "runtime", 1, "current tdc executable path is a directory")
 	}
 	dir := filepath.Dir(path)
 	temp, err := os.CreateTemp(dir, ".tdc-update-write-test-*")
 	if err != nil {
-		return apperr.Wrap(
+		if errors.Is(err, os.ErrPermission) {
+			return false, nil
+		}
+		return false, apperr.Wrap(
 			"update.permission_denied",
 			"runtime",
 			1,
-			fmt.Sprintf("tdc cannot write to %s; install to a user-writable directory or rerun the installer with --install-dir", dir),
+			fmt.Sprintf("tdc cannot stage an update in %s", dir),
 			err,
 		)
 	}
 	name := temp.Name()
 	_ = temp.Close()
 	_ = os.Remove(name)
-	return nil
+	return true, nil
+}
+
+func stageBinary(sourcePath, targetPath string) (string, error) {
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return "", apperr.Wrap("update.permission_denied", "runtime", 1, "open update source", err)
+	}
+	defer source.Close()
+	temp, err := os.CreateTemp(filepath.Dir(targetPath), "."+filepath.Base(targetPath)+".update-*")
+	if err != nil {
+		return "", apperr.Wrap("update.permission_denied", "runtime", 1, "stage update binary", err)
+	}
+	stagedPath := temp.Name()
+	complete := false
+	defer func() {
+		_ = temp.Close()
+		if !complete {
+			_ = os.Remove(stagedPath)
+		}
+	}()
+	if err := temp.Chmod(0o755); err != nil {
+		return "", apperr.Wrap("update.permission_denied", "runtime", 1, "set staged update permissions", err)
+	}
+	if _, err := io.Copy(temp, source); err != nil {
+		return "", apperr.Wrap("update.permission_denied", "runtime", 1, "copy staged update binary", err)
+	}
+	if err := temp.Sync(); err != nil {
+		return "", apperr.Wrap("update.permission_denied", "runtime", 1, "sync staged update binary", err)
+	}
+	if err := temp.Close(); err != nil {
+		return "", apperr.Wrap("update.permission_denied", "runtime", 1, "close staged update binary", err)
+	}
+	complete = true
+	return stagedPath, nil
 }
 
 func replaceBinary(ctx context.Context, newBinary, targetPath string) error {
@@ -623,6 +689,7 @@ func validateInstalledBinary(ctx context.Context, targetPath string) error {
 	validateCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(validateCtx, targetPath, "--version")
+	cmd.Env = append(os.Environ(), "TDC_LOGGING=off")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return apperr.Wrap(
 			"update.validation_failed",
@@ -635,56 +702,47 @@ func validateInstalledBinary(ctx context.Context, targetPath string) error {
 	return nil
 }
 
-func (c client) installDrive9Companion(ctx context.Context, tdcPath string) error {
+func (c client) downloadDrive9Companion(ctx context.Context, baseURL string) (downloadedBinary, func(), error) {
 	artifactName, err := drive9ArtifactName(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
-		return err
+		return downloadedBinary{}, func() {}, err
 	}
-	checksumBytes, err := c.download(ctx, drive9ReleaseBaseURL+"/"+drive9ChecksumAssetName)
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if baseURL == "" {
+		baseURL = drive9ReleaseBaseURL
+	}
+	checksumBytes, err := c.download(ctx, baseURL+"/"+drive9ChecksumAssetName)
 	if err != nil {
-		return err
+		return downloadedBinary{}, func() {}, err
 	}
 	expectedSHA, err := checksumFor(checksumBytes, artifactName)
 	if err != nil {
-		return err
+		return downloadedBinary{}, func() {}, err
 	}
-	binaryBytes, err := c.download(ctx, drive9ReleaseBaseURL+"/"+artifactName)
+	binaryBytes, err := c.download(ctx, baseURL+"/"+artifactName)
 	if err != nil {
-		return err
+		return downloadedBinary{}, func() {}, err
 	}
 	if err := verifyChecksum(binaryBytes, expectedSHA, artifactName); err != nil {
-		return err
+		return downloadedBinary{}, func() {}, err
 	}
-	companionPath := companionPathForExecutable(tdcPath)
-	if err := ensureWritableDirectory(filepath.Dir(companionPath)); err != nil {
-		return err
-	}
-	temp, err := os.CreateTemp(filepath.Dir(companionPath), ".tdc-drive9-update-*")
+	tempDir, err := os.MkdirTemp("", "tdc-drive9-update-*")
 	if err != nil {
-		return apperr.Wrap("update.permission_denied", "runtime", 1, "create temporary tdc-drive9 binary", err)
+		return downloadedBinary{}, func() {}, apperr.Wrap("update.temp_dir", "runtime", 1, "create tdc-drive9 update temp directory", err)
 	}
-	tempPath := temp.Name()
-	installed := false
-	defer func() {
-		if !installed {
-			_ = os.Remove(tempPath)
-		}
-	}()
-	if _, err := temp.Write(binaryBytes); err != nil {
-		_ = temp.Close()
-		return apperr.Wrap("update.extract_artifact", "runtime", 1, "write temporary tdc-drive9 binary", err)
+	cleanup := func() {
+		_ = os.RemoveAll(tempDir)
 	}
-	if err := temp.Close(); err != nil {
-		return apperr.Wrap("update.extract_artifact", "runtime", 1, "close temporary tdc-drive9 binary", err)
+	tempPath := filepath.Join(tempDir, companionBinaryName())
+	if err := os.WriteFile(tempPath, binaryBytes, 0o755); err != nil {
+		cleanup()
+		return downloadedBinary{}, func() {}, apperr.Wrap("update.extract_artifact", "runtime", 1, "write temporary tdc-drive9 binary", err)
 	}
 	if err := os.Chmod(tempPath, 0o755); err != nil {
-		return apperr.Wrap("update.extract_artifact", "runtime", 1, "make tdc-drive9 executable", err)
+		cleanup()
+		return downloadedBinary{}, func() {}, apperr.Wrap("update.extract_artifact", "runtime", 1, "make tdc-drive9 executable", err)
 	}
-	if err := replaceFile(tempPath, companionPath); err != nil {
-		return err
-	}
-	installed = true
-	return nil
+	return downloadedBinary{Path: tempPath, SHA256: expectedSHA}, cleanup, nil
 }
 
 func drive9ArtifactName(goos, goarch string) (string, error) {
@@ -744,20 +802,6 @@ func fileExists(path string) bool {
 	}
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
-}
-
-func ensureWritableDirectory(dir string) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return apperr.Wrap("update.permission_denied", "runtime", 1, fmt.Sprintf("create %s", dir), err)
-	}
-	temp, err := os.CreateTemp(dir, ".tdc-update-write-test-*")
-	if err != nil {
-		return apperr.Wrap("update.permission_denied", "runtime", 1, fmt.Sprintf("tdc cannot write to %s", dir), err)
-	}
-	name := temp.Name()
-	_ = temp.Close()
-	_ = os.Remove(name)
-	return nil
 }
 
 func replaceFile(sourcePath, targetPath string) error {
