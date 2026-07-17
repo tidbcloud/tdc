@@ -25,7 +25,7 @@ import (
 func newConfigureCommand(info version.Info) *cobra.Command {
 	cmd := newCommand(commandSpec{
 		Use:   "configure",
-		Short: "Configure a local tdc profile.",
+		Short: "Configure TiDB Cloud (tdc) CLI options. If this command is run with no arguments, you will be prompted for configuration values to setup the default profile.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			profile, err := cmd.Flags().GetString("profile")
 			if err != nil {
@@ -76,17 +76,17 @@ func newConfigureCommand(info version.Info) *cobra.Command {
 			return renderStructured(cmd, result)
 		},
 	}, info)
-	cmd.Flags().String("region-code", "", "tdc region code, for example aws-us-east-1 or ali-ap-southeast-1")
-	cmd.Flags().String("tdc-public-key", "", "TiDB Cloud public key")
-	cmd.Flags().String("tdc-private-key", "", "TiDB Cloud private key; prefer TDC_PRIVATE_KEY for automation")
-	cmd.Flags().Bool("non-interactive", false, "fail instead of prompting for missing configure values")
+	cmd.Flags().String("region-code", "", "TiDB Cloud region code, for example aws-us-east-1 or aws-ap-southeast-1.")
+	cmd.Flags().String("tdc-public-key", "", "TiDB Cloud API public key.")
+	cmd.Flags().String("tdc-private-key", "", "TiDB Cloud API private key.")
+	cmd.Flags().Bool("non-interactive", false, "Use this option to avoid being prompted for configuration values. You must provide at least three configuration values (--tdc-public-key, --tdc-private-key, and --region-code) when using this option. This is useful when running tdc in a script or automated environment.")
 	return cmd
 }
 
 func newUpdateCommand(info version.Info) *cobra.Command {
 	cmd := newCommand(commandSpec{
 		Use:   "update",
-		Short: "Check for or apply tdc updates.",
+		Short: "Check or apply updates to this tool.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			check, err := cmd.Flags().GetBool("check")
 			if err != nil {
@@ -167,7 +167,7 @@ func rejectCheckUpdateFlagCombinations(cmd *cobra.Command) error {
 }
 
 func newDBCommand(info version.Info) *cobra.Command {
-	cmd := newParentCommand("db", "Manage TiDB Cloud Starter database resources.", info)
+	cmd := newParentCommand("db", "Manage TiDB Cloud Starter - distributed serverless MySQL clusters.", info)
 	cmd.AddCommand(
 		newDBCreateClusterCommand(info),
 		newDBListClustersCommand(info),
@@ -833,7 +833,7 @@ func sqlCommonOptions(ctx commandContext) (sqlCommon, error) {
 }
 
 func newFSCommand(info version.Info) *cobra.Command {
-	cmd := newParentCommand("fs", "Manage and access tdc fs resources.", info)
+	cmd := newParentCommand("fs", "Manage and access TiDB Cloud Filesystem (FS).", info)
 	commands := []*cobra.Command{
 		newFSCreateFileSystemCommand(info),
 		newFSDeleteFileSystemCommand(info),
@@ -2404,7 +2404,7 @@ func fsDeleteFlags(ctx commandContext) (string, string, error) {
 }
 
 func newFSVaultCommand(info version.Info) *cobra.Command {
-	cmd := newParentCommand("fs-vault", "Manage tdc fs vault secrets and delegated access.", info)
+	cmd := newParentCommand("fs-vault", "Manage FS vault secrets and delegated access.", info)
 	commands := []*cobra.Command{
 		newVaultCreateSecretCommand(info),
 		newVaultReplaceSecretCommand(info),
@@ -2879,7 +2879,7 @@ func vaultToken(ctx commandContext) (string, error) {
 }
 
 func newFSGitCommand(info version.Info) *cobra.Command {
-	cmd := newParentCommand("fs-git", "Manage tdc fs git workspaces.", info)
+	cmd := newParentCommand("fs-git", "Manage FS git workspaces.", info)
 	commands := []*cobra.Command{
 		newGitCloneWorkspaceCommand(info),
 		newGitHydrateWorkspaceCommand(info),
@@ -3064,7 +3064,7 @@ func gitWorktreeAddOptions(ctx commandContext, profile *config.Profile) (tdcfs.G
 }
 
 func newFSJournalCommand(info version.Info) *cobra.Command {
-	cmd := newParentCommand("fs-journal", "Manage tdc fs journals.", info)
+	cmd := newParentCommand("fs-journal", "Manage FS journals.", info)
 	commands := []*cobra.Command{
 		newJournalCreateCommand(info),
 		newJournalAppendEntriesCommand(info),

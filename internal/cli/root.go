@@ -42,8 +42,8 @@ func NewRootCommand(info version.Info) *cobra.Command {
 
 	root := newCommand(commandSpec{
 		Use:   "tdc",
-		Short: "Agent-friendly CLI for TiDB Cloud Starter.",
-		Long:  "tdc is an agent-friendly command line interface for TiDB Cloud Starter.",
+		Short: "CLI for TiDB Cloud Filesystem (FS) and TiDB Cloud Starter.",
+		Long:  "The TiDB Cloud Command Line Interface is a unified tool to manage your TiDB Cloud Filesystem (FS) and Starter services.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
@@ -61,11 +61,11 @@ func NewRootCommand(info version.Info) *cobra.Command {
 	root.SetUsageTemplate(usageTemplate)
 
 	flags := root.PersistentFlags()
-	flags.StringVar(&opts.Profile, "profile", "default", "profile name")
-	flags.StringVar(&opts.Region, "region", "", "override canonical tdc region code for this command, for example aws-us-east-1")
-	flags.BoolVar(&opts.Debug, "debug", false, "enable debug output")
-	flags.StringVar(&opts.Output, "output", "json", "output format: json or text")
-	flags.StringVar(&opts.Query, "query", "", "JMESPath query applied before rendering")
+	flags.StringVar(&opts.Profile, "profile", "default", "Profile name for tdc.")
+	flags.StringVar(&opts.Region, "region", "", "Override region code in the profile, for example aws-us-east-1.")
+	flags.BoolVar(&opts.Debug, "debug", false, "Enable debug output.")
+	flags.StringVar(&opts.Output, "output", "json", "Output format: json or text.")
+	flags.StringVar(&opts.Query, "query", "", "JMESPath query applied before rendering the output.")
 
 	root.AddCommand(newConfigureCommand(info))
 	root.AddCommand(newUpdateCommand(info))
@@ -500,10 +500,10 @@ func applyCommandDefaults(cmd *cobra.Command, info version.Info) {
 	cmd.SetHelpTemplate(helpTemplate)
 	cmd.SetUsageTemplate(usageTemplate)
 	if cmd.Flags().Lookup("help") == nil {
-		cmd.Flags().Bool("help", false, "help for this command")
+		cmd.Flags().Bool("help", false, "Display help information.")
 	}
 	if cmd.Flags().Lookup("version") == nil {
-		cmd.Flags().Bool("version", false, "version for this command")
+		cmd.Flags().Bool("version", false, "Display the version for this tool.")
 	}
 	cmd.Flags().SortFlags = true
 	cmd.PersistentFlags().SortFlags = true
@@ -593,7 +593,7 @@ func installHelpCommands(cmd *cobra.Command, info version.Info) {
 
 	helpCmd := newCommand(commandSpec{
 		Use:   "help",
-		Short: "Help about this command.",
+		Short: "Display help information.",
 		RunE: func(help *cobra.Command, _ []string) error {
 			return help.Parent().Help()
 		},
