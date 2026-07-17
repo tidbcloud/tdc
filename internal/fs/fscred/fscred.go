@@ -49,6 +49,17 @@ type RegistryPaths struct {
 	Credentials string `json:"credentials"`
 }
 
+type ResolveAuthOptions struct {
+	Selector         string
+	SelectorExplicit bool
+	Token            string
+	TokenExplicit    bool
+	RegionOverride   string
+	TokenRequired    bool
+	Env              map[string]string
+	DryRun           bool
+}
+
 func FromProfile(profile *config.Profile) Resource {
 	if profile == nil {
 		return Resource{}
@@ -177,6 +188,118 @@ func ResolveDryRun(homeDir string, profile *config.Profile, selector string, sel
 	return resolve(homeDir, profile, selector, selectorExplicit, env, false)
 }
 
+func ResolveAuthenticated(homeDir string, profile *config.Profile, opts ResolveAuthOptions) (*config.Profile, Resource, error) {
+	if profile == nil {
+		return nil, Resource{}, apperr.New("fs.missing_profile", "config", 2, "active profile is required")
+	}
+	if opts.DryRun {
+		if err := validateLegacy(profile); err != nil {
+			return nil, Resource{}, err
+		}
+	} else {
+		if err := MigrateLegacy(homeDir, profile); err != nil {
+			return nil, Resource{}, err
+		}
+	}
+
+	name := strings.TrimSpace(opts.Selector)
+	if opts.SelectorExplicit && name == "" {
+		return nil, Resource{}, apperr.New("fs.empty_file_system_name", "usage", 2, "--file-system-name cannot be empty")
+	}
+	if name == "" {
+		name = strings.TrimSpace(fsEnvValue(opts.Env, "TDC_FS_FILE_SYSTEM_NAME"))
+	}
+	resources, err := List(homeDir, profile.Name, profile.FSDefaultFileSystemName)
+	if err != nil {
+		return nil, Resource{}, err
+	}
+	if opts.DryRun {
+		legacy := legacyResource(profile)
+		if legacy.Name != "" {
+			found := false
+			for _, resource := range resources {
+				if resource.Name == legacy.Name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				resources = append(resources, legacy)
+				sort.Slice(resources, func(i, j int) bool { return resources[i].Name < resources[j].Name })
+			}
+		}
+	}
+	if name == "" {
+		name = strings.TrimSpace(profile.FSDefaultFileSystemName)
+	}
+	if name == "" && len(resources) == 1 {
+		name = resources[0].Name
+	}
+	if name == "" {
+		if len(resources) > 1 {
+			names := make([]string, 0, len(resources))
+			for _, resource := range resources {
+				names = append(names, resource.Name)
+			}
+			return nil, Resource{}, resourceError("fs.resource_ambiguous", profile.Name, "", fmt.Sprintf("multiple tdc fs resources are configured; pass --file-system-name, set TDC_FS_FILE_SYSTEM_NAME, or set a default. Available: %s", strings.Join(names, ", ")))
+		}
+		return nil, Resource{}, apperr.New("fs.missing_file_system_name", "usage", 2, "file system name is required; pass --file-system-name, set TDC_FS_FILE_SYSTEM_NAME, or configure one local default resource")
+	}
+
+	resource := Resource{Name: name}
+	found := false
+	for _, candidate := range resources {
+		if candidate.Name == name {
+			resource = candidate
+			found = true
+			break
+		}
+	}
+
+	token := strings.TrimSpace(opts.Token)
+	if opts.TokenExplicit && token == "" {
+		return nil, Resource{}, apperr.New("fs.empty_token", "usage", 2, "--fs-token cannot be empty")
+	}
+	if token == "" {
+		token = strings.TrimSpace(fsEnvValue(opts.Env, "TDC_FS_TOKEN"))
+	}
+	if token == "" && found {
+		token = strings.TrimSpace(resource.APIKey)
+	}
+	if opts.TokenRequired && token == "" {
+		return nil, Resource{}, apperr.New("fs.missing_token", "authentication", 3, "authentication required: missing FS token; pass --fs-token, set TDC_FS_TOKEN, or select a locally registered file system with credentials")
+	}
+
+	placementCode := strings.TrimSpace(opts.RegionOverride)
+	if placementCode == "" && found {
+		placementCode = strings.TrimSpace(resource.RegionCode)
+	}
+	if placementCode == "" {
+		placementCode = strings.TrimSpace(profile.PlacementRegionCode)
+	}
+	if placementCode == "" {
+		return nil, Resource{}, apperr.New("fs.missing_region", "config", 2, "tdc fs region is required; pass --region, set TDC_REGION_CODE, or configure region_code for the selected file system or profile")
+	}
+	placement, err := region.ParsePlacementCode(placementCode)
+	if err != nil {
+		return nil, Resource{}, apperr.Wrap("config.invalid_region", "config", 2, err.Error(), err)
+	}
+
+	resource.RegionCode = placement.Code
+	resource.CloudProvider = placement.Provider
+	resource.APIKey = token
+	resource.HasAPIKey = token != ""
+	resource.IsDefault = resource.Name == profile.FSDefaultFileSystemName
+	selected := *profile
+	selected.FSResourceName = resource.Name
+	selected.FSTenantID = resource.TenantID
+	selected.FSPlacementRegionCode = placement.Code
+	selected.FSCloudProvider = placement.Provider
+	selected.FSRegionCode = placement.NativeCode
+	selected.FSAPIKey = token
+	return &selected, resource, nil
+}
+
 func resolve(homeDir string, profile *config.Profile, selector string, selectorExplicit bool, env map[string]string, migrate bool) (*config.Profile, Resource, error) {
 	if profile == nil {
 		return nil, Resource{}, apperr.New("fs.missing_profile", "config", 2, "active profile is required")
@@ -256,6 +379,13 @@ func resolve(homeDir string, profile *config.Profile, selector string, selectorE
 	selected.FSRegionCode = placement.NativeCode
 	selected.FSAPIKey = resource.APIKey
 	return &selected, resource, nil
+}
+
+func fsEnvValue(env map[string]string, key string) string {
+	if env != nil {
+		return env[key]
+	}
+	return os.Getenv(key)
 }
 
 func Delete(homeDir string, profile *config.Profile, resourceName string) error {

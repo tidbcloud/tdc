@@ -329,6 +329,7 @@ func TestFSResourceRegistrySelectionAcrossCommandFamilies(t *testing.T) {
 	createWorkspace := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "create-file-system", "--file-system-name", "workspace")
 	createWorkspace.wantExitCode(0)
 	createWorkspace.wantStdoutContains(`"credentials_stored": true`)
+	createWorkspace.wantStdoutContains(`"fs_token": "key-workspace"`)
 	createScratch := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "--region", "aws-us-west-2", "fs", "create-file-system", "--file-system-name", "scratch")
 	createScratch.wantExitCode(0)
 	createScratch.wantStdoutContains(`"credentials_stored": true`)
@@ -399,12 +400,130 @@ func TestFSResourceRegistrySelectionAcrossCommandFamilies(t *testing.T) {
 	assertFakeDrive9Call(t, readFakeDrive9Calls(t, recordPath), []string{"delete", "--json", "--yes"}, "key-scratch", home, "stage", "scratch", "https://fs-west.test", "aws-us-west-2")
 }
 
+func TestFSConfigurationFreeAccess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake companion build path is covered by unit tests on Windows")
+	}
+	bin := tdcBinary(t)
+	home := t.TempDir()
+	companion := filepath.Join(t.TempDir(), "tdc-drive9")
+	build := exec.Command("go", "build", "-o", companion, "./testdata/fake-drive9.go")
+	build.Dir = "."
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build fake Drive9 companion: %v\n%s", err, output)
+	}
+	recordPath := filepath.Join(t.TempDir(), "calls.jsonl")
+	manifestServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprint(w, `{"service":"drive9","regions":[{"region_code":"aws-us-east-1","mode":"tidb_cloud_native","server_url":"https://fs-east.test","cloud_provider":"aws","tidb_region":"us-east-1"}]}`)
+	}))
+	defer manifestServer.Close()
+	baseEnv := []string{
+		"HOME=" + home,
+		"TDC_LOGGING=on",
+		"TDC_DRIVE9_BIN=" + companion,
+		"FAKE_DRIVE9_RECORD=" + recordPath,
+		"TDC_ALLOW_TEST_ENDPOINTS=1",
+		"TDC_TEST_FS_MANIFEST_URL=" + manifestServer.URL,
+	}
+	authEnv := append(append([]string{}, baseEnv...),
+		"TDC_FS_FILE_SYSTEM_NAME=workspace",
+		"TDC_FS_TOKEN=configuration-free-token",
+		"TDC_REGION_CODE=aws-us-east-1",
+		"TDC_PUBLIC_KEY=must-not-reach-data-plane",
+	)
+
+	localList := runTDCWithInput(t, bin, "", baseEnv, "fs", "list-file-systems")
+	localList.wantExitCode(0)
+	localList.wantStdoutContains(`"file_systems": []`)
+
+	for _, args := range [][]string{
+		{"fs", "check-file-system"},
+		{"fs", "list-files", "--path", "/"},
+		{"fs-journal", "create-journal", "--journal-id", "jrn-ephemeral"},
+		{"fs-vault", "list-secrets"},
+		{"fs-git", "hydrate-git-workspace", "--target-path", filepath.Join(home, "workspace")},
+	} {
+		result := runTDCWithInput(t, bin, "", authEnv, args...)
+		result.wantExitCode(0)
+	}
+
+	flagsOnly := runTDCWithInput(t, bin, "", baseEnv,
+		"--region", "aws-us-east-1",
+		"fs", "list-files",
+		"--file-system-name", "workspace",
+		"--fs-token", "flag-token",
+		"--path", "/",
+	)
+	flagsOnly.wantExitCode(0)
+
+	mixed := runTDCWithInput(t, bin, "", append(baseEnv, "TDC_FS_TOKEN=mixed-token"),
+		"--region", "aws-us-east-1",
+		"fs", "list-files",
+		"--file-system-name", "workspace",
+		"--path", "/",
+	)
+	mixed.wantExitCode(0)
+
+	mountPath := filepath.Join(home, "mount")
+	mount := runTDCWithInput(t, bin, "", authEnv,
+		"fs", "mount-file-system",
+		"--mount-path", mountPath,
+	)
+	mount.wantExitCode(0)
+	drain := runTDCWithInput(t, bin, "", baseEnv,
+		"fs", "drain-file-system",
+		"--mount-path", mountPath,
+	)
+	drain.wantExitCode(0)
+	unmount := runTDCWithInput(t, bin, "", baseEnv,
+		"fs", "unmount-file-system",
+		"--mount-path", mountPath,
+	)
+	unmount.wantExitCode(0)
+
+	for _, path := range []string{
+		filepath.Join(home, ".tdc", "config"),
+		filepath.Join(home, ".tdc", "credentials"),
+		filepath.Join(home, ".tdc", "fs_resources"),
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("configuration-free command persisted tdc configuration at %s: %v", path, err)
+		}
+	}
+	logData, err := os.ReadFile(filepath.Join(home, ".tdc", "logs", "tdc.jsonl"))
+	if err != nil {
+		t.Fatalf("read configuration-free operation log: %v", err)
+	}
+	for _, secret := range []string{"configuration-free-token", "flag-token", "mixed-token", "must-not-reach-data-plane"} {
+		if strings.Contains(string(logData), secret) {
+			t.Fatalf("configuration-free operation log leaked a credential")
+		}
+	}
+	calls := readFakeDrive9Calls(t, recordPath)
+	if len(calls) == 0 {
+		t.Fatal("configuration-free commands did not invoke companion")
+	}
+	for _, call := range calls {
+		if call.TDCPublicKey != "" || call.TDCPrivateKey != "" || call.TDCFSToken != "" || call.Drive9Public != "" || call.Drive9Private != "" {
+			t.Fatalf("data-plane companion inherited TiDB Cloud or raw tdc secrets: %#v", call)
+		}
+	}
+	assertFakeDrive9Call(t, calls, []string{"fs", "ls"}, "configuration-free-token", home, "default", "workspace", "https://fs-east.test", "aws-us-east-1")
+	assertFakeDrive9Call(t, calls, []string{"mount", "drain"}, "", home, "default", "workspace", "https://fs-east.test", "aws-us-east-1")
+	assertFakeDrive9Call(t, calls, []string{"umount"}, "", home, "default", "workspace", "https://fs-east.test", "aws-us-east-1")
+}
+
 type fakeDrive9Call struct {
-	Args       []string `json:"args"`
-	Home       string   `json:"home"`
-	APIKey     string   `json:"api_key"`
-	Server     string   `json:"server"`
-	RegionCode string   `json:"region_code"`
+	Args          []string `json:"args"`
+	Home          string   `json:"home"`
+	APIKey        string   `json:"api_key"`
+	Server        string   `json:"server"`
+	RegionCode    string   `json:"region_code"`
+	TDCPublicKey  string   `json:"tdc_public_key,omitempty"`
+	TDCPrivateKey string   `json:"tdc_private_key,omitempty"`
+	TDCFSToken    string   `json:"tdc_fs_token,omitempty"`
+	Drive9Public  string   `json:"drive9_public_key,omitempty"`
+	Drive9Private string   `json:"drive9_private_key,omitempty"`
 }
 
 func readFakeDrive9Calls(t *testing.T, path string) []fakeDrive9Call {

@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tidbcloud/tdc/internal/api/endpoints"
 	"github.com/tidbcloud/tdc/internal/apperr"
@@ -18,6 +19,7 @@ import (
 	"github.com/tidbcloud/tdc/internal/config/store"
 	"github.com/tidbcloud/tdc/internal/dryrun"
 	"github.com/tidbcloud/tdc/internal/fs/fscred"
+	"github.com/tidbcloud/tdc/internal/fs/mountlocator"
 )
 
 type fakeDrive9Call struct {
@@ -39,7 +41,7 @@ func TestDrive9CreateFileSystemStoresRegistryCredentialsAndUsesCanonicalRegion(t
 	if err != nil {
 		t.Fatalf("CreateFileSystem failed: %v", err)
 	}
-	if result.FileSystemName != "workspace" || result.TenantID != "tenant-1" || result.RegionCode != "aws-us-east-1" || !result.CredentialsStored {
+	if result.FileSystemName != "workspace" || result.TenantID != "tenant-1" || result.RegionCode != "aws-us-east-1" || result.FSToken != "fs-secret" || !result.CredentialsStored {
 		t.Fatalf("unexpected result: %#v", result)
 	}
 
@@ -154,7 +156,7 @@ func TestDrive9CreateSecondFileSystemUsesIndependentCompanionHome(t *testing.T) 
 	if err != nil {
 		t.Fatalf("repeat create scratch: %v", err)
 	}
-	if repeated.Status != "exists" || !repeated.CredentialsStored {
+	if repeated.Status != "exists" || repeated.FSToken != "fs-secret" || !repeated.CredentialsStored {
 		t.Fatalf("unexpected repeated create result: %#v", repeated)
 	}
 	resources, err := fscred.List(home, profile.Name, "scratch")
@@ -243,7 +245,10 @@ func TestDrive9CheckFileSystemUsesSelectedResource(t *testing.T) {
 	companion, recordPath := buildFakeDrive9(t)
 	t.Setenv("TDC_FAKE_DRIVE9_RECORD", recordPath)
 
-	result, err := testCompanionService(t.TempDir(), companion).CheckFileSystem(context.Background(), CheckFileSystemOptions{Profile: dataProfile()})
+	profile := dataProfile()
+	profile.TDCPublicKey = ""
+	profile.TDCPrivateKey = ""
+	result, err := testCompanionService(t.TempDir(), companion).CheckFileSystem(context.Background(), CheckFileSystemOptions{Profile: profile})
 	if err != nil {
 		t.Fatalf("CheckFileSystem failed: %v", err)
 	}
@@ -402,6 +407,92 @@ func TestDrive9EndpointFailurePreventsCompanionExecution(t *testing.T) {
 		t.Fatalf("endpoint failure invoked Drive9: %s", data)
 	} else if readErr != nil && !os.IsNotExist(readErr) {
 		t.Fatal(readErr)
+	}
+}
+
+func TestDrive9MountLocatorRoutesDrainAndUnmountWithoutCredentials(t *testing.T) {
+	home := t.TempDir()
+	companion, recordPath := buildFakeDrive9(t)
+	t.Setenv("TDC_FAKE_DRIVE9_RECORD", recordPath)
+	service := testCompanionService(home, companion)
+	mountPath := filepath.Join(t.TempDir(), "workspace")
+	profile := dataProfile()
+
+	if _, err := service.MountFileSystem(context.Background(), MountFileSystemOptions{
+		Profile:        profile,
+		FileSystemName: "workspace",
+		MountPath:      mountPath,
+		RemotePath:     "/",
+	}); err != nil {
+		t.Fatalf("MountFileSystem failed: %v", err)
+	}
+	locator, locatorPath, err := mountlocator.Read(home, mountPath)
+	if err != nil {
+		t.Fatalf("read mount locator: %v", err)
+	}
+	if locator.FileSystemName != "workspace" || locator.RegionCode != "aws-us-east-1" {
+		t.Fatalf("unexpected locator: %#v", locator)
+	}
+	data, err := os.ReadFile(locatorPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), profile.FSAPIKey) {
+		t.Fatalf("mount locator leaked FS token: %s", data)
+	}
+
+	localProfile := &config.Profile{Name: "default", HomeDir: home}
+	if _, err := service.DrainFileSystem(context.Background(), DrainFileSystemOptions{
+		Profile:   localProfile,
+		MountPath: mountPath,
+		Timeout:   time.Second,
+	}); err != nil {
+		t.Fatalf("DrainFileSystem failed: %v", err)
+	}
+	if _, err := service.UnmountFileSystem(context.Background(), UnmountFileSystemOptions{
+		Profile:   localProfile,
+		MountPath: mountPath,
+		Timeout:   time.Second,
+	}); err != nil {
+		t.Fatalf("UnmountFileSystem failed: %v", err)
+	}
+	if _, _, err := mountlocator.Read(home, mountPath); !os.IsNotExist(err) {
+		t.Fatalf("locator was not removed after unmount: %v", err)
+	}
+
+	for _, prefix := range [][]string{{"mount"}, {"mount", "drain"}, {"umount"}} {
+		call := requireFakeDrive9Call(t, recordPath, prefix...)
+		if call.Env["HOME"] != locator.CompanionHome {
+			t.Fatalf("%v used HOME %q, want %q", prefix, call.Env["HOME"], locator.CompanionHome)
+		}
+	}
+}
+
+func TestDrive9FailedUnmountPreservesMountLocator(t *testing.T) {
+	home := t.TempDir()
+	companion, recordPath := buildFakeDrive9(t)
+	t.Setenv("TDC_FAKE_DRIVE9_RECORD", recordPath)
+	service := testCompanionService(home, companion)
+	mountPath := filepath.Join(t.TempDir(), "workspace")
+	if _, err := service.MountFileSystem(context.Background(), MountFileSystemOptions{
+		Profile:        dataProfile(),
+		FileSystemName: "workspace",
+		MountPath:      mountPath,
+		RemotePath:     "/",
+	}); err != nil {
+		t.Fatalf("MountFileSystem failed: %v", err)
+	}
+
+	service.CompanionPath = filepath.Join(t.TempDir(), "missing-tdc-drive9")
+	if _, err := service.UnmountFileSystem(context.Background(), UnmountFileSystemOptions{
+		Profile:   &config.Profile{Name: "default", HomeDir: home},
+		MountPath: mountPath,
+		Timeout:   time.Second,
+	}); err == nil {
+		t.Fatal("expected unmount failure")
+	}
+	if _, _, err := mountlocator.Read(home, mountPath); err != nil {
+		t.Fatalf("failed unmount removed mount locator: %v", err)
 	}
 }
 

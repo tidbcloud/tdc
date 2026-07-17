@@ -340,7 +340,7 @@ func TestFSAdjunctCommandsRequireConfiguredFSResource(t *testing.T) {
 	if got := apperr.ExitCodeFor(err); got != 2 {
 		t.Fatalf("expected config exit code 2, got %d", got)
 	}
-	if got := apperr.MessageFor(err); !strings.Contains(got, "tdc fs is not configured") || !strings.Contains(got, "tdc fs create-file-system") {
+	if got := apperr.MessageFor(err); !strings.Contains(got, "file system name is required") || !strings.Contains(got, "TDC_FS_FILE_SYSTEM_NAME") {
 		t.Fatalf("unexpected message %q", got)
 	}
 }
@@ -350,6 +350,9 @@ func TestFSOperationalCommandsExposeResourceSelector(t *testing.T) {
 	excluded := map[string]bool{
 		"tdc fs list-file-systems":         true,
 		"tdc fs unset-default-file-system": true,
+		"tdc fs drain-file-system":         true,
+		"tdc fs unmount-file-system":       true,
+		"tdc fs-vault unmount-vault":       true,
 	}
 	visitCommands(root, func(cmd *cobra.Command) {
 		if cmd.Name() == "help" || cmd.HasSubCommands() || excluded[cmd.CommandPath()] {
@@ -361,6 +364,32 @@ func TestFSOperationalCommandsExposeResourceSelector(t *testing.T) {
 		}
 		if cmd.Flags().Lookup("file-system-name") == nil {
 			t.Fatalf("%s does not expose --file-system-name", path)
+		}
+	})
+}
+
+func TestFSRemoteCommandsExposeTokenFlag(t *testing.T) {
+	root := NewRootCommand(testVersion())
+	excluded := map[string]bool{
+		"tdc fs create-file-system":        true,
+		"tdc fs list-file-systems":         true,
+		"tdc fs describe-file-system":      true,
+		"tdc fs set-default-file-system":   true,
+		"tdc fs unset-default-file-system": true,
+		"tdc fs drain-file-system":         true,
+		"tdc fs unmount-file-system":       true,
+		"tdc fs-vault unmount-vault":       true,
+	}
+	visitCommands(root, func(cmd *cobra.Command) {
+		if cmd.Name() == "help" || cmd.HasSubCommands() || excluded[cmd.CommandPath()] {
+			return
+		}
+		path := cmd.CommandPath()
+		if !strings.HasPrefix(path, "tdc fs ") && !strings.HasPrefix(path, "tdc fs-git ") && !strings.HasPrefix(path, "tdc fs-journal ") && !strings.HasPrefix(path, "tdc fs-vault ") {
+			return
+		}
+		if cmd.Flags().Lookup("fs-token") == nil {
+			t.Fatalf("%s does not expose --fs-token", path)
 		}
 	})
 }

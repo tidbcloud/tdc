@@ -137,7 +137,7 @@ func (r Runner) drive9Env(homeDir string, opts RunOptions) ([]string, error) {
 			continue
 		}
 		switch key {
-		case "HOME", "USERPROFILE":
+		case "HOME", "USERPROFILE", "TDC_PUBLIC_KEY", "TDC_PRIVATE_KEY", "TDC_FS_TOKEN", "TDC_VAULT_TOKEN":
 			continue
 		}
 		env = append(env, entry)
