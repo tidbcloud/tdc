@@ -25,7 +25,7 @@ import (
 func newConfigureCommand(info version.Info) *cobra.Command {
 	cmd := newCommand(commandSpec{
 		Use:   "configure",
-		Short: "Configure TiDB Cloud (tdc) CLI options. If this command is run with no arguments, you will be prompted for configuration values to setup the default profile.",
+		Short: "Configure TiDB Cloud (tdc) CLI options. If this command runs with no arguments, you will be prompted for configuration values.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			profile, err := cmd.Flags().GetString("profile")
 			if err != nil {
@@ -86,7 +86,7 @@ func newConfigureCommand(info version.Info) *cobra.Command {
 func newUpdateCommand(info version.Info) *cobra.Command {
 	cmd := newCommand(commandSpec{
 		Use:   "update",
-		Short: "Check or apply updates to this tool.",
+		Short: "Update this tool.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			check, err := cmd.Flags().GetBool("check")
 			if err != nil {
@@ -182,7 +182,7 @@ func newDBCommand(info version.Info) *cobra.Command {
 func newDBCreateClusterCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-db-cluster",
-		Short:      "Create a Starter DB cluster.",
+		Short:      "Create a Starter database cluster (MySQL-compatible serverless database).",
 		Mutation:   mutatingCommand,
 		Permission: authz.StarterClusterCreate,
 		Run: func(ctx commandContext) (any, error) {
@@ -268,7 +268,7 @@ func newDBListClustersCommand(info version.Info) *cobra.Command {
 func newDBDescribeClusterCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "describe-db-cluster",
-		Short:      "Describe a Starter DB cluster.",
+		Short:      "Describe a specified Starter database cluster.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.StarterClusterRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -370,7 +370,7 @@ func newDBDeleteClusterCommand(info version.Info) *cobra.Command {
 func newDBCreateBranchCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-db-cluster-branch",
-		Short:      "Create a Starter DB cluster branch.",
+		Short:      "Create a Starter database cluster branch.",
 		Mutation:   mutatingCommand,
 		Permission: authz.StarterBranchCreate,
 		Run: func(ctx commandContext) (any, error) {
@@ -443,7 +443,7 @@ func newDBListBranchesCommand(info version.Info) *cobra.Command {
 func newDBDescribeBranchCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "describe-db-cluster-branch",
-		Short:      "Describe a Starter DB cluster branch.",
+		Short:      "Describe a specified Starter database cluster branch.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.StarterBranchRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -516,7 +516,7 @@ func newDBDeleteBranchCommand(info version.Info) *cobra.Command {
 func newDBPrepareQueryAccessCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-db-sql-users",
-		Short:      "Create or repair tdc-managed DB SQL users.",
+		Short:      "Provision a tdc-managed database user or users for developer and agent access.",
 		Mutation:   mutatingCommand,
 		Permission: authz.StarterSQLUserCreate,
 		Run: func(ctx commandContext) (any, error) {
@@ -556,7 +556,7 @@ func newDBPrepareQueryAccessCommand(info version.Info) *cobra.Command {
 func newDBCreateConnectionStringCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "format-db-connection-string",
-		Short:      "Format a DB connection string from prepared credentials.",
+		Short:      "Generate a database connection string for tdc-managed database user.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.StarterSQLUserRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -827,7 +827,7 @@ func sqlCommonOptions(ctx commandContext) (sqlCommon, error) {
 }
 
 func newFSCommand(info version.Info) *cobra.Command {
-	cmd := newParentCommand("fs", "Manage and access TiDB Cloud Filesystem (FS).", info)
+	cmd := newParentCommand("fs", "Manage and access TiDB Cloud Filesystem (FS) - distributed serverless agentFS.", info)
 	commands := []*cobra.Command{
 		newFSCreateFileSystemCommand(info),
 		newFSDeleteFileSystemCommand(info),
@@ -908,7 +908,7 @@ func addFSAuthFlags(commands []*cobra.Command, excluded ...string) {
 func newFSCreateFileSystemCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-file-system",
-		Short:      "Create a tdc fs resource.",
+		Short:      "Create a file system (agentFS) in TiDB Cloud.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVolumeCreate,
 		Run: func(ctx commandContext) (any, error) {
@@ -978,7 +978,7 @@ func newFSListFileSystemsCommand(info version.Info) *cobra.Command {
 func newFSDescribeFileSystemCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "describe-file-system",
-		Short:      "Describe a locally registered tdc fs resource.",
+		Short:      "Describe an existing file system.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSVolumeRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1056,7 +1056,7 @@ func localFSDefaultDryRun(commandPath string, profile *config.Profile, name stri
 func newFSDeleteFileSystemCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "delete-file-system",
-		Short:      "Delete a tdc fs resource.",
+		Short:      "Delete a file system from TiDB Cloud.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVolumeDelete,
 		Run: func(ctx commandContext) (any, error) {
@@ -1099,7 +1099,7 @@ func newFSDeleteFileSystemCommand(info version.Info) *cobra.Command {
 func newFSCheckFileSystemCommand(info version.Info) *cobra.Command {
 	return newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "check-file-system",
-		Short:      "Check tdc fs resource health.",
+		Short:      "Check file system health.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSVolumeRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1118,7 +1118,7 @@ func newFSCopyFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "copy-file",
 		Aliases:    []string{"cp"},
-		Short:      "Copy a file between local storage and tdc fs.",
+		Short:      "Copy files.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
 		Run: func(ctx commandContext) (any, error) {
@@ -1143,20 +1143,20 @@ func newFSCopyFileCommand(info version.Info) *cobra.Command {
 			return service.CopyFile(ctx.cmd.Context(), opts)
 		},
 	}, info)
-	cmd.Flags().String("from-local", "", "local source path")
-	cmd.Flags().String("from-remote", "", "tdc fs source path")
-	cmd.Flags().String("to-local", "", "local target path")
-	cmd.Flags().String("to-remote", "", "tdc fs target path")
-	cmd.Flags().Bool("from-stdin", false, "read source bytes from stdin and upload to --to-remote")
-	cmd.Flags().Bool("to-stdout", false, "write --from-remote bytes to stdout")
-	cmd.Flags().Bool("overwrite", false, "replace an existing target")
-	cmd.Flags().Bool("create-parents", false, "create missing local parent directories when copying from tdc fs")
-	cmd.Flags().Bool("append", false, "append a local file to a remote file")
-	cmd.Flags().Bool("recursive", false, "copy directory contents recursively")
-	cmd.Flags().Bool("resume", false, "resume an active local-to-remote upload or a partial remote-to-local download")
-	cmd.Flags().String("layer-id", "", "write the copy target into a tdc fs layer instead of the base filesystem")
-	cmd.Flags().StringArray("tag", nil, "file tag key=value for uploads; repeatable")
-	cmd.Flags().String("description", "", "file description for local or stdin uploads")
+	cmd.Flags().String("from-local", "", "The local source path.")
+	cmd.Flags().String("from-remote", "", "The TiDB Cloud file system source path.")
+	cmd.Flags().String("to-local", "", "The local target path.")
+	cmd.Flags().String("to-remote", "", "The TiDB Cloud file system target path.")
+	cmd.Flags().Bool("from-stdin", false, "Read from stdin and upload to --to-remote.")
+	cmd.Flags().Bool("to-stdout", false, "Write --from-remote to stdout.")
+	cmd.Flags().Bool("overwrite", false, "Replace an existing target.")
+	cmd.Flags().Bool("create-parents", false, "Create missing local parent directories when copying from a TiDB Cloud file system.")
+	cmd.Flags().Bool("append", false, "Append a local file to a remote file in TiDB Cloud file system.")
+	cmd.Flags().Bool("recursive", false, "Copy directory contents recursively.")
+	cmd.Flags().Bool("resume", false, "Resume an active local-to-remote upload or a partial remote-to-local download.")
+	cmd.Flags().String("layer-id", "", "Write the copy target into a file system layer instead of the base file system.")
+	cmd.Flags().StringArray("tag", nil, "Create tag(s) key=value for uploads; repeatable.")
+	cmd.Flags().String("description", "", "The file description for local or stdin uploads.")
 	return cmd
 }
 
@@ -1238,7 +1238,7 @@ func newFSDescribeFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "describe-file",
 		Aliases:    []string{"stat"},
-		Short:      "Describe a tdc fs file.",
+		Short:      "Describe a file.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1304,7 +1304,7 @@ func newFSDeleteFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "delete-file",
 		Aliases:    []string{"rm"},
-		Short:      "Delete a tdc fs file.",
+		Short:      "Delete a file.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
 		Run: func(ctx commandContext) (any, error) {
@@ -1337,7 +1337,7 @@ func newFSCreateDirectoryCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-directory",
 		Aliases:    []string{"mkdir"},
-		Short:      "Create a tdc fs directory.",
+		Short:      "Create a directory.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
 		Run: func(ctx commandContext) (any, error) {
@@ -1370,7 +1370,7 @@ func newFSChmodFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "chmod-file",
 		Aliases:    []string{"chmod"},
-		Short:      "Change tdc fs file permissions.",
+		Short:      "Change file permissions.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
 		Run: func(ctx commandContext) (any, error) {
@@ -1399,7 +1399,7 @@ func newFSSymlinkFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-symlink",
 		Aliases:    []string{"symlink"},
-		Short:      "Create a tdc fs symbolic link.",
+		Short:      "Create a symbolic link.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
 		Run: func(ctx commandContext) (any, error) {
@@ -1428,7 +1428,7 @@ func newFSHardlinkFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-hardlink",
 		Aliases:    []string{"hardlink"},
-		Short:      "Create a tdc fs hard link.",
+		Short:      "Create hard link.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
 		Run: func(ctx commandContext) (any, error) {
@@ -1533,7 +1533,7 @@ func newFSFindFilesCommand(info version.Info) *cobra.Command {
 func newFSCreateLayerCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-layer",
-		Short:      "Create a tdc fs layer.",
+		Short:      "Create a file system layer.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
 		Run: func(ctx commandContext) (any, error) {
@@ -1600,7 +1600,7 @@ func newFSListLayersCommand(info version.Info) *cobra.Command {
 func newFSDescribeLayerCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "describe-layer",
-		Short:      "Describe a tdc fs layer.",
+		Short:      "Describe a specified file system layer.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1647,7 +1647,7 @@ func newFSDiffLayerCommand(info version.Info) *cobra.Command {
 func newFSCreateLayerCheckpointCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-layer-checkpoint",
-		Short:      "Create a durable tdc fs layer checkpoint.",
+		Short:      "Create a layer checkpoint.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
 		Run: func(ctx commandContext) (any, error) {
@@ -1720,7 +1720,7 @@ func newFSRollbackLayerCommand(info version.Info) *cobra.Command {
 func newFSCommitLayerCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "commit-layer",
-		Short:      "Commit a tdc fs layer into the base filesystem.",
+		Short:      "Commit a layer into the base file system.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
 		Run: func(ctx commandContext) (any, error) {
@@ -2558,7 +2558,7 @@ func newFSVaultCommand(info version.Info) *cobra.Command {
 func newVaultCreateSecretCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-secret",
-		Short:      "Create a tdc fs-vault secret.",
+		Short:      "Create a file system vault secret.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVaultSecretCreate,
 		Run: func(ctx commandContext) (any, error) {
@@ -2719,7 +2719,7 @@ func newVaultDeleteSecretCommand(info version.Info) *cobra.Command {
 func newVaultCreateGrantCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-grant",
-		Short:      "Create a delegated tdc fs-vault grant.",
+		Short:      "Create a delegated file system vault grant.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVaultGrantCreate,
 		Run: func(ctx commandContext) (any, error) {
@@ -3072,10 +3072,10 @@ func newGitCloneWorkspaceCommand(info version.Info) *cobra.Command {
 			return service.CloneGitWorkspace(ctx.cmd.Context(), opts)
 		},
 	}, info)
-	cmd.Flags().String("repo-url", "", "git repository URL")
-	cmd.Flags().String("target-path", "", "mounted tdc fs path to clone into")
-	cmd.Flags().Bool("blobless", false, "create a blobless partial local .git and hydrate clean blobs separately")
-	cmd.Flags().String("hydrate", "auto", "blobless hydrate mode: auto, background, sync, or off")
+	cmd.Flags().String("repo-url", "", "Git repository URL.")
+	cmd.Flags().String("target-path", "", "The mounted file system path to clone into.")
+	cmd.Flags().Bool("blobless", false, "Create a blobless partial local .git and hydrate clean blobs separately.")
+	cmd.Flags().String("hydrate", "auto", "Blobless hydrate mode: auto, background, sync, or off")
 	markUsageRequired(cmd, "repo-url", "target-path")
 	return cmd
 }
@@ -3126,13 +3126,13 @@ func newGitAddWorktreeCommand(info version.Info) *cobra.Command {
 			return service.AddGitWorktree(ctx.cmd.Context(), opts)
 		},
 	}, info)
-	cmd.Flags().String("base-path", "", "mounted tdc fs path of the base git workspace")
-	cmd.Flags().String("worktree-path", "", "mounted tdc fs path for the linked worktree")
-	cmd.Flags().String("branch-name", "", "create a branch for the linked worktree")
-	cmd.Flags().Bool("detach", false, "create a detached linked worktree")
-	cmd.Flags().Bool("blobless", false, "require the base workspace to be fast-blobless")
-	cmd.Flags().String("hydrate", "auto", "blobless hydrate mode: auto, background, sync, or off")
-	cmd.Flags().String("commit-ish", "", "optional commit-ish for the linked worktree")
+	cmd.Flags().String("base-path", "", "The mounted file system path of the base git workspace.")
+	cmd.Flags().String("worktree-path", "", "The mounted file system path for the linked worktree.")
+	cmd.Flags().String("branch-name", "", "Create a branch for the linked worktree.")
+	cmd.Flags().Bool("detach", false, "Create a detached linked worktree.")
+	cmd.Flags().Bool("blobless", false, "Blobless requirement for the base workspace.")
+	cmd.Flags().String("hydrate", "auto", "Blobless hydrate mode: auto, background, sync, or off")
+	cmd.Flags().String("commit-ish", "", "Optional commit-ish for the linked worktree")
 	markUsageRequired(cmd, "base-path", "worktree-path")
 	return cmd
 }
@@ -3244,7 +3244,7 @@ func newFSJournalCommand(info version.Info) *cobra.Command {
 func newJournalCreateCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-journal",
-		Short:      "Create a tdc fs-journal.",
+		Short:      "Create a file system journal.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSJournalCreate,
 		Run: func(ctx commandContext) (any, error) {
