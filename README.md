@@ -105,3 +105,32 @@ The binary is written to:
 ```text
 bin/tdc
 ```
+
+## Test
+
+Run local unit and black-box tests without live cloud credentials:
+
+```bash
+make test
+make e2e
+```
+
+Run one live command family against the `live-e2e` profile:
+
+```bash
+make live-e2e-configure
+make live-e2e-organization
+make live-e2e-db
+make live-e2e-fs
+make live-e2e-fs-git
+make live-e2e-fs-journal
+make live-e2e-fs-vault
+```
+
+Run the complete live suite in one test process:
+
+```bash
+make live-e2e
+```
+
+Set `LIVE_E2E_PROFILE=<profile>` to use a profile other than `live-e2e`. The DB and FS suites perform real cloud mutations and clean up only resources created by the test run.

@@ -163,6 +163,13 @@ Use the Makefile targets:
 make build
 make test
 make e2e
+make live-e2e-configure
+make live-e2e-organization
+make live-e2e-db
+make live-e2e-fs
+make live-e2e-fs-git
+make live-e2e-fs-journal
+make live-e2e-fs-vault
 make live-e2e
 make release-snapshot
 make clean
@@ -173,9 +180,14 @@ make clean
 `make test` runs ordinary Go tests and must not require live cloud credentials.
 `make e2e` builds `bin/tdc` and runs black-box tests against the real binary via
 `TDC_E2E_BIN`.
-`make live-e2e` builds `bin/tdc` and runs the live TiDB Cloud e2e suite using
-the `live-e2e` profile by default. Do not add a separate mutating/non-mutating
-live target; live e2e is the full live suite.
+The `make live-e2e-<family>` targets build `bin/tdc` and run only the selected
+top-level command family against the `live-e2e` profile by default. Keep
+configure, organization, db, fs, fs-git, fs-journal, and fs-vault tests
+independently selectable. Do not make a focused family target run tests from a
+different family, and do not add separate mutating/non-mutating variants.
+`make live-e2e` runs every live family together in one test process and remains
+the full release/CI verification suite. `LIVE_E2E_PROFILE=<profile>` overrides
+the profile for both focused and complete live targets.
 Live e2e must strictly cover every implemented interface and command for the
 current project stage, including real create/update/delete flows when those
 commands are implemented. For Starter DB clusters, the live suite creates a
@@ -896,6 +908,7 @@ Current expectations:
   explicitly verifying operation logging.
 - API client tests should use mock HTTP servers once API specs are implemented.
 - Live cloud tests are opt-in, skipped by default, and run through
+  the focused `make live-e2e-<family>` targets or the aggregate
   `make live-e2e`. They must use the `live-e2e` profile and verify the real
   API/command surface for every implemented spec. Implemented mutating commands
   must have real live mutation coverage with resource names scoped to the test
