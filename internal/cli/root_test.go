@@ -227,6 +227,33 @@ func TestHelpUsageShowsRequiredFirstAndOptionalBracketed(t *testing.T) {
 	if !strings.Contains(stdout, "    [--project-id <string>]") {
 		t.Fatalf("expected --project-id to be optional, got:\n%s", stdout)
 	}
+	if !strings.Contains(stdout, "    [--wait]") {
+		t.Fatalf("expected --wait to be optional, got:\n%s", stdout)
+	}
+
+	stdout, _, err = executeForTest("db", "delete-db-cluster", "help")
+	if err != nil {
+		t.Fatalf("expected db delete help to succeed, got %v", err)
+	}
+	if !strings.Contains(stdout, "    [--wait]") {
+		t.Fatalf("expected --wait to be optional, got:\n%s", stdout)
+	}
+
+	stdout, _, err = executeForTest("db", "create-db-cluster-branch", "help")
+	if err != nil {
+		t.Fatalf("expected db branch create help to succeed, got %v", err)
+	}
+	if !strings.Contains(stdout, "    [--wait]") {
+		t.Fatalf("expected branch --wait to be optional, got:\n%s", stdout)
+	}
+
+	stdout, _, err = executeForTest("fs", "create-file-system", "help")
+	if err != nil {
+		t.Fatalf("expected fs create help to succeed, got %v", err)
+	}
+	if !strings.Contains(stdout, "    [--wait]") {
+		t.Fatalf("expected --wait to be optional, got:\n%s", stdout)
+	}
 
 	stdout, _, err = executeForTest("update", "help")
 	if err != nil {
@@ -565,7 +592,7 @@ func TestControlPlaneCommandSpecUsesCustomDryRun(t *testing.T) {
 func TestMutatingControlPlaneDryRunRendersJSON(t *testing.T) {
 	withConfigEnv(t)
 
-	stdout, _, err := executeForTest("db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--db-cluster-type", "starter", "--project-id", "project-1", "--dry-run")
+	stdout, _, err := executeForTest("db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--db-cluster-type", "starter", "--project-id", "project-1", "--wait", "--dry-run")
 	if err != nil {
 		t.Fatalf("expected dry-run to succeed, got %v", err)
 	}
@@ -590,6 +617,9 @@ func TestMutatingControlPlaneDryRunRendersJSON(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "permission_requirement") || !strings.Contains(stdout, string(authz.StarterClusterCreate)) {
 		t.Fatalf("dry-run output did not include permission requirement:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "post_create_wait") || !strings.Contains(stdout, "ACTIVE") {
+		t.Fatalf("dry-run output did not include the requested wait:\n%s", stdout)
 	}
 }
 

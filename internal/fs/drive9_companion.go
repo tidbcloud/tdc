@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -22,6 +23,11 @@ import (
 	"github.com/tidbcloud/tdc/internal/fswrap"
 )
 
+const (
+	defaultFSReadyWaitTimeout      = 10 * time.Minute
+	defaultFSReadyWaitPollInterval = 5 * time.Second
+)
+
 type drive9CreateOutput struct {
 	Context       string `json:"context"`
 	TenantID      string `json:"tenant_id"`
@@ -33,6 +39,11 @@ type drive9CreateOutput struct {
 	CloudProvider string `json:"cloud_provider,omitempty"`
 	Region        string `json:"region,omitempty"`
 	Config        string `json:"config"`
+}
+
+type drive9DeleteOutput struct {
+	Status string `json:"status"`
+	Server string `json:"server,omitempty"`
 }
 
 type drive9StatMetadata struct {
@@ -154,7 +165,7 @@ func (s Service) drive9CreateFileSystem(ctx context.Context, opts CreateFileSyst
 				return FileSystemResult{}, err
 			}
 		}
-		return FileSystemResult{
+		fileSystem := FileSystemResult{
 			FileSystemName:    existing.Name,
 			TenantID:          existing.TenantID,
 			CloudProvider:     existing.CloudProvider,
@@ -162,7 +173,14 @@ func (s Service) drive9CreateFileSystem(ctx context.Context, opts CreateFileSyst
 			FSToken:           existing.APIKey,
 			Status:            "exists",
 			CredentialsStored: true,
-		}, nil
+		}
+		if opts.WaitUntilReady {
+			if err := s.waitUntilFileSystemReady(ctx, homeDir, opts.Profile, name); err != nil {
+				return FileSystemResult{}, err
+			}
+			fileSystem.Status = "ready"
+		}
+		return fileSystem, nil
 	} else if apperr.CodeFor(getErr) != "fs.resource_not_found" {
 		return FileSystemResult{}, getErr
 	}
@@ -200,7 +218,7 @@ func (s Service) drive9CreateFileSystem(ctx context.Context, opts CreateFileSyst
 	if err := fscred.Store(homeDir, opts.Profile, name, out.TenantID, cloudProvider, regionCode, out.APIKey, opts.SetDefault); err != nil {
 		return FileSystemResult{}, err
 	}
-	return FileSystemResult{
+	fileSystem := FileSystemResult{
 		FileSystemName:    name,
 		TenantID:          out.TenantID,
 		CloudProvider:     cloudProvider,
@@ -208,7 +226,14 @@ func (s Service) drive9CreateFileSystem(ctx context.Context, opts CreateFileSyst
 		FSToken:           out.APIKey,
 		Status:            status,
 		CredentialsStored: true,
-	}, nil
+	}
+	if opts.WaitUntilReady {
+		if err := s.waitUntilFileSystemReady(ctx, homeDir, opts.Profile, name); err != nil {
+			return FileSystemResult{}, err
+		}
+		fileSystem.Status = "ready"
+	}
+	return fileSystem, nil
 }
 
 func (s Service) drive9DeleteFileSystem(ctx context.Context, opts DeleteFileSystemOptions) (DeleteResult, error) {
@@ -218,7 +243,7 @@ func (s Service) drive9DeleteFileSystem(ctx context.Context, opts DeleteFileSyst
 	}
 	resource := fscred.FromProfile(opts.Profile)
 	args := []string{"delete", "--json", "--yes"}
-	_, err = s.drive9Runner().Run(ctx, fswrap.RunOptions{
+	result, err := s.drive9Runner().Run(ctx, fswrap.RunOptions{
 		Profile:         opts.Profile,
 		Args:            args,
 		CaptureStdout:   true,
@@ -227,6 +252,14 @@ func (s Service) drive9DeleteFileSystem(ctx context.Context, opts DeleteFileSyst
 	})
 	if err != nil {
 		return DeleteResult{}, err
+	}
+	var out drive9DeleteOutput
+	if err := json.Unmarshal(result.Stdout, &out); err != nil {
+		return DeleteResult{}, apperr.Wrap("fs.companion_decode", "runtime", 1, "decode tdc fs deletion response", err)
+	}
+	status := strings.TrimSpace(out.Status)
+	if status == "" {
+		status = "deleting"
 	}
 	homeDir, err := s.homeDir()
 	if err != nil {
@@ -241,10 +274,102 @@ func (s Service) drive9DeleteFileSystem(ctx context.Context, opts DeleteFileSyst
 	return DeleteResult{
 		FileSystemName:      name,
 		TenantID:            resource.TenantID,
-		Status:              "deleted",
+		Status:              status,
 		CredentialsRemoved:  true,
-		RemoteDeletionState: "deleted",
+		RemoteDeletionState: status,
 	}, nil
+}
+
+func (s Service) waitUntilFileSystemReady(ctx context.Context, homeDir string, profile *config.Profile, name string) error {
+	selected, _, err := fscred.Resolve(homeDir, profile, name, true, nil)
+	if err != nil {
+		return err
+	}
+	timeout := s.fsReadyWaitTimeout()
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(s.fsReadyWaitPollInterval())
+	defer ticker.Stop()
+
+	for {
+		_, err := s.drive9Run(waitCtx, selected, []string{"fs", "stat", "--output", "json", ":/"}, true)
+		if err == nil {
+			return nil
+		}
+		if waitErr := fsReadyWaitContextError(ctx, waitCtx, name, timeout); waitErr != nil {
+			return waitErr
+		}
+		if !isDrive9ReadinessError(err) {
+			return apperr.Wrap(
+				"fs.ready_wait_failed",
+				"runtime",
+				1,
+				fmt.Sprintf("tdc fs resource %q was provisioned and its credentials were stored, but its Drive9 data plane readiness check failed", name),
+				err,
+			)
+		}
+
+		select {
+		case <-waitCtx.Done():
+			return fsReadyWaitContextError(ctx, waitCtx, name, timeout)
+		case <-ticker.C:
+		}
+	}
+}
+
+func fsReadyWaitContextError(parent, waitCtx context.Context, name string, timeout time.Duration) error {
+	if parent.Err() != nil {
+		return apperr.Wrap(
+			"fs.ready_wait_canceled",
+			"runtime",
+			1,
+			fmt.Sprintf("waiting for tdc fs resource %q to become ready was canceled; the resource and its local credentials were not deleted", name),
+			parent.Err(),
+		)
+	}
+	if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+		return apperr.New(
+			"fs.ready_wait_timeout",
+			"runtime",
+			1,
+			fmt.Sprintf("tdc fs resource %q did not become ready within %s; the resource and its local credentials were not deleted", name, timeout),
+		)
+	}
+	return nil
+}
+
+func (s Service) fsReadyWaitTimeout() time.Duration {
+	if s.FSReadyWaitTimeout > 0 {
+		return s.FSReadyWaitTimeout
+	}
+	return defaultFSReadyWaitTimeout
+}
+
+func (s Service) fsReadyWaitPollInterval() time.Duration {
+	if s.FSReadyWaitPollInterval > 0 {
+		return s.FSReadyWaitPollInterval
+	}
+	return defaultFSReadyWaitPollInterval
+}
+
+func isDrive9ReadinessError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "storage backend unavailable") ||
+		strings.Contains(message, "http 503") ||
+		strings.Contains(message, "provision") ||
+		strings.Contains(message, "service unavailable") ||
+		strings.Contains(message, "connection refused") ||
+		strings.Contains(message, "connection reset") ||
+		strings.Contains(message, "no such host") ||
+		strings.Contains(message, "network connectivity") ||
+		strings.Contains(message, ": eof") ||
+		strings.Contains(message, "i/o timeout") ||
+		strings.Contains(message, "timeout awaiting response headers") ||
+		strings.Contains(message, "unexpected eof")
 }
 
 func (s Service) drive9CheckFileSystem(ctx context.Context, opts CheckFileSystemOptions) (CheckResult, error) {

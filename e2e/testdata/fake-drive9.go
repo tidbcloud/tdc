@@ -52,6 +52,10 @@ func main() {
 		})
 		return
 	}
+	if len(args) >= 1 && args[0] == "delete" {
+		fmt.Println(`{"status":"deleting"}`)
+		return
+	}
 	if len(args) >= 2 && args[0] == "vault" && args[1] == "ls" {
 		fmt.Println(`{"secrets":[]}`)
 		return

@@ -212,6 +212,7 @@ func newDBCreateClusterCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("db-cluster-type", "", "DB cluster type; must be starter")
 	cmd.Flags().String("project-id", "", "TiDB Cloud project id")
 	cmd.Flags().Int32("monthly-spending-limit-usd-cents", -1, "monthly spending limit in USD cents; omit to use the API default")
+	cmd.Flags().Bool("wait", false, "wait until the created cluster becomes ACTIVE before returning")
 	markUsageRequired(cmd, "db-cluster-name", "db-cluster-type")
 	return cmd
 }
@@ -363,6 +364,7 @@ func newDBDeleteClusterCommand(info version.Info) *cobra.Command {
 		},
 	}, info)
 	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
+	cmd.Flags().Bool("wait", false, "wait until the deleted cluster reaches DELETED or is no longer accessible")
 	markUsageRequired(cmd, "db-cluster-id")
 	return cmd
 }
@@ -398,6 +400,7 @@ func newDBCreateBranchCommand(info version.Info) *cobra.Command {
 	}, info)
 	cmd.Flags().String("db-cluster-id", "", "Starter DB cluster id")
 	cmd.Flags().String("db-cluster-branch-name", "", "Starter DB cluster branch display name")
+	cmd.Flags().Bool("wait", false, "wait until the created branch becomes ACTIVE before returning")
 	markUsageRequired(cmd, "db-cluster-id", "db-cluster-branch-name")
 	return cmd
 }
@@ -654,6 +657,10 @@ func createClusterOptions(ctx commandContext, profile *config.Profile) (db.Creat
 	if err != nil {
 		return db.CreateClusterOptions{}, err
 	}
+	waitUntilActive, err := ctx.BoolFlag("wait")
+	if err != nil {
+		return db.CreateClusterOptions{}, err
+	}
 	return db.CreateClusterOptions{
 		Profile:                      profile,
 		DisplayName:                  name,
@@ -661,6 +668,7 @@ func createClusterOptions(ctx commandContext, profile *config.Profile) (db.Creat
 		ProjectID:                    projectID,
 		ProjectIDExplicit:            ctx.FlagChanged("project-id"),
 		MonthlySpendingLimitUSDCents: spendingLimit,
+		WaitUntilActive:              waitUntilActive,
 	}, nil
 }
 
@@ -690,9 +698,14 @@ func deleteClusterOptions(ctx commandContext, profile *config.Profile) (db.Delet
 	if err != nil {
 		return db.DeleteClusterOptions{}, err
 	}
+	waitUntilDeleted, err := ctx.BoolFlag("wait")
+	if err != nil {
+		return db.DeleteClusterOptions{}, err
+	}
 	return db.DeleteClusterOptions{
-		Profile:   profile,
-		ClusterID: clusterID,
+		Profile:          profile,
+		ClusterID:        clusterID,
+		WaitUntilDeleted: waitUntilDeleted,
 	}, nil
 }
 
@@ -705,10 +718,15 @@ func createBranchOptions(ctx commandContext, profile *config.Profile) (db.Create
 	if err != nil {
 		return db.CreateBranchOptions{}, err
 	}
+	waitUntilActive, err := ctx.BoolFlag("wait")
+	if err != nil {
+		return db.CreateBranchOptions{}, err
+	}
 	return db.CreateBranchOptions{
-		Profile:     profile,
-		ClusterID:   clusterID,
-		DisplayName: name,
+		Profile:         profile,
+		ClusterID:       clusterID,
+		DisplayName:     name,
+		WaitUntilActive: waitUntilActive,
 	}, nil
 }
 
@@ -927,10 +945,15 @@ func newFSCreateFileSystemCommand(info version.Info) *cobra.Command {
 			if err != nil {
 				return nil, err
 			}
+			waitUntilReady, err := ctx.BoolFlag("wait")
+			if err != nil {
+				return nil, err
+			}
 			return service.CreateFileSystem(ctx.cmd.Context(), tdcfs.CreateFileSystemOptions{
 				Profile:        profile,
 				FileSystemName: name,
 				SetDefault:     setDefault,
+				WaitUntilReady: waitUntilReady,
 			})
 		},
 		DryRun: func(ctx commandContext) (dryrun.Result, error) {
@@ -946,15 +969,21 @@ func newFSCreateFileSystemCommand(info version.Info) *cobra.Command {
 			if err != nil {
 				return dryrun.Result{}, err
 			}
+			waitUntilReady, err := ctx.BoolFlag("wait")
+			if err != nil {
+				return dryrun.Result{}, err
+			}
 			return service.DryRunCreateFileSystem(ctx.cmd.Context(), ctx.CommandPath(), tdcfs.CreateFileSystemOptions{
 				Profile:        profile,
 				FileSystemName: name,
 				SetDefault:     setDefault,
+				WaitUntilReady: waitUntilReady,
 			})
 		},
 	}, info)
 	cmd.Flags().String("file-system-name", "", "tdc fs resource name")
 	cmd.Flags().Bool("set-default", false, "make the created file system the profile default")
+	cmd.Flags().Bool("wait", false, "wait until the created file system data plane is ready")
 	markUsageRequired(cmd, "file-system-name")
 	return cmd
 }

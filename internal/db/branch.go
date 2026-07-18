@@ -2,13 +2,16 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/tidbcloud/tdc/internal/api/endpoints"
 	apistarter "github.com/tidbcloud/tdc/internal/api/starter"
+	"github.com/tidbcloud/tdc/internal/apperr"
 	"github.com/tidbcloud/tdc/internal/authz"
 	"github.com/tidbcloud/tdc/internal/config"
 	"github.com/tidbcloud/tdc/internal/db/validate"
@@ -23,9 +26,10 @@ type ListBranchesOptions struct {
 }
 
 type CreateBranchOptions struct {
-	Profile     *config.Profile
-	ClusterID   string
-	DisplayName string
+	Profile         *config.Profile
+	ClusterID       string
+	DisplayName     string
+	WaitUntilActive bool
 }
 
 type DescribeBranchOptions struct {
@@ -87,6 +91,12 @@ func (s Service) CreateBranch(ctx context.Context, opts CreateBranchOptions) (Br
 	if err != nil {
 		return BranchResult{}, err
 	}
+	if opts.WaitUntilActive {
+		branch, err = s.waitUntilBranchActive(ctx, client, clusterID, branch)
+		if err != nil {
+			return BranchResult{}, err
+		}
+	}
 	return BranchResult{Branch: branch}, nil
 }
 
@@ -134,6 +144,19 @@ func (s Service) DryRunCreateBranch(ctx context.Context, commandPath string, opt
 	if err != nil {
 		return dryrun.Result{}, err
 	}
+	checks := []dryrun.Check{
+		{Name: "config_and_credentials", Status: "passed", Message: fmt.Sprintf("profile %q loaded", profileName(opts.Profile))},
+		{Name: "endpoint_selection", Status: "passed", Message: fmt.Sprintf("%s %s", endpoint.Provider, endpoint.RegionCode)},
+		{Name: "permission_requirement", Status: "passed", Message: string(authz.StarterBranchCreate)},
+		{Name: "cluster_id", Status: "passed", Message: clusterID},
+	}
+	if opts.WaitUntilActive {
+		checks = append(checks, dryrun.Check{
+			Name:    "post_create_wait",
+			Status:  "passed",
+			Message: fmt.Sprintf("normal execution waits up to %s for state ACTIVE", s.branchWaitTimeout()),
+		})
+	}
 	return dryrun.New(
 		commandPath,
 		"create_db_cluster_branch",
@@ -144,11 +167,97 @@ func (s Service) DryRunCreateBranch(ctx context.Context, commandPath string, opt
 				"displayName": request.DisplayName,
 			},
 		},
-		dryrun.Check{Name: "config_and_credentials", Status: "passed", Message: fmt.Sprintf("profile %q loaded", profileName(opts.Profile))},
-		dryrun.Check{Name: "endpoint_selection", Status: "passed", Message: fmt.Sprintf("%s %s", endpoint.Provider, endpoint.RegionCode)},
-		dryrun.Check{Name: "permission_requirement", Status: "passed", Message: string(authz.StarterBranchCreate)},
-		dryrun.Check{Name: "cluster_id", Status: "passed", Message: clusterID},
+		checks...,
 	), nil
+}
+
+func (s Service) waitUntilBranchActive(ctx context.Context, client *apistarter.Client, clusterID string, branch apistarter.Branch) (apistarter.Branch, error) {
+	if branch.State == "ACTIVE" {
+		return branch, nil
+	}
+	if strings.TrimSpace(branch.ID) == "" {
+		return apistarter.Branch{}, apperr.New(
+			"db.branch_wait_missing_id",
+			"api",
+			1,
+			fmt.Sprintf("Starter branch creation in cluster %q was accepted but the response did not include a branch ID; list DB cluster branches before retrying", clusterID),
+		)
+	}
+
+	timeout := s.branchWaitTimeout()
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(s.branchWaitPollInterval())
+	defer ticker.Stop()
+
+	for {
+		current, err := client.GetBranch(waitCtx, clusterID, branch.ID, apistarter.GetBranchOptions{})
+		if err != nil {
+			if waitErr := branchWaitContextError(ctx, waitCtx, clusterID, branch.ID, timeout); waitErr != nil {
+				return apistarter.Branch{}, waitErr
+			}
+			return apistarter.Branch{}, apperr.Wrap(
+				"db.branch_wait_read_failed",
+				"api",
+				1,
+				fmt.Sprintf("DB branch %q was created in cluster %q but tdc could not read its state while waiting for ACTIVE; the branch was not deleted", branch.ID, clusterID),
+				err,
+			)
+		}
+		switch current.State {
+		case "ACTIVE":
+			return current, nil
+		case "DELETED":
+			return apistarter.Branch{}, apperr.New(
+				"db.branch_wait_terminal_state",
+				"api",
+				1,
+				fmt.Sprintf("DB branch %q in cluster %q was created but entered state DELETED before becoming ACTIVE; the branch was not recreated", branch.ID, clusterID),
+			)
+		}
+
+		select {
+		case <-waitCtx.Done():
+			return apistarter.Branch{}, branchWaitContextError(ctx, waitCtx, clusterID, branch.ID, timeout)
+		case <-ticker.C:
+		}
+	}
+}
+
+func branchWaitContextError(parent, waitCtx context.Context, clusterID, branchID string, timeout time.Duration) error {
+	if parent.Err() != nil {
+		return apperr.Wrap(
+			"db.branch_wait_canceled",
+			"runtime",
+			1,
+			fmt.Sprintf("waiting for DB branch %q in cluster %q to become ACTIVE was canceled; the branch was not deleted", branchID, clusterID),
+			parent.Err(),
+		)
+	}
+	if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+		return apperr.New(
+			"db.branch_wait_timeout",
+			"api",
+			1,
+			fmt.Sprintf("DB branch %q in cluster %q did not become ACTIVE within %s; the branch was not deleted", branchID, clusterID, timeout),
+		)
+	}
+	return nil
+}
+
+func (s Service) branchWaitTimeout() time.Duration {
+	if s.BranchWaitTimeout > 0 {
+		return s.BranchWaitTimeout
+	}
+	return defaultBranchWaitTimeout
+}
+
+func (s Service) branchWaitPollInterval() time.Duration {
+	if s.BranchWaitPollInterval > 0 {
+		return s.BranchWaitPollInterval
+	}
+	return defaultBranchWaitPollInterval
 }
 
 func (s Service) DryRunDeleteBranch(ctx context.Context, commandPath string, opts DeleteBranchOptions) (dryrun.Result, error) {

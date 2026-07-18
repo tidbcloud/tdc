@@ -195,11 +195,13 @@ the profile for both focused and complete live targets.
 Live e2e must strictly cover every implemented interface and command for the
 current project stage, including real create/update/delete flows when those
 commands are implemented. For Starter DB clusters, the live suite creates a
-uniquely named `tdc-e2e-*` cluster without a spending limit or explicit
-`--project-id`, verifies its project label matches the configured default, and
-deletes only that cluster. For Starter DB branches, the live suite creates, reads, lists,
+uniquely named `tdc-e2e-*` cluster with `--wait`, without a
+spending limit or explicit `--project-id`, verifies the returned state is
+`ACTIVE` and its project label matches the configured default, and deletes only
+that cluster. For Starter DB branches, the live suite creates, reads, lists,
 and deletes only a `tdc-e2e-branch-*` branch on the cluster created by the same
-test run. For Starter DB SQL access, the live suite prepares tdc-managed
+test run. Branch creation must use `--wait`; cluster deletion must
+use `--wait`. For Starter DB SQL access, the live suite prepares tdc-managed
 read-only, read-write, and admin SQL users on the temporary cluster, verifies
 connection string output, and executes the HTTPS SQL API with all three access
 modes.
@@ -317,6 +319,21 @@ Follow these rules unless `docs/priciples.md` is updated:
 - Mutating control-plane commands support `--dry-run`.
 - `--dry-run` must validate local config, credentials, provider, and region
   before reporting a planned mutation.
+- `tdc db create-db-cluster --wait` waits up to 12 minutes for the
+  created cluster to reach `ACTIVE`. It must never delete the cluster on
+  timeout, cancellation, a polling failure, or a terminal state; errors must
+  retain the created cluster ID and provide an inspection command.
+- `tdc db create-db-cluster-branch --wait` waits up to 5 minutes
+  for the created branch to reach `ACTIVE`. A failed wait must not delete or
+  recreate the accepted branch.
+- `tdc db delete-db-cluster --wait` waits up to 12 minutes and
+  succeeds when the API reports `DELETED` or the deleted cluster is no longer
+  accessible. A failed wait must state that deletion may still be in progress.
+- `tdc fs create-file-system --wait` waits up to 10 minutes for the
+  root to become readable through the public Drive9 CLI. It must retain the
+  resource and local credentials when waiting fails.
+- `tdc fs delete-file-system` is asynchronous. After Drive9 accepts deletion,
+  output status is `deleting`, not `deleted`.
 - Read-only commands reject `--dry-run`.
 - Apply `--query` after command execution and before rendering.
 - Users provide cloud placement as one canonical `region_code`, never as
@@ -374,6 +391,7 @@ Implemented command behavior:
 - `tdc organization list-projects --query 'projects[0].id'`
 - `tdc organization list-projects --output text`
 - `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter`
+- `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --wait`
 - `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --dry-run`
 - `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id>`
 - `tdc db list-db-clusters`
@@ -382,8 +400,10 @@ Implemented command behavior:
 - `tdc db update-db-cluster --db-cluster-id <cluster-id> --db-cluster-name new-name`
 - `tdc db update-db-cluster --db-cluster-id <cluster-id> --monthly-spending-limit-usd-cents 1000 --dry-run`
 - `tdc db delete-db-cluster --db-cluster-id <cluster-id>`
+- `tdc db delete-db-cluster --db-cluster-id <cluster-id> --wait`
 - `tdc db delete-db-cluster --db-cluster-id <cluster-id> --dry-run`
 - `tdc db create-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-name dev`
+- `tdc db create-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-name dev --wait`
 - `tdc db create-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-name dev --dry-run`
 - `tdc db list-db-cluster-branches --db-cluster-id <cluster-id>`
 - `tdc db list-db-cluster-branches --db-cluster-id <cluster-id> --query 'branches[].id'`
@@ -404,6 +424,7 @@ Implemented command behavior:
 - `tdc db execute-sql-statement --db-cluster-id <cluster-id> --transport https --sql "select 1"`
 - `tdc db execute-sql-statement --db-cluster-id <cluster-id> --transport mysql --sql "select 1"`
 - `tdc fs create-file-system --file-system-name workspace`
+- `tdc fs create-file-system --file-system-name workspace --wait`
 - `tdc fs create-file-system --file-system-name workspace --dry-run`
 - `tdc fs create-file-system --file-system-name scratch --set-default`
 - `tdc fs delete-file-system --file-system-name workspace --confirm-file-system-name workspace`

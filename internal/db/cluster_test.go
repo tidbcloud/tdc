@@ -3,10 +3,12 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tidbcloud/tdc/internal/api/endpoints"
 	"github.com/tidbcloud/tdc/internal/apperr"
@@ -49,6 +51,152 @@ func TestCreateCluster(t *testing.T) {
 	}
 	if result.ID != "cluster-1" || result.DisplayName != "demo-cluster" {
 		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
+func TestCreateClusterWaitsUntilActive(t *testing.T) {
+	requests := make([]string, 0, 3)
+	gets := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method)
+		switch r.Method {
+		case http.MethodPost:
+			_, _ = w.Write([]byte(`{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER","state":"CREATING"}`))
+		case http.MethodGet:
+			if r.URL.Path != "/v1beta1/clusters/cluster-1" {
+				t.Fatalf("unexpected GET path %s", r.URL.Path)
+			}
+			gets++
+			state := "CREATING"
+			if gets == 2 {
+				state = "ACTIVE"
+			}
+			_, _ = fmt.Fprintf(w, `{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER","state":%q}`, state)
+		default:
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+	}))
+	defer server.Close()
+
+	service := testService(server.URL)
+	service.ClusterWaitTimeout = time.Second
+	service.ClusterWaitPollInterval = time.Millisecond
+	result, err := service.CreateCluster(context.Background(), CreateClusterOptions{
+		Profile:                      testProfile(),
+		DisplayName:                  "demo-cluster",
+		ClusterType:                  "starter",
+		ProjectID:                    "project-1",
+		MonthlySpendingLimitUSDCents: -1,
+		WaitUntilActive:              true,
+	})
+	if err != nil {
+		t.Fatalf("CreateCluster failed: %v", err)
+	}
+	if result.ID != "cluster-1" || result.State != "ACTIVE" {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if got := strings.Join(requests, ","); got != "POST,GET,GET" {
+		t.Fatalf("unexpected requests %q", got)
+	}
+}
+
+func TestCreateClusterWaitReturnsImmediatelyWhenCreateIsActive(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodPost {
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+		_, _ = w.Write([]byte(`{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER","state":"ACTIVE"}`))
+	}))
+	defer server.Close()
+
+	result, err := testService(server.URL).CreateCluster(context.Background(), CreateClusterOptions{
+		Profile:                      testProfile(),
+		DisplayName:                  "demo-cluster",
+		ClusterType:                  "starter",
+		ProjectID:                    "project-1",
+		MonthlySpendingLimitUSDCents: -1,
+		WaitUntilActive:              true,
+	})
+	if err != nil {
+		t.Fatalf("CreateCluster failed: %v", err)
+	}
+	if result.State != "ACTIVE" || requests != 1 {
+		t.Fatalf("unexpected result %#v or request count %d", result, requests)
+	}
+}
+
+func TestCreateClusterWaitErrorsPreserveCreatedCluster(t *testing.T) {
+	tests := []struct {
+		name        string
+		getResponse func(http.ResponseWriter)
+		timeout     time.Duration
+		wantCode    string
+		wantText    string
+	}{
+		{
+			name: "terminal state",
+			getResponse: func(w http.ResponseWriter) {
+				_, _ = w.Write([]byte(`{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER","state":"DELETED"}`))
+			},
+			timeout:  time.Second,
+			wantCode: "db.cluster_wait_terminal_state",
+			wantText: "DELETED",
+		},
+		{
+			name: "read failure",
+			getResponse: func(w http.ResponseWriter) {
+				http.Error(w, `{"message":"backend unavailable"}`, http.StatusInternalServerError)
+			},
+			timeout:  time.Second,
+			wantCode: "db.cluster_wait_read_failed",
+			wantText: "could not read its state",
+		},
+		{
+			name: "timeout",
+			getResponse: func(w http.ResponseWriter) {
+				_, _ = w.Write([]byte(`{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER","state":"CREATING"}`))
+			},
+			timeout:  10 * time.Millisecond,
+			wantCode: "db.cluster_wait_timeout",
+			wantText: "was not deleted",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.Method {
+				case http.MethodPost:
+					_, _ = w.Write([]byte(`{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER","state":"CREATING"}`))
+				case http.MethodGet:
+					tt.getResponse(w)
+				default:
+					t.Fatalf("unexpected method %s", r.Method)
+				}
+			}))
+			defer server.Close()
+
+			service := testService(server.URL)
+			service.ClusterWaitTimeout = tt.timeout
+			service.ClusterWaitPollInterval = time.Millisecond
+			_, err := service.CreateCluster(context.Background(), CreateClusterOptions{
+				Profile:                      testProfile(),
+				DisplayName:                  "demo-cluster",
+				ClusterType:                  "starter",
+				ProjectID:                    "project-1",
+				MonthlySpendingLimitUSDCents: -1,
+				WaitUntilActive:              true,
+			})
+			if apperr.CodeFor(err) != tt.wantCode {
+				t.Fatalf("error code = %q, want %q: %v", apperr.CodeFor(err), tt.wantCode, err)
+			}
+			message := apperr.MessageFor(err)
+			if !strings.Contains(message, "cluster-1") || !strings.Contains(message, tt.wantText) {
+				t.Fatalf("error should preserve cluster identity and context, got %q", message)
+			}
+		})
 	}
 }
 
@@ -217,6 +365,104 @@ func TestDeleteClusterReadsBeforeDelete(t *testing.T) {
 	}
 }
 
+func TestDeleteClusterWaitsUntilDeleted(t *testing.T) {
+	requests := make([]string, 0, 4)
+	gets := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method)
+		switch r.Method {
+		case http.MethodGet:
+			gets++
+			state := "ACTIVE"
+			if gets == 2 {
+				state = "DELETING"
+			}
+			if gets == 3 {
+				state = "DELETED"
+			}
+			_, _ = fmt.Fprintf(w, `{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER","state":%q}`, state)
+		case http.MethodDelete:
+			_, _ = w.Write([]byte(`{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER","state":"DELETING"}`))
+		default:
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+	}))
+	defer server.Close()
+
+	service := testService(server.URL)
+	service.ClusterWaitTimeout = time.Second
+	service.ClusterWaitPollInterval = time.Millisecond
+	result, err := service.DeleteCluster(context.Background(), DeleteClusterOptions{
+		Profile:          testProfile(),
+		ClusterID:        "cluster-1",
+		WaitUntilDeleted: true,
+	})
+	if err != nil {
+		t.Fatalf("DeleteCluster failed: %v", err)
+	}
+	if result.ID != "cluster-1" || result.State != "DELETED" {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if got := strings.Join(requests, ","); got != "GET,DELETE,GET,GET" {
+		t.Fatalf("unexpected requests %q", got)
+	}
+}
+
+func TestDeleteClusterWaitTreatsPostDeleteNotFoundAsDeleted(t *testing.T) {
+	gets := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			gets++
+			if gets == 1 {
+				_, _ = w.Write([]byte(`{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER","state":"ACTIVE"}`))
+				return
+			}
+			http.NotFound(w, r)
+		case http.MethodDelete:
+			_, _ = w.Write([]byte(`{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER","state":"DELETING"}`))
+		default:
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+	}))
+	defer server.Close()
+
+	result, err := testService(server.URL).DeleteCluster(context.Background(), DeleteClusterOptions{
+		Profile:          testProfile(),
+		ClusterID:        "cluster-1",
+		WaitUntilDeleted: true,
+	})
+	if err != nil {
+		t.Fatalf("DeleteCluster failed: %v", err)
+	}
+	if result.ID != "cluster-1" || result.State != "DELETED" {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
+func TestDeleteClusterWaitTimeoutPreservesAcceptedDeletion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		state := "ACTIVE"
+		if r.Method == http.MethodDelete {
+			state = "DELETING"
+		}
+		_, _ = fmt.Fprintf(w, `{"clusterId":"cluster-1","displayName":"demo-cluster","clusterPlan":"STARTER","state":%q}`, state)
+	}))
+	defer server.Close()
+
+	service := testService(server.URL)
+	service.ClusterWaitTimeout = 10 * time.Millisecond
+	service.ClusterWaitPollInterval = time.Millisecond
+	_, err := service.DeleteCluster(context.Background(), DeleteClusterOptions{
+		Profile:          testProfile(),
+		ClusterID:        "cluster-1",
+		WaitUntilDeleted: true,
+	})
+	if apperr.CodeFor(err) != "db.cluster_delete_wait_timeout" || !strings.Contains(apperr.MessageFor(err), "may still be in progress") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestDryRunCreateClusterDoesNotSendRequest(t *testing.T) {
 	called := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -230,6 +476,7 @@ func TestDryRunCreateClusterDoesNotSendRequest(t *testing.T) {
 		ClusterType:                  "starter",
 		ProjectID:                    "project-1",
 		MonthlySpendingLimitUSDCents: -1,
+		WaitUntilActive:              true,
 	})
 	if err != nil {
 		t.Fatalf("DryRunCreateCluster failed: %v", err)
@@ -239,6 +486,35 @@ func TestDryRunCreateClusterDoesNotSendRequest(t *testing.T) {
 	}
 	if called {
 		t.Fatal("dry-run should not send a request")
+	}
+	foundWait := false
+	for _, check := range result.Checks {
+		if check.Name == "post_create_wait" && strings.Contains(check.Message, "12m0s") {
+			foundWait = true
+		}
+	}
+	if !foundWait {
+		t.Fatalf("dry-run should describe the post-create wait: %#v", result.Checks)
+	}
+}
+
+func TestDryRunDeleteClusterDescribesWait(t *testing.T) {
+	result, err := testService("https://starter.test").DryRunDeleteCluster(context.Background(), "tdc db delete-db-cluster", DeleteClusterOptions{
+		Profile:          testProfile(),
+		ClusterID:        "cluster-1",
+		WaitUntilDeleted: true,
+	})
+	if err != nil {
+		t.Fatalf("DryRunDeleteCluster failed: %v", err)
+	}
+	found := false
+	for _, check := range result.Checks {
+		if check.Name == "post_delete_wait" && strings.Contains(check.Message, "12m0s") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("dry-run should describe the post-delete wait: %#v", result.Checks)
 	}
 }
 

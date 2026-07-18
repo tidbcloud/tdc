@@ -82,11 +82,16 @@ tdc [ERROR]: tdc fs is not configured for profile "default"; run `tdc fs create-
 - If the selected profile already has resources, the new resource is stored but does not become default unless `--set-default` is passed.
 - Re-running with the same name is idempotent when the resource already exists locally and has complete credentials.
 - Re-running with a name that exists locally but incomplete credentials returns an actionable repair error.
+- `--wait` is optional. It waits up to ten minutes for the selected
+  resource root to become readable through the public Drive9 CLI and returns
+  `status: "ready"`; wait failure preserves the registry entry and credential
+  file.
 
 `tdc fs delete-file-system` behavior:
 
 - Deletes only the named resource.
 - Removes only that resource's local registry entry and credential file.
+- Reports the accepted asynchronous remote deletion state as `deleting`.
 - If the deleted resource was the default, clear `fs_default_file_system_name`. If exactly one resource remains, tdc may set that remaining resource as default; otherwise leave default empty and force explicit selection.
 - Does not delete or mutate any other resource under the profile.
 
@@ -95,7 +100,7 @@ tdc [ERROR]: tdc fs is not configured for profile "default"; run `tdc fs create-
 New or changed commands:
 
 ```bash
-tdc fs create-file-system --file-system-name <name> [--set-default] [--dry-run]
+tdc fs create-file-system --file-system-name <name> [--set-default] [--wait] [--dry-run]
 tdc fs delete-file-system --file-system-name <name> --confirm-file-system-name <name> [--dry-run]
 tdc fs list-file-systems
 tdc fs describe-file-system --file-system-name <name>

@@ -20,6 +20,12 @@ Initial command set:
 - Mutating branch commands support `--dry-run`.
 - Commands must not prompt.
 - Branch operations require explicit cluster identification.
+- Create returns after the API accepts the asynchronous request by default.
+  Optional `--wait` polls the created branch for up to five
+  minutes and returns the final `ACTIVE` branch.
+- A branch wait timeout, cancellation, polling failure, or terminal `DELETED`
+  state leaves the accepted branch unchanged and returns an actionable error
+  containing both cluster and branch IDs.
 - Delete is non-interactive and deletes by explicit cluster ID plus branch ID
   after reading the remote branch.
 
@@ -36,7 +42,8 @@ Use only fields supported by the Starter branch API.
 ## Output And Errors
 
 - JSON is the default output.
-- Branch create returns the branch resource or operation status.
+- Branch create returns the branch resource or operation status. With
+  `--wait`, it returns a branch whose state is `ACTIVE`.
 - Not-found errors should identify whether the missing object is the cluster or
   the branch.
 - Permission errors must name the required permission, such as
@@ -48,6 +55,7 @@ Users can manage Starter branch workflows without adding another command level:
 
 ```bash
 tdc db create-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-name dev --dry-run
+tdc db create-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-name dev --wait
 tdc db list-db-cluster-branches --db-cluster-id <cluster-id>
 tdc db describe-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id>
 tdc db delete-db-cluster-branch --db-cluster-id <cluster-id> --db-cluster-branch-id <branch-id>
@@ -84,6 +92,10 @@ Command mapping:
   1. Validate `--db-cluster-id` and API-backed branch fields such as
      `--db-cluster-branch-name`.
   2. Call `POST /v1beta1/clusters/{clusterId}/branches`.
+  3. When `--wait` is set, call
+     `GET /v1beta1/clusters/{clusterId}/branches/{branchId}` every two seconds
+     until `ACTIVE`, terminal `DELETED`, cancellation, polling failure, or the
+     five-minute deadline.
 - `tdc db describe-db-cluster-branch`
   1. Call `GET /v1beta1/clusters/{clusterId}/branches/{branchId}`.
 - `tdc db delete-db-cluster-branch`
@@ -110,13 +122,16 @@ Available but out of scope for this spec:
 ## Acceptance Criteria
 
 - Mock API tests cover create/list/describe/delete.
+- Mock API tests cover branch wait success, terminal state, polling failure,
+  timeout, and dry-run wait-plan reporting.
 - Tests cover required cluster identification.
 - Tests cover dry-run for create and delete.
 - Tests cover branch not-found errors.
 - Tests cover `--query` over list output.
-- `make live-e2e` creates a temporary `tdc-e2e-branch-*` branch on the
-  temporary `tdc-e2e-*` Starter cluster, then lists, describes, deletes, and
-  verifies deletion for that branch without touching pre-existing branches.
+- `make live-e2e` creates a temporary `tdc-e2e-branch-*` branch with
+  `--wait` on the temporary `tdc-e2e-*` Starter cluster, asserts
+  the returned state is `ACTIVE`, then lists, describes, deletes, and verifies
+  deletion without touching pre-existing branches.
 
 ## Out Of Scope
 

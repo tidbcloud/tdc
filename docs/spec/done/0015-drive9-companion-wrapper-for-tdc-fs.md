@@ -115,8 +115,9 @@ The tdc command list must match Drive9's public external CLI surface, not Drive9
 - tdc keeps `~/.tdc/` as the user-facing source of truth. Users must not be asked to edit `~/.drive9`.
 - The wrapper translates tdc profile, region, filesystem resource, and credential state into the environment and flags expected by Drive9.
 - If the companion is missing or incompatible, fs commands fail with an actionable tdc error. They must not silently fall back to a tdc-owned HTTP/FUSE/WebDAV implementation.
-- `tdc fs create-file-system` provisions the resource through the companion and persists the returned tdc fs resource metadata and API key back into the active tdc profile.
-- `tdc fs delete-file-system` deletes only the active tdc-managed resource and removes the active profile's fs metadata and `fs_api_key` after successful deletion.
+- `tdc fs create-file-system` provisions the resource through the companion and persists the returned tdc fs resource metadata and API key back into the active tdc profile. Optional `--wait` invokes the public Drive9 `fs stat --output json :/` command until the root becomes readable or the ten-minute deadline expires.
+- `tdc fs delete-file-system` submits deletion for only the selected tdc-managed resource and removes that resource's local registry metadata and API key after Drive9 accepts the request. Because remote deletion is asynchronous, the structured result reports `status: "deleting"` and `remote_deletion_state: "deleting"`, not `deleted`.
+- A failed readiness wait never deletes the provisioned resource or removes its local credentials. The error identifies the file system and states that it remains registered for inspection or retry.
 - `tdc fs check-file-system` verifies that the active profile has fs metadata and that the Drive9 companion can reach the resource.
 - Data-plane and mount commands stream through Drive9. tdc must not buffer arbitrary file contents just to normalize output.
 - `tdc fs create-directory --mode` remains accepted for tdc CLI compatibility and must validate the octal value, but Drive9's public `mkdir` command does not currently apply directory modes. Do not emulate directory chmod through a non-public backend call.
@@ -262,6 +263,7 @@ Provisioning:
 4. Drive9 calls its `/v1/provision` backend with TiDB Cloud keys and region parameters.
 5. Drive9 returns resource metadata and a tdc fs data-plane API key.
 6. tdc writes non-secret fs metadata to `~/.tdc/config` and `fs_api_key` to `~/.tdc/credentials`.
+7. When `--wait` is set, tdc invokes `tdc-drive9 fs stat --output json :/` with the stored resource credentials every five seconds until it succeeds or ten minutes elapse.
 
 Data-plane command:
 
@@ -296,7 +298,9 @@ Unit and e2e coverage must focus on tdc wrapper behavior:
 - tdc profile to Drive9 environment mapping.
 - Argument translation for every fs, fs-git, fs-journal, and fs-vault command.
 - `create-file-system` JSON parsing and all-or-nothing tdc config writes.
-- `delete-file-system` cleanup behavior.
+- `create-file-system --wait` success, transient retry, timeout,
+  cancellation, and preservation of locally stored credentials on failure.
+- `delete-file-system` cleanup behavior and asynchronous `deleting` output.
 - Raw streaming behavior for `read-file`.
 - `--query` rejection on raw commands and `--query` support on captured JSON commands.
 - No tests should be retained for tdc commands that are not part of the Drive9 public CLI surface. Low-level layer entry/object/event commands, low-level Git workspace/tree/state/object-pack/overlay commands, and legacy vault token commands should not appear in command-surface, e2e, or README examples.
@@ -304,7 +308,7 @@ Unit and e2e coverage must focus on tdc wrapper behavior:
 
 Live e2e must run real commands through the wrapper:
 
-- create a temporary tdc fs resource
+- create a temporary tdc fs resource with `--wait`
 - check it
 - copy/read/list/describe/move/delete files
 - create directories and recursive copies
@@ -325,7 +329,7 @@ Drive9 owns deep FUSE correctness tests. tdc must still carry regression tests t
 Users still use tdc commands:
 
 ```bash
-tdc fs create-file-system --file-system-name workspace
+tdc fs create-file-system --file-system-name workspace --wait
 tdc fs cp --from-local ./README.md --to-remote /README.md
 tdc fs cat --path /README.md
 tdc fs mount-file-system --mount-path ./mnt --remote-path /
@@ -346,6 +350,8 @@ The user-facing experience remains tdc, but filesystem correctness and advanced 
 - `tdc update --check` reports companion compatibility.
 - `tdc update` updates the companion for direct-installer installs.
 - `tdc fs create-file-system` provisions through the companion and writes only tdc-owned state under `~/.tdc`.
+- `tdc fs create-file-system --wait` returns `status: "ready"` only after the public Drive9 root stat succeeds; failures retain the resource and credentials.
+- `tdc fs delete-file-system` reports asynchronous remote state as `deleting`.
 - `tdc fs check-file-system` succeeds for a configured profile without requiring user-visible `~/.drive9` setup.
 - All retained public `tdc fs` and Unix-alias commands route through the companion.
 - `tdc fs mount-file-system` defaults to Drive9 FUSE where available and supports explicit WebDAV when Drive9 supports it.

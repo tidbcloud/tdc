@@ -23,13 +23,15 @@ import (
 )
 
 type Service struct {
-	Resolver    endpoints.Resolver
-	HTTPClient  *http.Client
-	Transport   http.RoundTripper
-	Timeout     time.Duration
-	Debug       bool
-	DebugWriter io.Writer
-	HomeDir     string
+	Resolver                endpoints.Resolver
+	HTTPClient              *http.Client
+	Transport               http.RoundTripper
+	Timeout                 time.Duration
+	FSReadyWaitTimeout      time.Duration
+	FSReadyWaitPollInterval time.Duration
+	Debug                   bool
+	DebugWriter             io.Writer
+	HomeDir                 string
 
 	CompanionPath string
 	Stdin         io.Reader
@@ -41,6 +43,7 @@ type CreateFileSystemOptions struct {
 	Profile        *config.Profile
 	FileSystemName string
 	SetDefault     bool
+	WaitUntilReady bool
 }
 
 type DeleteFileSystemOptions struct {
@@ -174,6 +177,13 @@ func (s Service) DryRunCreateFileSystem(ctx context.Context, commandPath string,
 		{Name: "file_system_name", Status: "passed", Message: name},
 	}
 	checks = append(checks, endpointDryRunCheck(endpoint, endpointErr))
+	if opts.WaitUntilReady {
+		checks = append(checks, dryrun.Check{
+			Name:    "post_create_wait",
+			Status:  "passed",
+			Message: fmt.Sprintf("normal execution waits up to %s for the Drive9 data plane root to become readable", s.fsReadyWaitTimeout()),
+		})
+	}
 	return dryrun.New(
 		commandPath,
 		"create_file_system",

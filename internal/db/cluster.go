@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,18 +20,28 @@ import (
 	"github.com/tidbcloud/tdc/internal/dryrun"
 )
 
-const monthlySpendingLimitUnset int32 = -1
+const (
+	monthlySpendingLimitUnset      int32 = -1
+	defaultClusterWaitTimeout            = 12 * time.Minute
+	defaultClusterWaitPollInterval       = 2 * time.Second
+	defaultBranchWaitTimeout             = 5 * time.Minute
+	defaultBranchWaitPollInterval        = 2 * time.Second
+)
 
 type Service struct {
-	Resolver        endpoints.Resolver
-	HTTPClient      *http.Client
-	Transport       http.RoundTripper
-	Timeout         time.Duration
-	Debug           bool
-	DebugWriter     io.Writer
-	HomeDir         string
-	SQLHTTPBaseURL  string
-	MySQLDriverName string
+	Resolver                endpoints.Resolver
+	HTTPClient              *http.Client
+	Transport               http.RoundTripper
+	Timeout                 time.Duration
+	ClusterWaitTimeout      time.Duration
+	ClusterWaitPollInterval time.Duration
+	BranchWaitTimeout       time.Duration
+	BranchWaitPollInterval  time.Duration
+	Debug                   bool
+	DebugWriter             io.Writer
+	HomeDir                 string
+	SQLHTTPBaseURL          string
+	MySQLDriverName         string
 }
 
 type ListClustersOptions struct {
@@ -49,6 +60,7 @@ type CreateClusterOptions struct {
 	ProjectID                    string
 	ProjectIDExplicit            bool
 	MonthlySpendingLimitUSDCents int32
+	WaitUntilActive              bool
 }
 
 type DescribeClusterOptions struct {
@@ -65,8 +77,9 @@ type UpdateClusterOptions struct {
 }
 
 type DeleteClusterOptions struct {
-	Profile   *config.Profile
-	ClusterID string
+	Profile          *config.Profile
+	ClusterID        string
+	WaitUntilDeleted bool
 }
 
 type ListClustersResult struct {
@@ -119,6 +132,12 @@ func (s Service) CreateCluster(ctx context.Context, opts CreateClusterOptions) (
 	}
 	if err := ensureStarterCluster(cluster); err != nil {
 		return ClusterResult{}, err
+	}
+	if opts.WaitUntilActive {
+		cluster, err = s.waitUntilClusterActive(ctx, client, cluster)
+		if err != nil {
+			return ClusterResult{}, err
+		}
 	}
 	return ClusterResult{Cluster: cluster}, nil
 }
@@ -191,6 +210,12 @@ func (s Service) DeleteCluster(ctx context.Context, opts DeleteClusterOptions) (
 	if err != nil {
 		return ClusterResult{}, err
 	}
+	if opts.WaitUntilDeleted {
+		cluster, err = s.waitUntilClusterDeleted(ctx, client, cluster)
+		if err != nil {
+			return ClusterResult{}, err
+		}
+	}
 	return ClusterResult{Cluster: cluster}, nil
 }
 
@@ -198,6 +223,19 @@ func (s Service) DryRunCreateCluster(ctx context.Context, commandPath string, op
 	request, endpoint, err := s.createRequestAndEndpoint(opts)
 	if err != nil {
 		return dryrun.Result{}, err
+	}
+	checks := []dryrun.Check{
+		{Name: "config_and_credentials", Status: "passed", Message: fmt.Sprintf("profile %q loaded", profileName(opts.Profile))},
+		{Name: "endpoint_selection", Status: "passed", Message: fmt.Sprintf("%s %s", endpoint.Provider, endpoint.RegionCode)},
+		{Name: "permission_requirement", Status: "passed", Message: string(authz.StarterClusterCreate)},
+		{Name: "cluster_type", Status: "passed", Message: validate.ClusterTypeStarter},
+	}
+	if opts.WaitUntilActive {
+		checks = append(checks, dryrun.Check{
+			Name:    "post_create_wait",
+			Status:  "passed",
+			Message: fmt.Sprintf("normal execution waits up to %s for state ACTIVE", s.clusterWaitTimeout()),
+		})
 	}
 	return dryrun.New(
 		commandPath,
@@ -216,11 +254,100 @@ func (s Service) DryRunCreateCluster(ctx context.Context, commandPath string, op
 				"spendingLimit": request.SpendingLimit,
 			},
 		},
-		dryrun.Check{Name: "config_and_credentials", Status: "passed", Message: fmt.Sprintf("profile %q loaded", profileName(opts.Profile))},
-		dryrun.Check{Name: "endpoint_selection", Status: "passed", Message: fmt.Sprintf("%s %s", endpoint.Provider, endpoint.RegionCode)},
-		dryrun.Check{Name: "permission_requirement", Status: "passed", Message: string(authz.StarterClusterCreate)},
-		dryrun.Check{Name: "cluster_type", Status: "passed", Message: validate.ClusterTypeStarter},
+		checks...,
 	), nil
+}
+
+func (s Service) waitUntilClusterActive(ctx context.Context, client *apistarter.Client, cluster apistarter.Cluster) (apistarter.Cluster, error) {
+	if cluster.State == "ACTIVE" {
+		return cluster, nil
+	}
+	if strings.TrimSpace(cluster.ID) == "" {
+		return apistarter.Cluster{}, apperr.New(
+			"db.cluster_wait_missing_id",
+			"api",
+			1,
+			"Starter cluster creation was accepted but the response did not include a cluster ID; list DB clusters before retrying",
+		)
+	}
+
+	timeout := s.clusterWaitTimeout()
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(s.clusterWaitPollInterval())
+	defer ticker.Stop()
+
+	for {
+		current, err := client.GetCluster(waitCtx, cluster.ID, apistarter.GetClusterOptions{})
+		if err != nil {
+			if waitErr := clusterWaitContextError(ctx, waitCtx, cluster.ID, timeout); waitErr != nil {
+				return apistarter.Cluster{}, waitErr
+			}
+			return apistarter.Cluster{}, apperr.Wrap(
+				"db.cluster_wait_read_failed",
+				"api",
+				1,
+				fmt.Sprintf("DB cluster %q was created but tdc could not read its state while waiting for ACTIVE; the cluster was not deleted; inspect it with `tdc db describe-db-cluster --db-cluster-id %s`", cluster.ID, cluster.ID),
+				err,
+			)
+		}
+		if err := ensureStarterCluster(current); err != nil {
+			return apistarter.Cluster{}, err
+		}
+		switch current.State {
+		case "ACTIVE":
+			return current, nil
+		case "DELETING", "DELETED", "INACTIVE":
+			return apistarter.Cluster{}, apperr.New(
+				"db.cluster_wait_terminal_state",
+				"api",
+				1,
+				fmt.Sprintf("DB cluster %q was created but entered state %q before becoming ACTIVE; the cluster was not deleted; inspect it with `tdc db describe-db-cluster --db-cluster-id %s`", cluster.ID, current.State, cluster.ID),
+			)
+		}
+
+		select {
+		case <-waitCtx.Done():
+			return apistarter.Cluster{}, clusterWaitContextError(ctx, waitCtx, cluster.ID, timeout)
+		case <-ticker.C:
+		}
+	}
+}
+
+func clusterWaitContextError(parent, waitCtx context.Context, clusterID string, timeout time.Duration) error {
+	if parent.Err() != nil {
+		return apperr.Wrap(
+			"db.cluster_wait_canceled",
+			"runtime",
+			1,
+			fmt.Sprintf("waiting for DB cluster %q to become ACTIVE was canceled; the cluster was not deleted", clusterID),
+			parent.Err(),
+		)
+	}
+	if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+		return apperr.New(
+			"db.cluster_wait_timeout",
+			"api",
+			1,
+			fmt.Sprintf("DB cluster %q was created but did not become ACTIVE within %s; the cluster was not deleted; inspect it with `tdc db describe-db-cluster --db-cluster-id %s`", clusterID, timeout, clusterID),
+		)
+	}
+	return nil
+}
+
+func (s Service) clusterWaitTimeout() time.Duration {
+	if s.ClusterWaitTimeout > 0 {
+		return s.ClusterWaitTimeout
+	}
+	return defaultClusterWaitTimeout
+}
+
+func (s Service) clusterWaitPollInterval() time.Duration {
+	if s.ClusterWaitPollInterval > 0 {
+		return s.ClusterWaitPollInterval
+	}
+	return defaultClusterWaitPollInterval
 }
 
 func (s Service) DryRunUpdateCluster(ctx context.Context, commandPath string, opts UpdateClusterOptions) (dryrun.Result, error) {
@@ -258,6 +385,18 @@ func (s Service) DryRunDeleteCluster(ctx context.Context, commandPath string, op
 	if err != nil {
 		return dryrun.Result{}, err
 	}
+	checks := []dryrun.Check{
+		{Name: "config_and_credentials", Status: "passed", Message: fmt.Sprintf("profile %q loaded", profileName(opts.Profile))},
+		{Name: "endpoint_selection", Status: "passed", Message: fmt.Sprintf("%s %s", endpoint.Provider, endpoint.RegionCode)},
+		{Name: "permission_requirement", Status: "passed", Message: string(authz.StarterClusterDelete)},
+	}
+	if opts.WaitUntilDeleted {
+		checks = append(checks, dryrun.Check{
+			Name:    "post_delete_wait",
+			Status:  "passed",
+			Message: fmt.Sprintf("normal execution waits up to %s for state DELETED or for the cluster to become inaccessible after deletion", s.clusterWaitTimeout()),
+		})
+	}
 	return dryrun.New(
 		commandPath,
 		"delete_db_cluster",
@@ -266,10 +405,91 @@ func (s Service) DryRunDeleteCluster(ctx context.Context, commandPath string, op
 			Path:        "/v1beta1/clusters/" + clusterID,
 			Description: "normal execution first reads the cluster and verifies it is a Starter cluster before deleting",
 		},
-		dryrun.Check{Name: "config_and_credentials", Status: "passed", Message: fmt.Sprintf("profile %q loaded", profileName(opts.Profile))},
-		dryrun.Check{Name: "endpoint_selection", Status: "passed", Message: fmt.Sprintf("%s %s", endpoint.Provider, endpoint.RegionCode)},
-		dryrun.Check{Name: "permission_requirement", Status: "passed", Message: string(authz.StarterClusterDelete)},
+		checks...,
 	), nil
+}
+
+func (s Service) waitUntilClusterDeleted(ctx context.Context, client *apistarter.Client, cluster apistarter.Cluster) (apistarter.Cluster, error) {
+	if cluster.State == "DELETED" {
+		return cluster, nil
+	}
+	if strings.TrimSpace(cluster.ID) == "" {
+		return apistarter.Cluster{}, apperr.New(
+			"db.cluster_delete_wait_missing_id",
+			"api",
+			1,
+			"Starter cluster deletion was accepted but the response did not include a cluster ID; list DB clusters before retrying",
+		)
+	}
+
+	timeout := s.clusterWaitTimeout()
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(s.clusterWaitPollInterval())
+	defer ticker.Stop()
+
+	for {
+		current, err := client.GetCluster(waitCtx, cluster.ID, apistarter.GetClusterOptions{})
+		if err != nil {
+			if waitErr := clusterDeleteWaitContextError(ctx, waitCtx, cluster.ID, timeout); waitErr != nil {
+				return apistarter.Cluster{}, waitErr
+			}
+			if isDeletedClusterReadError(err) {
+				cluster.State = "DELETED"
+				return cluster, nil
+			}
+			return apistarter.Cluster{}, apperr.Wrap(
+				"db.cluster_delete_wait_read_failed",
+				"api",
+				1,
+				fmt.Sprintf("DB cluster %q deletion was accepted but tdc could not confirm completion; deletion may still be in progress", cluster.ID),
+				err,
+			)
+		}
+		if err := ensureStarterCluster(current); err != nil {
+			return apistarter.Cluster{}, err
+		}
+		if current.State == "DELETED" {
+			return current, nil
+		}
+
+		select {
+		case <-waitCtx.Done():
+			return apistarter.Cluster{}, clusterDeleteWaitContextError(ctx, waitCtx, cluster.ID, timeout)
+		case <-ticker.C:
+		}
+	}
+}
+
+func isDeletedClusterReadError(err error) bool {
+	switch apperr.CodeFor(err) {
+	case "api.not_found", "authz.permission_denied":
+		return true
+	default:
+		return false
+	}
+}
+
+func clusterDeleteWaitContextError(parent, waitCtx context.Context, clusterID string, timeout time.Duration) error {
+	if parent.Err() != nil {
+		return apperr.Wrap(
+			"db.cluster_delete_wait_canceled",
+			"runtime",
+			1,
+			fmt.Sprintf("waiting for DB cluster %q deletion was canceled; deletion may still be in progress", clusterID),
+			parent.Err(),
+		)
+	}
+	if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+		return apperr.New(
+			"db.cluster_delete_wait_timeout",
+			"api",
+			1,
+			fmt.Sprintf("DB cluster %q did not become DELETED within %s; deletion may still be in progress", clusterID, timeout),
+		)
+	}
+	return nil
 }
 
 func (s Service) createRequest(opts CreateClusterOptions) (apistarter.CreateClusterRequest, error) {
