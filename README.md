@@ -2,8 +2,56 @@
 
 `tdc` is the command-line interface for TiDB Cloud Filesystem and TiDB Cloud Starter.
 
-- TiDB Cloud Filesystem is a distributed file system designed specifically for AI coding agent workloads.
-- TiDB Cloud Starter provides distributed database clusters that are fully compatible with MySQL.
+- TiDB Cloud Filesystem is a distributed file system designed specifically for AI coding agent workloads, with zero infrastructure.
+- TiDB Cloud Starter provides distributed database clusters that are fully compatible with MySQL, with zero infrastructure.
+
+## Your Agent's Toolbelt
+
+### Always-on, zero infrastructure file system for sandboxes — The 3-Command Superpower
+
+An agent persist state between sessions, share files across sandboxes, snapshot its workspace before attempting a risky operation, and roll back on failure — all through a CLI with POSIX compatibility.
+
+1. Create a filesystem resource and get the returning token (one-time, out of the sandbox)
+
+```shell
+TDC_FS_TOKEN=$(tdc fs create-file-system --file-system-name agent-workspace --region <REGION_CODE>)
+```
+
+2. Mount the filesystem and use just like any regular POSIX directory (inside the sandbox environment)
+
+```shell
+export TDC_FS_TOKEN="<FS_TOKEN>"
+tdc fs mount-file-system --file-system-name agent-workspace --mount-path /path_to_workspace --region <REGION_CODE>
+echo "Hello Sandbox Workspace!" >> /path_to_workspace/hello.txt
+```
+
+3. Unmount to safely release the workspace before handing off to another sandbox (inside the sandbox environment)
+
+```shell
+tdc fs unmount-file-system --mount-path /path_to_workspace --region <REGION_CODE>
+```
+
+### Always-on, zero infrastructure MySQL — The 3-Command Superpower
+
+An agent can go from zero to live HTAP SQL (Hybrid Transaction / Analytical Processing) in three commands:
+
+1. Provision a serverless MySQL-compatible cluster (~15 seconds)
+
+```shell
+tdc db create-db-cluster --db-cluster-type starter --db-cluster-name my-app-db
+```
+
+2. Create the SQL users it needs to connect
+
+```shell    
+tdc db create-db-sql-users --db-cluster-id <ID>
+```
+
+3. Retrieve the database connection string for your agent and share it across sandboxes as needed
+
+```shell
+DATABASE_URL=$(tdc db format-db-connection-string --db-cluster-id <ID> --read-write --query "connection_string")
+```
 
 ## Install
 
