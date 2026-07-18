@@ -1,6 +1,6 @@
 # tdc fs Control Plane
 
-The original 1:1 profile model and flat `fs_*` storage in this spec are superseded by `docs/spec/done/0016-profile-fs-resource-registry.md`.
+> **Current status:** The original 1:1 profile model, flat `fs_*` storage, and native control-plane integration in this document are historical. `0015-drive9-companion-wrapper-for-tdc-fs.md` makes `tdc-drive9` the unconditional Filesystem implementation; `0016-profile-fs-resource-registry.md` provides profile-scoped 1:N resource storage; and `0018-fs-token-auth-and-config-free-access.md` adds token-only use of existing resources. Current control-plane commands also include list, describe, set-default, and unset-default. The command intent and dry-run requirements below remain useful context.
 
 ## Goal
 

@@ -1,5 +1,7 @@
 # tdc fs Mount Runtime
 
+> **Current status:** This is the historical tdc-native mount design. `0015-drive9-companion-wrapper-for-tdc-fs.md` transferred FUSE, WebDAV, cache, write-back, drain, and unmount semantics to `tdc-drive9`; tdc now owns only command validation, resource/auth resolution, companion invocation, output/errors, and a non-secret background-mount locator. Automatic driver selection is FUSE on Linux and WebDAV on macOS and Windows; macOS users can install macFUSE and explicitly select FUSE. There is no native mount fallback.
+
 ## Goal
 
 Allow users and agents to mount and unmount tdc fs as a local filesystem.

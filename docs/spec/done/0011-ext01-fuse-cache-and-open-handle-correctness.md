@@ -1,5 +1,7 @@
 # tdc fs FUSE Correctness And Drive9 Parity Extension
 
+> **Current status:** This document is retained as the history of the native implementation and the correctness failures that motivated the companion migration. `0015-drive9-companion-wrapper-for-tdc-fs.md` removed the native HTTP/FUSE/WebDAV runtime from the tdc product path. Current tdc exposes only Drive9 public CLI operations through `tdc-drive9`; low-level layer entries, Git overlay APIs, native vault mounts, native pack formats, and `restore-git-workspace` described below are not current tdc commands. Deep filesystem correctness belongs to Drive9; tdc tests command translation, isolated companion state, credential routing, output, and lifecycle integration.
+
 ## Goal
 
 tdc MVP is intended to replace Drive9 usage on TiDB Cloud. This extension therefore has two responsibilities: improve the current tdc fs mount correctness, and record the exact Drive9 parity gap that remains after this iteration. Missing parity is not considered optional. If the current tdc code cannot safely implement a Drive9 behavior yet, this file must say what is missing and why.

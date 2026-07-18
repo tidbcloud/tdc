@@ -51,6 +51,8 @@ Implemented:
   `docs/spec/done/0018-fs-token-auth-and-config-free-access.md`
 - install and update distribution from
   `docs/spec/done/0012-install-and-update-distribution.md`
+- English and Chinese PingCAP Preview documentation from
+  `docs/spec/done/0019-pingcap-tdc-documentation.md`
 - `tdc configure`
 - `tdc update --check`
 - `tdc update`
@@ -283,6 +285,8 @@ e2e/                        black-box tests against the compiled binary
 docs/priciples.md           product principles and MVP scope source of truth
 docs/spec/                  pending requirement specs
 docs/spec/done/             completed requirement specs
+docs/pingcap-docs/docs/     pingcap/docs English documentation submodule
+docs/pingcap-docs/docs-cn/  pingcap/docs-cn Chinese documentation submodule
 ref/                        read-only reference implementations
 ```
 
@@ -570,6 +574,12 @@ Registered command surface:
 
 Do not rename commands without updating specs, README, e2e tests, and AGENTS.
 Any code change that changes user-visible behavior must keep README.md in sync.
+It must also update the matching English and Chinese tdc pages under
+`docs/pingcap-docs/` when the published behavior changes. Keep both locale
+trees structurally identical, use globally unique `tdc-` basenames, preserve
+the standard Preview note on every page, and update both `TOC-ai.md` files and
+both `ai/_index.md` pages when adding or removing a document. Validate command
+names and flags against the compiled CLI help, not historical specs or demos.
 
 ## Configuration And Credentials
 

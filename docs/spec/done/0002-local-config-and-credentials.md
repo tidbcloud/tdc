@@ -1,5 +1,7 @@
 # Local Config And Credentials
 
+> **Current status:** This document records the original profile foundation. Filesystem credentials are no longer stored in the main `~/.tdc/credentials` file: the 1:N registry in `0016-profile-fs-resource-registry.md` stores each resource under `~/.tdc/fs_resources/<profile-key>/<resource-key>/`, and `0018-fs-token-auth-and-config-free-access.md` adds non-persistent environment/flag credentials. `0017-default-virtual-project-resolution.md` adds the configured `tidbx_virtual` `project_id`. DB SQL credentials remain in `~/.tdc/db_users/<cluster-id>/credentials`. Treat conflicting storage or resolution statements below as historical.
+
 ## Goal
 
 Provide the local profile, config, and credentials foundation used by all
