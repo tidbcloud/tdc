@@ -1,243 +1,76 @@
-# Agentic CLI \- tdc
+# Agentic CLI - tdc
 
-CLI v2 for TiDB Cloud \| Init Date: 2026\-05\-18 \|@Todd Bao
+tdc is the command-line interface for TiDB Cloud Starter and TiDB Cloud Filesystem. It is designed for people, scripts, and AI agents that need deterministic resource management without terminal-specific assumptions.
 
+tdc is currently in Preview. Its feature and command contracts can change before GA.
 
+## Product Scope
 
-## Problem Statement
+- `tdc organization` reads TiDB Cloud organization and project context.
+- `tdc db` manages TiDB Cloud Starter clusters and branches, prepares SQL users, formats connection strings, and executes one SQL statement per invocation.
+- `tdc fs` manages TiDB Cloud Filesystem resources, files, layers, packs, and mounts.
+- `tdc fs-git`, `tdc fs-journal`, and `tdc fs-vault` expose Filesystem-backed Git workspace, append-only journal, and secret-management workflows.
+- `tdc configure` initializes a local profile.
+- `tdc update` explicitly checks for or installs a release update.
 
-## Target Users
+tdc is Starter-only in the current Preview. `--db-cluster-type starter` remains explicit so the command contract can accommodate other TiDB Cloud plans later.
 
-## Success Metrics
+## Command Design
 
-## Scope \(MVP\)
+The command tree has at most two command levels:
 
-## Success Criteria \& Exit
+```text
+tdc <command> [subcommand]
+```
 
-## Dependencies
+`configure` and `update` are intentional top-level verb exceptions. Other top-level commands identify product domains: `organization`, `db`, `fs`, `fs-git`, `fs-journal`, and `fs-vault`.
 
-## Milestones
+- Commands and flags use complete, self-explanatory names.
+- Flags are long-only. Do not add one-letter flags.
+- Required flags appear before optional flags in help output.
+- `tdc fs` Unix-style aliases shorten only the command name. Their flags stay long and match the canonical command.
+- Only `tdc configure` may prompt.
+- Help works through `tdc help`, `tdc <command> help`, and `tdc <command> <subcommand> help`.
+- `--version` remains available at every command level.
+- A command does not infer access mode, resource selection, or mutation intent from SQL or other user content.
 
+## Output And Automation
 
+- Successful structured control-plane commands output JSON by default.
+- `--output json` and `--output text` are the supported structured output modes.
+- `--query` applies a JMESPath expression after execution and before rendering.
+- Commands that stream raw bytes reject `--query`.
+- Mutating control-plane commands support `--dry-run`; read-only commands reject it.
+- Dry run validates local input, credentials, placement, and request construction without sending a mutation.
+- Errors use `tdc [ERROR]: <actionable message>` and stable exit categories.
+- Commands do not silently retry through a different SQL role, transport, resource, or filesystem implementation.
 
-## References 
+## Profiles And Placement
 
-### Why a New CLI?
+All persistent tdc state belongs under `~/.tdc/`.
 
-1. `ticloud` has been stuck in beta for 3 years \(v1\.0\.0\-beta\.11 as of Dec 2025\)\. The name is generic, web search results show it is a brand for other businesses\. And, the command tree is inconsistent for predictibility\. 
+The local profile namespace is selected in this order:
 
-2. For Starter tier, keep `ticloud` for backward compatibility\.
+1. Explicit `--profile`.
+2. `TDC_PROFILE`.
+3. `default`.
 
-3. Clean\-sheet restart with a new name\. The ultimate goal is to ship GA at v1\.0 — no beta tag\. 
+An explicit empty `--profile ""` is invalid. Omitting `--profile` selects `default`.
 
-4. The new CLI is for **Starter** tier only from the v1\.0, and considers coherence with other tiers as well, so `--db-cluster-type` is required for `db` command\.
+Users select placement with one canonical region code. They never provide separate provider and region fields, service endpoints, or server URLs.
 
-5. Naming guidelines: less than 5 chars, searchable \(avoid generic words like cloud/db/data\), ownable trademark**\.** Pre\-author 3\-5 candidates with trademark clearance before beta outreach\. Current WIP name is `tdc` \(**t**i**d**b**c**loud\)\.
+Placement is selected in this order:
 
-6. TiDB Cloud public and private key pairs are the only credentials users need
-   to provide initially\. tdc may generate and store derived credentials under
-   `~/.tdc/credentials`, including DB SQL users and `tdc fs` resource API
-   keys\.
+1. Explicit global `--region`.
+2. `TDC_REGION_CODE`.
+3. The selected profile's `region_code`.
 
-### API Contract \& Backend Dependencies
+The command-scoped override does not change the profile, credential source, or persisted configuration.
 
-1. Relies on the existing TiDB Cloud Starter \(formally Serverless\) API services, `tdc` does not necessarily mean API v2\.
+Supported TiDB Cloud Starter placement values are:
 
-2. `tdc db` \- existing TiDB Cloud Starter management, endpointed by region\. It depends on TiDB Cloud Starter API endpoints\.
-
-3. `tdc fs` \- TiDB Cloud filesystem management and file operation, endpointed by region\. It depends on `tdc fs` API endpoints\.
-
-4. `tdc configure` \- local config and credentials setup\. No dependencies\.
-
-5. `tdc organization` \- TiDB Cloud account context management\. The confirmed
-   MVP surface is project listing through TiDB Cloud IAM/account API
-   endpoints. Organization list/describe stays an API gap until an endpoint is
-   confirmed\.
-
-6. Error mappings \- `tdc [ERROR]: <error message with actionable next step>`\.
-
-7. API gaps handling \- requests to Starter and/or `tdc fs` engineering teams\. 
-
-### Two Level Command Tree, and Two Level at Most
-
-- Command pattern:** **`tdc noun|command [noun-function|subcommand]`
-
-- Noun \(level 1 \- command\) maps to service domain\. Noun\-Action \(level 2 \- subcommand\) maps to domain verb\.
-
-    - Level 1 \- command: `configure`, `db`, `fs`, `organization`
-
-    - For `fs`, volume path is a special object, it does not count for the command or subcommand slot\.
-
-- Muscle memory for developers and agents
-
-    - `tdc help`
-
-    - `tdc <command> help`
-
-    - `tdc <command> <subcommand> help`
-
-- Scriptable: every command same shape\.
-
-    - Documentable: one page per `<command>`\. 
-
-- Database tier\-agnostic, provides TiDB Cloud DBaaS as a whole instead of isolated offerings\. Tier/plan is just a flag, not baked into command tree\. Starts with Starter, ready for all tiers plug\-in in the future, for example: 
-
-    - `tdc db create-db-cluster --db-cluster-name abc --db-cluster-type starter`
-
-    - `tdc db create-db-cluster --db-cluster-name zyx --db-cluster-type premium`
-
-- Examples:
-
-    - `tdc configure` 
-
-    - `tdc db create-db-cluster`
-
-    - `tdc db create-db-cluster-branch`
-
-    - `tdc db delete-db-cluster-branch`
-
-    - `tdc fs create-file-system`
-
-    - `tdc fs mount-file-system`
-
-    - `tdc fs list-files`
-
-    - `tdc fs copy-file`  
-
-
-
-### Bias for Predictable, Self\-Explaination and Automation Friendly Behaviors \- [Agentic Friendly CLI](https://pingcap.feishu.cn/docx/P6PNdPXgpoASNYxJ2sXck5ssnRP)
-
-1. **NO PROMPT** **for human input**\. The only exception is a human\-must initialization wizard: `tdc configure`\.
-
-2. Use long options/flags only, no short options or aliases, e\.g: `--option` flag\. No `-o`; No `s` for `serverless`\. 
-
-3. JSON output should be the default for successful **control plane** execution\. 
-
-4. `--dry-run` — Mutating **control plane** operations can be validated before execution\.
-
-5. `--no-*` Negation pattern for boolean flags with clear explicit declaration\.
-
-### Telemetry
-
-- Command\) and subcommand invoked
-
-- Flags used \(names only — not values\)
-
-- Error codes and execution time
-
-- TiDB Cloud region, CLI version, OS type
-
-- **NOT** credentials, file contents, or sensitive data
-
-### Local Operation Logs
-
-- Local operation logs are allowed for audit/debuggability and should be written under `~/.tdc/logs/`\.
-
-- Logs record safe summaries only: command path, flag names, profile, region, duration, exit code, app error code/category, service, HTTP status, and request id\.
-
-- Logs must not record flag values, SQL text/results, file contents, raw request/response bodies, connection strings, local paths, tdc fs raw paths, API keys, DB passwords, or tdc fs API keys\.
-
-- Users and CI must be able to disable local operation logs with `TDC_LOGGING=off` or `[logging].enabled = false`\.
-
-### Global Flags
-
-1. `--profile` use which config/credentials, for FS it also decides the region\.
-
-2. `--debug`
-
-3. `--version` that is to make every level versionable, they can and might not return the same information about their version: e\.g: 
-
-    1. `tdc --version`
-
-    2. `tdc fs --version`, `tdc db --version`
-
-    3. `tdc fs mount-file-system --version`
-
-4. Install and update must be deterministic:
-
-    - Install must support version pinning\.
-
-    - No background or silent auto\-update\.
-
-    - Update checks are explicit, for example `tdc update --check`\.
-
-    - Self\-update is explicit, for example `tdc update`, and must
-      refuse package\-manager installs with actionable instructions\.
-
-    - Direct installers place binaries in the user\-owned `~/.tdc/bin`
-      directory\. Installation and update must not require sudo; users add
-      `export PATH="$HOME/.tdc/bin:$PATH"` to their shell environment\.
-
-5. `--output`
-
-6. `--query` / JMESPath** ** — Even with JSON, there is no way to extract a single field \(e\.g\., cluster ID from a create response\)\. The dev/agent must parse the entire response\. Provide `--query`  to remove noisy output and save tokens\. For `db` command, if SQL executions are designed in the future, it will use `--sql`, no conflicts here\.
-
-
-
-### Open Issues
-
-- ~~How get cluster connection string easily for stage 0?~~ Decided:
-  `tdc db format-db-connection-string` after
-  `tdc db create-db-sql-users`\.
-
-- ~~What are the ~~~~`tdc db`~~~~ subcommands and TiDB Cloud Starter API stage 0 relies on?~~
-
-- ~~Need the ~~~~`tidbcloud_fs`~~~~ schema structure to mock some example use cases\. ~~
-
-- ~~Cost estimation\.~~
-
-- Final CLI name\. The Followings are candidates:
-
-    - ~~`tix`~~~~ \- A trade mark and a registered company\. The letters "tix" are a direct and common reference to the Totenkopf symbol\. This is an image of a human skull, often with crossed bones beneath it\. Super negative in Europe\.~~
-
-    - ~~`tidb`~~~~ \- Too general in TiDB context, and it has multiple meanings\. ~~
-
-    - ~~`tidbx`~~~~ \- TiDB X stands for the family of various plans on TiDB Cloud\.~~
-
-    - ~~`tws`~~~~ \- TiDB Workspace\. A good umbrella for AI infra \(db \+ fs\), and feels close to dev, but less relevant to other plans\.~~
-
-    - `tdc` \- TiDB Cloud initials, 3 letters, ntn\-style devoweling\. Clean, fast to type, no major collisions I can think of\. Best if the CLI stays cloud\-scoped\. Pairs well with a short install domain \(tdc\.dev if available\)\.
-
-
-
-
-
-### Profile And Credentials Priority Order
-
-Local profile namespace and TiDB Cloud API key source are separate. Local state is always scoped by the selected profile, while `TDC_PUBLIC_KEY` and `TDC_PRIVATE_KEY` only override the TiDB Cloud API key pair.
-
-|**Priority \(shortcut at first match\)**|**Local Profile Namespace**|
-|---|---|
-|1 \(highest\)|`--profile` flag in CLI|
-|2|`TDC_PROFILE` environment variable|
-|3|`default`|
-
-|**Priority \(shortcut at first match\)**|**TiDB Cloud API Key Source**|
-|---|---|
-|1 \(highest\)|`TDC_PUBLIC_KEY` and `TDC_PRIVATE_KEY` environment variables when either is set \(both are required\)|
-|2|`tdc_public_key` and `tdc_private_key` from `[<selected_profile>]` in `.tdc/credentials`|
-
-Environment credentials must not create or select a local `[env]` profile. Generated local state, such as `tdc fs` resource metadata and `fs_api_key`, is stored under the selected local profile.
-
-### Placement Priority Order
-
-`--region <canonical-region-code>` is a command-scope override with the highest placement priority. It changes only the region/provider used by endpoint routing for the current command; it does not persist config and does not change which profile or credentials are loaded.
-
-|**Priority \(shortcut at first match\)**|**Placement Source**|
-|---|---|
-|1 \(highest\)|`--region` flag in CLI|
-|2|`TDC_REGION_CODE` environment variable|
-|3|`region_code` from the selected profile|
-
-### Cloud Provider and Region Selection
-
-Users choose one canonical region code. They do not provide separate cloud
-provider fields, server URLs, filesystem metadata database URLs, or API
-endpoints.
-
-| Canonical Region Code | Cloud Provider | Region |
-|---|---|---|
+| Canonical region code | Cloud provider | Region |
+| --- | --- | --- |
 | `aws-us-east-1` | AWS | N. Virginia |
 | `aws-us-west-2` | AWS | Oregon |
 | `aws-eu-central-1` | AWS | Frankfurt |
@@ -245,191 +78,182 @@ endpoints.
 | `aws-ap-southeast-1` | AWS | Singapore |
 | `ali-ap-southeast-1` | Alibaba Cloud | Singapore |
 
-The CLI internally parses the canonical `region_code` prefix to the correct
-cloud provider and native region, then resolves TiDB Cloud Starter,
-IAM/account, and `tdc fs` endpoints. This mapping is product logic and must not
-require user-supplied server URLs.
+`aws` maps to the internal provider `aws`; `ali` maps to `alibaba_cloud`. TiDB Cloud Filesystem availability is resolved from the hosted Drive9 region manifest and can be a subset of the Starter regions.
 
+## TiDB Cloud Authentication
 
+TiDB Cloud public/private API keys are selected independently from the profile namespace:
 
+1. If either `TDC_PUBLIC_KEY` or `TDC_PRIVATE_KEY` is set, both must be set and the pair is used.
+2. Otherwise use `tdc_public_key` and `tdc_private_key` from the selected profile in `~/.tdc/credentials`.
 
+Environment credentials must not create or select a synthetic `[env]` profile. Any generated persistent state remains under the profile selected by `--profile`, `TDC_PROFILE`, or `default`.
 
-### CLI Schema Mapping for TiDB Cloud FS
+TiDB Cloud control-plane requests use HTTP Digest authentication. API keys must not be used as SQL Basic Auth credentials or Filesystem data-plane credentials.
 
-- Level 1 \- command: `fs`
+## Configure And Default Project
 
-    - control\-plane actions \(level 2 \- subcommand\): `create`, `delete`, `mount`, `umount`, `check`
+`tdc configure` collects:
 
-    - data\-plane actions \(level 2 \- subcommand\): `cp`, `cat`, `ls`, `stat`, `mv`, `rm`, `mkdir`, `grep`, `find`
+- a canonical `region_code`;
+- a TiDB Cloud public API key;
+- a TiDB Cloud private API key.
 
-- General rules:
+After validating the keys, configure lists accessible projects, requires exactly one project whose type is `tidbx_virtual`, and stores its ID as the profile's `project_id`. It commits the profile only after discovery succeeds.
 
-    - Reference filesystem concepts become `tdc fs` commands. Do not expose the
-      reference implementation name in tdc user-facing output or APIs\.
+`tdc configure --non-interactive` reads flags first, then `TDC_REGION_CODE`, `TDC_PUBLIC_KEY`, and `TDC_PRIVATE_KEY`, and fails instead of prompting for missing input. Interactive configure must handle Ctrl+C and exit with code 130.
 
-    - All actions in `tdc fs <action>` with long flag parameters, no need to mimic well\-known commands' patterns, especially the control\-plane actions\.
+Starter cluster creation resolves its project in this order:
 
-- The MVP profile config file that the `tdc` CLI depends on is `~/.tdc/credentials` and `~/.tdc/config` for security sensitive and non\-sensitive data respectively with key\-value pairs under `[<profile_name>]` sections\.
+1. Explicit non-empty `--project-id`.
+2. The selected profile's discovered `project_id`.
+3. Otherwise fail before making the create request.
 
-    - `[default]` profile works with any `tdc` execution without `--profile`\. 
+Other DB operations identify existing resources by cluster or branch ID. Filesystem provisioning does not use the DB `project_id`.
 
-        ```Plain Text
-        [default]
-        tdc_public_key=<TIDB_CLOUD_ORG_PUBLIC_API_KEY>
-        tdc_private_key=<TIDB_CLOUD_ORG_PRIVATE_API_KEY>
-        
-        [stage]
-        tdc_public_key=<TIDB_CLOUD_ORG_PUBLIC_API_KEY>
-        tdc_private_key=<TIDB_CLOUD_ORG_PRIVATE_API_KEY>
-        
-        ```
+## Local State And Credentials
 
+Main profile files are:
 
+```text
+~/.tdc/config
+~/.tdc/credentials
+```
 
-### How `tdc` CLI bootstraps?
+`config` contains non-sensitive profile values. `credentials` contains only profile-scoped TiDB Cloud API keys. Sensitive files use owner-only permissions where the platform supports POSIX modes.
 
-1. Install `tdc` by running single command\.
+Example:
 
-2. **`tdc configure [--profile <profile_name>]` prompts for user interactions, creates `~/.tdc/credentials`, and `~/.tdc/config`:**
+```toml
+# ~/.tdc/config
+[default]
+region_code = "aws-us-east-1"
+project_id = "..."
+fs_default_file_system_name = "workspace"
 
-    1. `[<profile_name>]`, default profile if `--profile` is omitted\.
+# ~/.tdc/credentials
+[default]
+tdc_public_key = "..."
+tdc_private_key = "..."
+```
 
-    2. Prompt for the TiDB Cloud API Public KEY \- `tdc_public_key` \(Skip to omit\)\.
+One profile can own multiple Filesystem resources. Each resource has isolated metadata and credentials:
 
-    3. Prompt for the TIDB Cloud API Private KEY \- `tdc_private_key` \(Skip to omit\)\.
+```text
+~/.tdc/fs_resources/<profile-key>/<resource-key>/config
+~/.tdc/fs_resources/<profile-key>/<resource-key>/credentials
+```
 
-    4. Prompt for canonical region code \- `region_code` \(for example `aws-us-east-1` or `ali-ap-southeast-1`\)\.
+The resource config stores `file_system_name`, `tenant_id`, `cloud_provider`, `region_code`, and `created_at`. Its credentials file stores only the owner `api_key`. The main profile stores only an optional default resource name; it never stores resource API keys.
 
-    6. Do not prompt for server URLs, API endpoints, or filesystem metadata database URLs.
+Legacy flat `fs_*` fields are migration input only. A complete legacy resource is migrated into the registry and the old fields are cleared. Incomplete legacy state fails explicitly.
 
+DB SQL credentials are cluster-scoped because TiDB Cloud cluster IDs are globally unique:
 
+```text
+~/.tdc/db_users/<cluster-id>/credentials
+```
 
-### DB Users Entry Command
+The file contains `[read_only]`, `[read_write]`, and `[admin]` sections with generated username/password pairs. SQL credentials do not belong in the main profile credentials file.
 
-- **Create a new DB**
+Background Filesystem and Vault mounts store only non-secret routing state under `~/.tdc/mounts/`. Operation logs live under `~/.tdc/logs/`.
 
-    - Run `tdc db create-db-cluster --db-cluster-name <cluster_name> --db-cluster-type starter [--profile <profile_name>] [--root-password <root_password>] [and all the other parameters]`
+## Starter SQL Access
 
-        - Purpose: Create a new TiDB Cloud Starter cluster\.
+`tdc db create-db-sql-users` creates or repairs three stable managed users for a cluster:
 
-        - Prerequisites:
+- read-only;
+- read-write;
+- admin.
 
-            - Have access to organization owner's public/private API keys\.
+The command is idempotent and must not create a new set on every invocation.
 
-        - Command workflow actions:
+`tdc db format-db-connection-string` formats existing credentials; it does not create a remote resource. It supports common connection-string formats and `.env` components. `tdc db execute-sql-statement` executes exactly one statement.
 
-            - Create a TiDB Cloud Starter cluster with the specified root password\.
+Both commands default to read-write. `--read-write`, `--read-only`, and `--admin` are mutually exclusive explicit choices. There is no automatic role classification.
 
-            - Return message\.
+SQL execution prefers the HTTPS SQL API and uses the selected SQL username/password as Basic Auth. The explicit `--transport mysql` mode opens one MySQL connection for one invocation and closes it afterward; it is not an automatic fallback.
 
-- **Prepare DB SQL query users**
+## Filesystem Ownership Boundary
 
-    - Run `tdc db create-db-sql-users --db-cluster-id <cluster_id> [--profile <profile_name>]`
+tdc does not implement filesystem runtime semantics itself. Installed `tdc fs`, `tdc fs-git`, `tdc fs-journal`, and `tdc fs-vault` commands route through the bundled `tdc-drive9` companion.
 
-        - Purpose: Create and persist tdc-managed SQL credentials for later
-          `tdc db execute-sql-statement` commands\.
+- tdc owns command naming, profile and region resolution, resource selection, credential storage, preflight validation, output/query behavior, errors, installation, and updates.
+- Drive9 owns file data-plane semantics, layers, pack/unpack, FUSE and WebDAV mounts, drain, Git workspace behavior, journal behavior, and Vault behavior.
+- There is no native tdc filesystem fallback.
+- `ref/drive9` is context only and is never imported, built, packaged, or used by tests.
+- tdc exposes only operations present in the Drive9 public CLI. It does not expose Drive9 internal APIs.
 
-        - Prerequisites:
+Each resource runs the companion with isolated state under:
 
-            - Have TiDB Cloud public/private API keys with permission to manage
-              SQL users on the target Starter cluster\.
+```text
+~/.tdc/drive9-home/<profile-key>/<resource-key>
+```
 
-        - Command workflow actions:
+tdc supplies a sanitized companion environment containing the resolved server, canonical region, and resource owner token. Inherited `DRIVE9_*` values must not override tdc's selection. Users do not edit `~/.drive9` for tdc workflows.
 
-            - Create three SQL users if they do not already exist:
-              read-only \(`role_readonly`\), read-write \(`role_readwrite`\),
-              and admin \(`role_admin`\)\.
+Filesystem resource selection is:
 
-            - The command is idempotent. Running it again must reuse or repair
-              the same tdc-managed users, not create another group\.
+1. Explicit `--file-system-name`.
+2. `TDC_FS_FILE_SYSTEM_NAME`.
+3. Profile `fs_default_file_system_name`.
+4. The only registered resource.
+5. Otherwise fail as missing or ambiguous.
 
-            - Store generated usernames and passwords in `~/.tdc/credentials`
-              under the active profile and cluster ID\.
+Remote data-plane, mount, Git, journal, and owner Vault commands select their FS token in this order:
 
-        - Return structured JSON by default\.
+1. Explicit command-local token flag.
+2. `TDC_FS_TOKEN`.
+3. The selected resource's credentials file.
 
-- **Create DB connection string**
+A clean agent sandbox can access an existing Filesystem using only:
 
-    - Run `tdc db format-db-connection-string --db-cluster-id <cluster_id> [--read-write | --read-only | --admin] [--format mysql-uri|jdbc|go-sql-driver|sqlalchemy|env] [--profile <profile_name>]`
+```text
+TDC_FS_TOKEN
+TDC_REGION_CODE
+TDC_FS_FILE_SYSTEM_NAME
+```
 
-        - Purpose: Print a connection string or dotenv component variables
-          from tdc-managed SQL credentials prepared by
-          `tdc db create-db-sql-users`\.
+These environment values form an in-memory command context and are not persisted. TiDB Cloud API keys remain required for `create-file-system` and `delete-file-system`; deletion also requires the resource to be registered locally.
 
-        - Access mode:
+`create-file-system` returns `fs_token` once in its structured result. This owner credential must never appear in logs, telemetry, debug output, errors, non-secret config, or list/describe output.
 
-            - Default is read-write \(`role_readwrite`\)\.
+On macOS and Windows, automatic mounting selects WebDAV. On Linux, automatic mounting selects FUSE. macOS users can install macFUSE and explicitly request `--driver fuse` for the full mount behavior. Vault mount requires FUSE and is unavailable on Windows. `drain-file-system` is meaningful only for a FUSE mount that exposes a drain control socket.
 
-            - `--read-write` explicitly uses the read-write user\.
+## Install And Update
 
-            - `--read-only` explicitly uses the read-only user\.
+GitHub Releases and GoReleaser produce release archives and checksums. Supported shell and PowerShell installers place both `tdc` and `tdc-drive9` in the user-owned `~/.tdc/bin` directory by default.
 
-            - `--admin` explicitly uses the admin user\.
+- Installation and update do not require sudo.
+- Installers do not edit shell profiles automatically; they print the command that prepends `~/.tdc/bin` to `PATH`.
+- Installers support tdc release version pinning and checksum verification. The companion is currently downloaded and checksum-verified from Drive9's unversioned release endpoint; tdc does not yet negotiate a companion version range.
+- `tdc update --check` checks explicitly; there is no background update.
+- `tdc update` is itself explicit consent and does not require `--yes`.
+- The updater stages and verifies tdc and its companion before replacement.
+- Self-update is allowed only for tdc-owned installer/archive installations.
+- Package-manager, local-build, and unknown installations fail with actionable guidance.
+- Active mounts must be drained and unmounted before updating the companion.
 
-            - Do not infer access mode from SQL text or command context\. There
-              is no auto mode\.
+## Logs, Telemetry, And Secret Safety
 
-        - Output formats:
+Local operation logs are enabled by default at `~/.tdc/logs/tdc.jsonl`. They may include command path, flag names, profile, region, duration, exit code, application error category, service, HTTP method/status, operation, and request ID.
 
-            - `mysql-uri` is the default\.
+Logs must never include flag values, SQL text or results, file contents, remote or local paths, request/response bodies, connection strings, API keys, FS tokens, DB passwords, Vault tokens, or secret values.
 
-            - `jdbc`, `go-sql-driver`, and `sqlalchemy` support common
-              ecosystem formats\.
+Disable local logging for one process with `TDC_LOGGING=off`, or globally:
 
-            - `env` outputs `.env` component variables such as host, port,
-              user, password, database, SSL mode, and access mode so agents can
-              assemble framework-specific connection strings themselves\.
+```toml
+[logging]
+enabled = false
+```
 
-        - Do not store generated connection strings in config, credentials,
-          logs, or telemetry\.
+Telemetry follows the same data-minimization rule and must be explicitly disclosed after installation. It can collect command/subcommand names, flag names, error codes, duration, region, CLI version, and OS type, but never credentials or user content. Telemetry must have a documented opt-out command before collection is enabled.
 
-- **Run one SQL statement**
+## Security And Engineering Constraints
 
-    - Run `tdc db execute-sql-statement --db-cluster-id <cluster_id> --sql <sql_string> [--profile <profile_name>]`
-
-        - Purpose: Execute a single SQL statement against a Starter cluster or
-          branch\.
-
-        - Prerequisites:
-
-            - `tdc db create-db-sql-users` has prepared local SQL credentials for the
-              target cluster\.
-
-        - Access mode:
-
-            - Default is read-write \(`role_readwrite`\)\.
-
-            - `--read-write` explicitly uses the read-write user\.
-
-            - `--read-only` explicitly uses the read-only user\.
-
-            - `--admin` explicitly uses the admin user\.
-
-            - Do not infer access mode from SQL text. There is no auto mode\.
-
-        - Transport:
-
-            - HTTPS SQL API execution is preferred and uses the TiDB Cloud
-              Serverless SQL API shape\.
-
-            - MySQL one-shot execution is an explicit fallback transport, not a
-              hidden automatic retry for write-capable statements\.
-
-
-
-### Detailed `tdc fs create-file-system` Schema Draft
-
-- `--file-system-name`: The tdc fs resource name\.
-
-- `[--profile]`: The profile for reading the TiDB Cloud API key and canonical
-  `region_code`\.
-
-- `[--dry-run]`: Validate profile, credentials, provider/region support,
-  permission, and request construction without mutating remote resources\.
-
-- The command must not accept a server URL, API endpoint, or filesystem metadata
-  database URL from the user\.
-
-- The CLI resolves the required backend endpoint internally from canonical
-  `region_code`, then provisions or initializes the
-  filesystem through the supported TiDB Cloud and `tdc fs` APIs\.
+- Do not print, log, commit, or place real credentials in examples or fixtures.
+- Prefer secret environment variables over command-line secret flags because flags can remain in shell history and process listings.
+- Do not add cgo dependencies. The release remains cross-platform unless a feature has an explicit platform boundary.
+- Do not depend on anything under `ref/`.
+- Keep README, AGENTS, public docs, specs, help, and e2e coverage synchronized with every user-visible code change.
+- Test real cloud lifecycle mutations through focused live e2e families and the complete `make live-e2e` release suite. Tests delete only resources they created.

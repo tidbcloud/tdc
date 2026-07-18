@@ -1,5 +1,7 @@
 # GitHub Actions CI/CD
 
+> **Current status:** Ordinary CI still runs without live credentials. Live e2e remains manually triggered with repository-level secrets and variables, and is now independently selectable through `make live-e2e-configure`, `make live-e2e-organization`, `make live-e2e-db`, `make live-e2e-fs`, `make live-e2e-fs-git`, `make live-e2e-fs-journal`, and `make live-e2e-fs-vault`; `make live-e2e` composes the complete release suite. Any wording below that implies only one indivisible local target predates this split.
+
 ## Goal
 
 Run repeatable automated checks on GitHub Actions after the MVP has been

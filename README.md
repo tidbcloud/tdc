@@ -2,6 +2,8 @@
 
 `tdc` is the command-line interface for TiDB Cloud Filesystem and TiDB Cloud Starter.
 
+> tdc is currently in Preview. Its features and command-line interface might change without prior notice.
+
 - TiDB Cloud Filesystem is a distributed file system designed specifically for AI coding agent workloads, with zero infrastructure.
 - TiDB Cloud Starter provides distributed database clusters that are fully compatible with MySQL, with zero infrastructure.
 
@@ -9,12 +11,12 @@
 
 ### Always-on, zero infrastructure file system for sandboxes — The 3-Command Superpower
 
-An agent persist state between sessions, share files across sandboxes, snapshot its workspace before attempting a risky operation, and roll back on failure — all through a CLI with POSIX compatibility.
+An agent can persist state between sessions, share files across sandboxes, snapshot its workspace before attempting a risky operation, and roll back on failure — all through a CLI with POSIX compatibility.
 
 1. Create a filesystem resource and get the returning token (one-time, out of the sandbox)
 
 ```shell
-TDC_FS_TOKEN=$(tdc fs create-file-system --file-system-name agent-workspace --region <REGION_CODE>)
+export TDC_FS_TOKEN="$(tdc fs create-file-system --file-system-name agent-workspace --region <REGION_CODE> --query fs_token --output text)"
 ```
 
 2. Mount the filesystem and use just like any regular POSIX-compliant filesystem (inside the sandbox environment)
@@ -31,26 +33,32 @@ echo "Hello Sandbox Workspace!" >> /path_to_workspace/hello.txt
 tdc fs unmount-file-system --mount-path /path_to_workspace --region <REGION_CODE>
 ```
 
-### Always-on, zero infrastructure MySQL — The 3-Command Superpower
+### Always-on, zero infrastructure MySQL — The 4-Command Superpower
 
-An agent can go from zero to live HTAP SQL (Hybrid Transaction / Analytical Processing) in three commands:
+An agent can go from zero to live HTAP SQL (Hybrid Transaction / Analytical Processing) in four commands:
 
-1. Provision a serverless MySQL-compatible cluster (~15 seconds)
-
-```shell
-tdc db create-db-cluster --db-cluster-type starter --db-cluster-name my-app-db
-```
-
-2. Create the SQL users it needs to connect
-
-```shell    
-tdc db create-db-sql-users --db-cluster-id <ID>
-```
-
-3. Retrieve the database connection string for your agent and share it across sandboxes as needed
+1. Start provisioning a serverless MySQL-compatible cluster and capture its ID
 
 ```shell
-DATABASE_URL=$(tdc db format-db-connection-string --db-cluster-id <ID> --read-write --query "connection_string")
+export CLUSTER_ID="$(tdc db create-db-cluster --db-cluster-type starter --db-cluster-name my-app-db --query id --output text)"
+```
+
+2. Wait for the cluster to become active (typically around 30 seconds)
+
+```shell
+until [ "$(tdc db describe-db-cluster --db-cluster-id "$CLUSTER_ID" --query state --output text)" = "ACTIVE" ]; do sleep 2; done
+```
+
+3. Create the SQL users it needs to connect
+
+```shell
+tdc db create-db-sql-users --db-cluster-id "$CLUSTER_ID"
+```
+
+4. Retrieve the database connection string for your agent and share it across sandboxes as needed
+
+```shell
+export DATABASE_URL="$(tdc db format-db-connection-string --db-cluster-id "$CLUSTER_ID" --read-write --query connection_string --output text)"
 ```
 
 ## Install
@@ -59,6 +67,11 @@ macOS and Linux users:
 
 ```bash
 curl -fsSL https://github.com/tidbcloud/tdc/releases/latest/download/install.sh | sh -s -- --yes
+```
+
+After installation, add tdc to the current shell and verify it:
+
+```bash
 export PATH="$HOME/.tdc/bin:$PATH"
 tdc --version
 ```
@@ -71,9 +84,16 @@ Windows users:
 $script = "$env:TEMP\install-tdc.ps1"
 iwr https://github.com/tidbcloud/tdc/releases/latest/download/install.ps1 -OutFile $script
 powershell -ExecutionPolicy Bypass -File $script -Yes
+```
+
+After installation, add tdc to the current PowerShell session and verify it:
+
+```powershell
 $env:Path = "$HOME\.tdc\bin;$env:Path"
 tdc --version
 ```
+
+Add `$HOME\.tdc\bin` to your user `PATH` to keep tdc available in new PowerShell sessions.
 
 ## Quick Start Guide
 
@@ -102,6 +122,8 @@ mkdir ~/my-workspace
 tdc fs create-file-system --file-system-name my-workspace
 tdc fs mount-file-system --mount-path ~/my-workspace
 ```
+
+Automatic mounting uses FUSE on Linux and WebDAV on macOS and Windows. macOS users can install macFUSE and explicitly add `--driver fuse` for the full FUSE experience.
 
 One profile can manage multiple file systems. The first created file system becomes the profile default; later resources can be selected explicitly or made the default:
 
@@ -140,6 +162,91 @@ tdc organization list-projects
 
 Each project includes a `type`: `tidbx` identifies a regular project and `tidbx_virtual` identifies a virtual project.
 
+## Commands
+
+Run `tdc help`, `tdc <command> help`, or `tdc <command> <subcommand> help` for flags and examples.
+
+<details>
+<summary>All commands</summary>
+
+```text
+tdc configure
+tdc update
+tdc organization list-projects
+
+tdc db create-db-cluster
+tdc db list-db-clusters
+tdc db describe-db-cluster
+tdc db update-db-cluster
+tdc db delete-db-cluster
+tdc db create-db-cluster-branch
+tdc db list-db-cluster-branches
+tdc db describe-db-cluster-branch
+tdc db delete-db-cluster-branch
+tdc db create-db-sql-users
+tdc db format-db-connection-string
+tdc db execute-sql-statement
+
+tdc fs create-file-system
+tdc fs delete-file-system
+tdc fs list-file-systems
+tdc fs describe-file-system
+tdc fs set-default-file-system
+tdc fs unset-default-file-system
+tdc fs check-file-system
+tdc fs copy-file
+tdc fs read-file
+tdc fs list-files
+tdc fs describe-file
+tdc fs move-file
+tdc fs delete-file
+tdc fs create-directory
+tdc fs chmod-file
+tdc fs create-symlink
+tdc fs create-hardlink
+tdc fs search-file-content
+tdc fs find-files
+tdc fs create-layer
+tdc fs list-layers
+tdc fs describe-layer
+tdc fs diff-layer
+tdc fs create-layer-checkpoint
+tdc fs rollback-layer
+tdc fs commit-layer
+tdc fs pack-file-system
+tdc fs unpack-file-system
+tdc fs mount-file-system
+tdc fs drain-file-system
+tdc fs unmount-file-system
+
+tdc fs-git clone-git-workspace
+tdc fs-git hydrate-git-workspace
+tdc fs-git add-git-worktree
+tdc fs-git remove-git-worktree
+
+tdc fs-journal create-journal
+tdc fs-journal append-journal-entries
+tdc fs-journal read-journal-entries
+tdc fs-journal search-journal-entries
+tdc fs-journal verify-journal
+
+tdc fs-vault create-secret
+tdc fs-vault replace-secret
+tdc fs-vault read-secret
+tdc fs-vault list-secrets
+tdc fs-vault delete-secret
+tdc fs-vault create-grant
+tdc fs-vault delete-grant
+tdc fs-vault list-audit-events
+tdc fs-vault run-with-secret
+tdc fs-vault mount-vault
+tdc fs-vault unmount-vault
+```
+
+Filesystem aliases are `cp`, `cat`, `ls`, `stat`, `mv`, `rm`, `mkdir`, `chmod`, `symlink`, `hardlink`, `grep`, `find`, `mount`, `drain`, and `umount`. Aliases keep the canonical command's long flags.
+
+</details>
+
 ## Update
 
 ```bash
@@ -150,6 +257,11 @@ tdc update --target-version v0.1.1
 ```
 
 `tdc update` downloads and verifies both `tdc` and its `tdc-drive9` companion before replacing either binary in the user-writable install directory. It never requests sudo. Legacy installations under `/usr/local/bin` must run the installer once to migrate to `~/.tdc/bin`.
+
+## Documentation
+
+- [English Preview documentation](docs/pingcap-docs/docs/ai/tdc/tdc-overview.md)
+- [中文预览文档](docs/pingcap-docs/docs-cn/ai/tdc/tdc-overview.md)
 
 ## Build from source
 

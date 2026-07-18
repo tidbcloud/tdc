@@ -7,3 +7,11 @@
 [submodule "ref/serverless-js"]
 	path = ref/serverless-js
 	url = git@github.com:tidbcloud/serverless-js.git
+[submodule "docs/pingcap-docs/docs"]
+	path = docs/pingcap-docs/docs
+	url = git@github.com:pingcap/docs.git
+	branch = release-8.5
+[submodule "docs/pingcap-docs/docs-cn"]
+	path = docs/pingcap-docs/docs-cn
+	url = git@github.com:pingcap/docs-cn.git
+	branch = release-8.5

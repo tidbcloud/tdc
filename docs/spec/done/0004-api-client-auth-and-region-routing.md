@@ -1,5 +1,7 @@
 # API Client Auth, Authorization, And Region Routing
 
+> **Current status:** The TiDB Cloud Digest-auth, authorization, canonical-region, and command-scoped `--region` rules remain current. Filesystem data-plane and runtime requests no longer use a tdc-native HTTP client; `0015-drive9-companion-wrapper-for-tdc-fs.md` routes them through `tdc-drive9`, while tdc resolves the Drive9 server from the hosted region manifest and supplies a sanitized companion environment. `0018-fs-token-auth-and-config-free-access.md` permits FS-token-only access without TiDB Cloud API keys. Conflicting filesystem transport details below are historical.
+
 ## Goal
 
 Create the authenticated and authorization-aware client foundation for TiDB

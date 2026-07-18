@@ -1,0 +1,51 @@
+name: Feature Request
+description: Propose a tdc capability or command improvement.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the user or agent problem first. A concrete workflow is more useful than a proposed command name alone.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow is blocked or unnecessarily difficult, and who encounters it?
+    validations:
+      required: true
+  - type: textarea
+    id: current_workflow
+    attributes:
+      label: Current workflow
+      description: Show how users or agents handle this today, including relevant tdc commands.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the desired behavior, inputs, outputs, and error handling.
+    validations:
+      required: true
+  - type: textarea
+    id: automation
+    attributes:
+      label: Agent and automation requirements
+      description: Explain determinism, non-interactive behavior, JSON output, idempotency, permissions, or safety requirements.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe existing tools or workarounds and why they do not solve the problem.
+  - type: dropdown
+    id: breaking_change
+    attributes:
+      label: Would this change an existing command contract?
+      options:
+        - "No"
+        - "Yes"
+        - Unsure
+    validations:
+      required: true

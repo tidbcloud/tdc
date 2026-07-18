@@ -1,6 +1,6 @@
 # Drive9 Companion Wrapper For tdc fs
 
-The original shared companion HOME and flat `fs_*` storage details in this spec are superseded by `docs/spec/done/0016-profile-fs-resource-registry.md`; the Drive9 wrapper ownership boundary remains current.
+> **Current status:** The unconditional Drive9 wrapper ownership boundary is implemented and remains current. The shared companion HOME and flat `fs_*` storage below are superseded by `0016-profile-fs-resource-registry.md`, which uses one isolated companion HOME and credentials directory per profile/resource. `0018-fs-token-auth-and-config-free-access.md` adds non-persistent FS-token access. The current installer and updater download the platform Drive9 artifact plus checksum from the unversioned Drive9 release endpoint; the pinned-version range, companion version negotiation, and structured compatibility reporting proposed below are not implemented and must not be presented as current behavior. There is still no native tdc FS fallback.
 
 ## Goal
 

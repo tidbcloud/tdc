@@ -1,0 +1,88 @@
+name: Bug Report
+description: Report a reproducible problem in tdc.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a tdc issue. Remove credentials, tokens, connection strings, SQL containing sensitive data, and customer data before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: tdc version
+      description: Run `tdc --version`.
+      placeholder: v0.1.2
+    validations:
+      required: true
+  - type: dropdown
+    id: command_family
+    attributes:
+      label: Command family
+      options:
+        - configure
+        - update
+        - organization
+        - db
+        - fs
+        - fs-git
+        - fs-journal
+        - fs-vault
+        - installer or release
+        - other
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and architecture
+      description: Include the OS version, architecture, and whether this runs in a container or sandbox.
+      placeholder: Ubuntu 24.04, linux/amd64, E2B sandbox
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: Show the command with all secrets and customer identifiers replaced by placeholders.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest deterministic sequence that reproduces the issue.
+      placeholder: |
+        1. Configure ...
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the complete error message and exit code when available.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs
+      description: Add relevant `~/.tdc/logs/tdc.jsonl` or mount-log entries after removing all sensitive data.
+      render: text
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Sensitive-data confirmation
+      options:
+        - label: I removed API keys, FS and Vault tokens, database credentials, connection strings, sensitive SQL, and customer data.
+          required: true
