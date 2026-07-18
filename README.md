@@ -17,7 +17,7 @@ An agent persist state between sessions, share files across sandboxes, snapshot 
 TDC_FS_TOKEN=$(tdc fs create-file-system --file-system-name agent-workspace --region <REGION_CODE>)
 ```
 
-2. Mount the filesystem and use just like any regular POSIX directory (inside the sandbox environment)
+2. Mount the filesystem and use just like any regular POSIX-compliant filesystem (inside the sandbox environment)
 
 ```shell
 export TDC_FS_TOKEN="<FS_TOKEN>"
