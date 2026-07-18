@@ -2,8 +2,56 @@
 
 `tdc` is the command-line interface for TiDB Cloud Filesystem and TiDB Cloud Starter.
 
-- TiDB Cloud Filesystem is a distributed file system designed specifically for AI coding agent workloads.
-- TiDB Cloud Starter provides distributed database clusters that are fully compatible with MySQL.
+- TiDB Cloud Filesystem is a distributed file system designed specifically for AI coding agent workloads, with zero infrastructure.
+- TiDB Cloud Starter provides distributed database clusters that are fully compatible with MySQL, with zero infrastructure.
+
+## Your Agent's Toolbelt
+
+### Always-on, zero infrastructure file system for sandboxes — The 3-Command Superpower
+
+An agent persist state between sessions, share files across sandboxes, snapshot its workspace before attempting a risky operation, and roll back on failure — all through a CLI with POSIX compatibility.
+
+1. Create a filesystem resource and get the returning token (one-time, out of the sandbox)
+
+```shell
+TDC_FS_TOKEN=$(tdc fs create-file-system --file-system-name agent-workspace --region <REGION_CODE>)
+```
+
+2. Mount the filesystem and use just like any regular POSIX-compliant filesystem (inside the sandbox environment)
+
+```shell
+export TDC_FS_TOKEN="<FS_TOKEN>"
+tdc fs mount-file-system --file-system-name agent-workspace --mount-path /path_to_workspace --region <REGION_CODE>
+echo "Hello Sandbox Workspace!" >> /path_to_workspace/hello.txt
+```
+
+3. Unmount to safely release the workspace before handing off to another sandbox (inside the sandbox environment)
+
+```shell
+tdc fs unmount-file-system --mount-path /path_to_workspace --region <REGION_CODE>
+```
+
+### Always-on, zero infrastructure MySQL — The 3-Command Superpower
+
+An agent can go from zero to live HTAP SQL (Hybrid Transaction / Analytical Processing) in three commands:
+
+1. Provision a serverless MySQL-compatible cluster (~15 seconds)
+
+```shell
+tdc db create-db-cluster --db-cluster-type starter --db-cluster-name my-app-db
+```
+
+2. Create the SQL users it needs to connect
+
+```shell    
+tdc db create-db-sql-users --db-cluster-id <ID>
+```
+
+3. Retrieve the database connection string for your agent and share it across sandboxes as needed
+
+```shell
+DATABASE_URL=$(tdc db format-db-connection-string --db-cluster-id <ID> --read-write --query "connection_string")
+```
 
 ## Install
 
@@ -31,7 +79,7 @@ tdc --version
 
 ### Configure
 
-Configure tdc with a TiDB Cloud Public Key and Private Key from the [TiDB Cloud](https://tidbcloud.com/org-settings/api-keys) console. Supported region codes are `aws-us-east-1`, `aws-us-west-2`, `aws-eu-central-1`, `aws-ap-northeast-1`, `aws-ap-southeast-1`, and `ali-ap-southeast-1`.
+Configure `tdc` with a TiDB Cloud Public Key and Private Key from the [TiDB Cloud](https://tidbcloud.com/org-settings/api-keys) console. Supported region codes are `aws-us-east-1`, `aws-us-west-2`, `aws-eu-central-1`, `aws-ap-northeast-1`, `aws-ap-southeast-1`, and `ali-ap-southeast-1`.
 
 ```shell
 tdc configure --non-interactive --region-code <TDC_REGION_CODE> --tdc-public-key <TDC_PUBLIC_KEY> --tdc-private-key <TDC_PRIVATE_KEY>
@@ -47,6 +95,8 @@ project_id = "1372813089454645969"
 
 ### TiDB Cloud Filesystem
 
+Supported regions: `aws-us-east-1` and `aws-ap-southeast-1`.
+
 ```shell
 mkdir ~/my-workspace
 tdc fs create-file-system --file-system-name my-workspace
@@ -59,39 +109,19 @@ One profile can manage multiple file systems. The first created file system beco
 tdc fs create-file-system --file-system-name scratch
 tdc fs list-file-systems
 tdc fs describe-file-system --file-system-name scratch
-tdc fs set-default-file-system --file-system-name scratch
-tdc fs list-files --path /
-tdc fs list-files --file-system-name my-workspace --path /
-tdc fs unset-default-file-system
 ```
 
-Resource selection uses `--file-system-name`, then `TDC_FS_FILE_SYSTEM_NAME`, then the profile default, then the only configured resource. Commands fail with an ambiguity error when multiple resources exist and none is selected. File system metadata and credentials are isolated under `~/.tdc/fs_resources/<profile-key>/<resource-key>/`; API keys are never printed by list or describe commands.
-
-`create-file-system` returns an `fs_token` in its JSON result. This is the resource owner credential and must be handled as a secret. A configured machine can provision a file system and capture the token without printing the full result:
+`create-file-system` returns an file system token (`fs_token`) in its JSON result. This is the file system owner credential and should be handled as a secret. A configured machine can provision a file system and capture the token without printing the full result:
 
 ```shell
 export TDC_FS_TOKEN="$(tdc fs create-file-system --file-system-name agent-workspace --query fs_token --output text)"
 ```
 
-An ephemeral machine can use that existing file system without `tdc configure`, TiDB Cloud API keys, or pre-existing files under `~/.tdc/`:
+An agent sandbox can then use that existing file system without running `tdc configure` or providing TiDB Cloud API keys:
 
 ```shell
 export TDC_FS_TOKEN="<FS_TOKEN>"
-export TDC_REGION_CODE="aws-us-east-1"
-export TDC_FS_FILE_SYSTEM_NAME="agent-workspace"
-
-tdc fs list-files --path /
-tdc fs mount-file-system --mount-path /workspace
-tdc fs-git hydrate-git-workspace --target-path /workspace/repository
-tdc fs-journal read-journal-entries --journal-id <JOURNAL_ID>
-tdc fs-vault list-secrets
-```
-
-The three values can be mixed with command flags and local configuration. Explicit `--file-system-name`, global `--region`, and command-local `--fs-token` take precedence over environment and local state; environment variables are preferred for tokens because flags can remain in shell history or process listings. Token-authenticated FS, mount, Git, journal, and owner vault commands do not require TiDB Cloud public/private keys. Provisioning and deletion still require the TiDB Cloud keys, and deletion also requires the locally registered resource. A successful background mount records only a non-secret locator under `~/.tdc/mounts/`, so drain and unmount work from the same `HOME` without resupplying the token:
-
-```shell
-tdc fs drain-file-system --mount-path /workspace
-tdc fs unmount-file-system --mount-path /workspace
+tdc fs mount-file-system --file-system-name agent-workspace --mount-path /path_to_workspace --region aws-us-east-1
 ```
 
 ### TiDB Cloud Starter

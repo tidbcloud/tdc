@@ -61,7 +61,7 @@ func NewRootCommand(info version.Info) *cobra.Command {
 	root.SetUsageTemplate(usageTemplate)
 
 	flags := root.PersistentFlags()
-	flags.StringVar(&opts.Profile, "profile", "default", "Profile name for tdc.")
+	flags.StringVar(&opts.Profile, "profile", "default", "The profile name for tdc CLI.")
 	flags.StringVar(&opts.Region, "region", "", "Override region code in the profile, for example aws-us-east-1.")
 	flags.BoolVar(&opts.Debug, "debug", false, "Enable debug output.")
 	flags.StringVar(&opts.Output, "output", "json", "Output format: json or text.")
