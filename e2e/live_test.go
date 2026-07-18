@@ -110,7 +110,7 @@ func TestLiveFSResourceRegistryLifecycle(t *testing.T) {
 	}()
 
 	for i, name := range names {
-		create := runTDC(t, bin, "--profile", profileName, "fs", "create-file-system", "--file-system-name", name)
+		create := runTDC(t, bin, "--profile", profileName, "fs", "create-file-system", "--file-system-name", name, "--wait")
 		if create.exitCode != 0 {
 			if isLiveFSQuotaError(create.stderr) {
 				if i == 0 {
@@ -130,8 +130,7 @@ func TestLiveFSResourceRegistryLifecycle(t *testing.T) {
 		created[name] = true
 		stateMutated = true
 		create.wantStdoutContains(`"credentials_stored": true`)
-		selected := resolveLiveFSResource(t, profile, name)
-		waitLiveFSReady(t, bin, profileName, selected, 10*time.Minute)
+		create.wantStdoutContains(`"status": "ready"`)
 	}
 
 	list := runTDC(t, bin, "--profile", profileName, "fs", "list-file-systems")
@@ -151,6 +150,8 @@ func TestLiveFSResourceRegistryLifecycle(t *testing.T) {
 
 	deleteFirst := runTDC(t, bin, "--profile", profileName, "fs", "delete-file-system", "--file-system-name", names[0], "--confirm-file-system-name", names[0])
 	deleteFirst.wantExitCode(0)
+	deleteFirst.wantStdoutContains(`"status": "deleting"`)
+	deleteFirst.wantStdoutContains(`"remote_deletion_state": "deleting"`)
 	created[names[0]] = false
 	remaining := runTDC(t, bin, "--profile", profileName, "fs", "describe-file-system", "--file-system-name", names[1])
 	remaining.wantExitCode(0)
@@ -158,6 +159,8 @@ func TestLiveFSResourceRegistryLifecycle(t *testing.T) {
 
 	deleteSecond := runTDC(t, bin, "--profile", profileName, "fs", "delete-file-system", "--file-system-name", names[1], "--confirm-file-system-name", names[1])
 	deleteSecond.wantExitCode(0)
+	deleteSecond.wantStdoutContains(`"status": "deleting"`)
+	deleteSecond.wantStdoutContains(`"remote_deletion_state": "deleting"`)
 	created[names[1]] = false
 }
 
@@ -220,7 +223,8 @@ func TestLiveDBCommandSurface(t *testing.T) {
 		{"db", "list-db-clusters", "help"},
 	})
 	testLiveMutatingDryRuns(t, bin, profileName, [][]string{
-		{"db", "create-db-cluster-branch", "--db-cluster-id", "cluster-1", "--db-cluster-branch-name", "dev"},
+		{"db", "create-db-cluster-branch", "--db-cluster-id", "cluster-1", "--db-cluster-branch-name", "dev", "--wait"},
+		{"db", "delete-db-cluster", "--db-cluster-id", "cluster-1", "--wait"},
 		{"db", "delete-db-cluster-branch", "--db-cluster-id", "cluster-1", "--db-cluster-branch-id", "branch-1"},
 		{"db", "create-db-sql-users", "--db-cluster-id", "cluster-1"},
 	}, "remote_mutation")
@@ -286,7 +290,7 @@ func TestLiveFSCommandSurface(t *testing.T) {
 		{"fs", "mount", "help"}, {"fs", "drain", "help"}, {"fs", "umount", "help"},
 	})
 	testLiveMutatingDryRuns(t, bin, profileName, [][]string{
-		{"fs", "create-file-system", "--file-system-name", fileSystemName},
+		{"fs", "create-file-system", "--file-system-name", fileSystemName, "--wait"},
 		{"fs", "delete-file-system", "--file-system-name", fileSystemName, "--confirm-file-system-name", fileSystemName},
 		{"fs", "create-layer", "--layer-id", "layer-1", "--base-root-path", "/workspace", "--layer-name", "dev"},
 		{"fs", "create-layer-checkpoint", "--layer-id", "layer-1", "--checkpoint-id", "cp-1"},
@@ -1229,7 +1233,7 @@ func TestLiveFSConfigurationFreeAccess(t *testing.T) {
 	profileName := liveProfileName(t)
 	suffix := fmt.Sprintf("%s-%d", time.Now().UTC().Format("20060102150405"), os.Getpid())
 	fileSystemName := "tdc-e2e-token-" + suffix
-	create := runTDC(t, bin, "--profile", profileName, "fs", "create-file-system", "--file-system-name", fileSystemName)
+	create := runTDC(t, bin, "--profile", profileName, "fs", "create-file-system", "--file-system-name", fileSystemName, "--wait")
 	create.wantExitCode(0)
 	var created struct {
 		FileSystemName string `json:"file_system_name"`
@@ -1246,6 +1250,9 @@ func TestLiveFSConfigurationFreeAccess(t *testing.T) {
 	}
 	if created.Status == "exists" {
 		t.Fatalf("generated configuration-free FS resource name unexpectedly existed")
+	}
+	if created.Status != "ready" {
+		t.Fatalf("--wait returned tdc fs resource in status %q", created.Status)
 	}
 
 	deletedResource := false
@@ -1264,8 +1271,6 @@ func TestLiveFSConfigurationFreeAccess(t *testing.T) {
 	if selected.FSAPIKey != created.FSToken || selected.FSPlacementRegionCode != created.RegionCode {
 		t.Fatal("stored FS resource credentials or placement differ from create output")
 	}
-	waitLiveFSReady(t, bin, profileName, selected, 10*time.Minute)
-
 	cleanHome := t.TempDir()
 	authEnv := liveFSTokenEnv(selected, cleanHome)
 	remoteRoot := "/tdc-e2e-token-" + suffix
@@ -1360,6 +1365,8 @@ func TestLiveFSConfigurationFreeAccess(t *testing.T) {
 	remoteDeleted = true
 	deleteResource := runTDC(t, bin, "--profile", profileName, "fs", "delete-file-system", "--file-system-name", fileSystemName, "--confirm-file-system-name", fileSystemName)
 	deleteResource.wantExitCode(0)
+	deleteResource.wantStdoutContains(`"status": "deleting"`)
+	deleteResource.wantStdoutContains(`"remote_deletion_state": "deleting"`)
 	deletedResource = true
 }
 
@@ -1445,7 +1452,7 @@ func TestLiveDBClusterLifecycle(t *testing.T) {
 		if clusterID == "" || deleted {
 			return
 		}
-		cleanup := runTDC(t, bin, "--profile", profileName, "db", "delete-db-cluster", "--db-cluster-id", clusterID)
+		cleanup := runTDC(t, bin, "--profile", profileName, "db", "delete-db-cluster", "--db-cluster-id", clusterID, "--wait")
 		if cleanup.exitCode != 0 && cleanup.exitCode != 5 {
 			t.Logf("cleanup delete failed for cluster %s: exit=%d stdout=%s stderr=%s", clusterID, cleanup.exitCode, cleanup.stdout, cleanup.stderr)
 		}
@@ -1458,7 +1465,7 @@ func TestLiveDBClusterLifecycle(t *testing.T) {
 		"db", "create-db-cluster",
 		"--db-cluster-name", clusterName,
 		"--db-cluster-type", "starter",
-		"--wait-until-active",
+		"--wait",
 	)
 	create.wantExitCode(0)
 	created := decodeLiveCluster(t, create)
@@ -1469,7 +1476,7 @@ func TestLiveDBClusterLifecycle(t *testing.T) {
 	defer cleanupLiveSQLCredentials(t, clusterID)
 
 	if created.State != "ACTIVE" {
-		t.Fatalf("--wait-until-active returned cluster in state %q: %#v", created.State, created)
+		t.Fatalf("--wait returned cluster in state %q: %#v", created.State, created)
 	}
 	describe := runTDC(t, bin, "--profile", profileName, "db", "describe-db-cluster", "--db-cluster-id", clusterID, "--view", "FULL")
 	describe.wantExitCode(0)
@@ -1537,6 +1544,7 @@ func TestLiveDBClusterLifecycle(t *testing.T) {
 		"db", "create-db-cluster-branch",
 		"--db-cluster-id", clusterID,
 		"--db-cluster-branch-name", branchName,
+		"--wait",
 	)
 	branchCreate.wantExitCode(0)
 	createdBranch := decodeLiveBranch(t, branchCreate)
@@ -1544,10 +1552,9 @@ func TestLiveDBClusterLifecycle(t *testing.T) {
 		t.Fatalf("unexpected created branch: %#v\n%s", createdBranch, branchCreate.stdout)
 	}
 	branchID = createdBranch.ID
-
-	waitLiveBranch(t, bin, profileName, clusterID, branchID, func(branch liveBranch) bool {
-		return branch.ID == branchID && branch.DisplayName == branchName && branch.State == "ACTIVE"
-	}, 5*time.Minute, "become ACTIVE after create")
+	if createdBranch.State != "ACTIVE" {
+		t.Fatalf("--wait returned branch in state %q: %#v", createdBranch.State, createdBranch)
+	}
 
 	branches := runTDC(t, bin, "--profile", profileName, "db", "list-db-cluster-branches", "--db-cluster-id", clusterID, "--page-size", "100")
 	branches.wantExitCode(0)
@@ -1610,15 +1617,17 @@ func TestLiveDBClusterLifecycle(t *testing.T) {
 		"--profile", profileName,
 		"db", "delete-db-cluster",
 		"--db-cluster-id", clusterID,
+		"--wait",
 	)
 	remove.wantExitCode(0)
 	removed := decodeLiveCluster(t, remove)
 	if removed.ID != clusterID {
 		t.Fatalf("delete response did not reference created cluster %s:\n%s", clusterID, remove.stdout)
 	}
+	if removed.State != "DELETED" {
+		t.Fatalf("--wait returned cluster in state %q: %#v", removed.State, removed)
+	}
 	deleted = true
-
-	waitLiveClusterDeleted(t, bin, profileName, clusterID, 12*time.Minute)
 }
 
 func requireLive(t *testing.T) {
@@ -1716,54 +1725,6 @@ func waitLiveCluster(t *testing.T, bin, profileName, clusterID string, ready fun
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("timed out waiting for cluster %s to %s; last=%#v", clusterID, description, last)
-		}
-		time.Sleep(10 * time.Second)
-	}
-}
-
-func waitLiveBranch(t *testing.T, bin, profileName, clusterID, branchID string, ready func(liveBranch) bool, timeout time.Duration, description string) liveBranch {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	var last liveBranch
-	for {
-		describe := runTDC(t, bin, "--profile", profileName, "db", "describe-db-cluster-branch", "--db-cluster-id", clusterID, "--db-cluster-branch-id", branchID, "--view", "FULL")
-		describe.wantExitCode(0)
-		last = decodeLiveBranch(t, describe)
-		if ready(last) {
-			return last
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for branch %s to %s; last=%#v", branchID, description, last)
-		}
-		time.Sleep(5 * time.Second)
-	}
-}
-
-func waitLiveClusterDeleted(t *testing.T, bin, profileName, clusterID string, timeout time.Duration) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for {
-		describe := runTDC(t, bin, "--profile", profileName, "db", "describe-db-cluster", "--db-cluster-id", clusterID)
-		switch describe.exitCode {
-		case 0:
-			cluster := decodeLiveCluster(t, describe)
-			if cluster.ID != clusterID {
-				t.Fatalf("post-delete read returned a different cluster: %#v", cluster)
-			}
-			if cluster.State == "DELETED" {
-				return
-			}
-		case 5:
-			return
-		case 4:
-			// TiDB Cloud can return 403 for a just-deleted cluster that was
-			// readable before the successful DELETE.
-			return
-		default:
-			describe.fail("post-delete read should return deleted cluster state, not found, or no longer readable; got exit code %d", describe.exitCode)
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for cluster %s to be deleted", clusterID)
 		}
 		time.Sleep(10 * time.Second)
 	}
@@ -1950,9 +1911,10 @@ func ensureLiveFSResource(t *testing.T, bin, profileName string) *config.Profile
 		t.Fatalf("resolve live fs resource %q: %v", name, err)
 	}
 
-	create := runTDC(t, bin, "--profile", profileName, "fs", "create-file-system", "--file-system-name", name)
+	create := runTDC(t, bin, "--profile", profileName, "fs", "create-file-system", "--file-system-name", name, "--wait")
 	create.wantExitCode(0)
 	create.wantStdoutContains(`"credentials_stored": true`)
+	create.wantStdoutContains(`"status": "ready"`)
 	liveFSResourceAutoCreated = true
 
 	profile = liveProfile(t)
@@ -1960,7 +1922,6 @@ func ensureLiveFSResource(t *testing.T, bin, profileName string) *config.Profile
 	if err != nil {
 		t.Fatalf("tdc fs resource %q was created but is not in profile %q registry: %v", name, profileName, err)
 	}
-	waitLiveFSReady(t, bin, profileName, selected, 10*time.Minute)
 	return selected
 }
 

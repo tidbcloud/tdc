@@ -18,7 +18,7 @@ Primary create shape:
 
 ```bash
 tdc db create-db-cluster --db-cluster-name <name> --db-cluster-type starter
-tdc db create-db-cluster --db-cluster-name <name> --db-cluster-type starter --wait-until-active
+tdc db create-db-cluster --db-cluster-name <name> --db-cluster-type starter --wait
 ```
 
 ## Behavior
@@ -30,7 +30,7 @@ tdc db create-db-cluster --db-cluster-name <name> --db-cluster-type starter --wa
 - Mutating commands support `--dry-run`.
 - Commands must not prompt.
 - Create returns after the API accepts the asynchronous request by default.
-  Optional `--wait-until-active` polls the created cluster until it reaches
+  Optional `--wait` polls the created cluster until it reaches
   `ACTIVE`, for up to 12 minutes, and returns the final cluster representation.
 - Waiting never deletes the created resource. Timeout, cancellation, polling
   failure, or a terminal `DELETING`, `DELETED`, or `INACTIVE` state returns an
@@ -38,6 +38,13 @@ tdc db create-db-cluster --db-cluster-name <name> --db-cluster-type starter --wa
 - Delete must be non-interactive. It reads the remote cluster first, validates
   Starter-only behavior when plan metadata is available, and then deletes by
   cluster ID; it must never prompt.
+- Delete returns after the API accepts the asynchronous request by default.
+  Optional `--wait` polls for up to 12 minutes and succeeds when
+  the cluster reaches `DELETED` or is no longer accessible after the accepted
+  delete request.
+- A delete wait timeout, cancellation, or polling failure must not submit
+  another delete request. The error states that deletion may still be in
+  progress and identifies the cluster.
 
 ## Inputs And Config
 
@@ -57,10 +64,12 @@ tdc db create-db-cluster --db-cluster-name <name> --db-cluster-type starter --wa
   fields internally.
 - Create and update return the remote resource representation or operation
   status returned by the API.
-- Create with `--wait-until-active` returns a cluster whose state is `ACTIVE`.
+- Create with `--wait` returns a cluster whose state is `ACTIVE`.
   If waiting fails after creation, the error states that the cluster remains
   allocated and includes its ID.
-- Delete returns a structured confirmation or operation status.
+- Delete returns a structured confirmation or operation status. With
+  `--wait`, it returns a cluster representation with state
+  `DELETED`.
 - Errors should distinguish validation failures, authentication failures,
   permission failures, not found, quota/capacity issues, and backend API errors.
 - Permission errors must name the required permission, such as
@@ -74,11 +83,12 @@ and region:
 ```bash
 tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --dry-run
 tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter
-tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --wait-until-active
+tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --wait
 tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id>
 tdc db list-db-clusters --query 'clusters[].id'
 tdc db describe-db-cluster --db-cluster-id <id>
 tdc db delete-db-cluster --db-cluster-id <id>
+tdc db delete-db-cluster --db-cluster-id <id> --wait
 ```
 
 No command asks for a server URL. The active profile's `cloud_provider` and
@@ -119,7 +129,7 @@ Command mapping:
      and set label `tidb.cloud/project`.
   3. Call `POST /v1beta1/clusters` with `displayName`, project label, region
      name such as `regions/aws-us-east-1`, and only other confirmed fields.
-  4. When `--wait-until-active` is set and the create response is not already
+  4. When `--wait` is set and the create response is not already
      `ACTIVE`, call `GET /v1beta1/clusters/{clusterId}` every two seconds until
      `ACTIVE`, a terminal state, cancellation, polling failure, or the
      12-minute deadline.
@@ -138,6 +148,10 @@ Command mapping:
   2. Call `GET /v1beta1/clusters/{clusterId}`.
   3. If `clusterPlan` is present, verify it is `STARTER`.
   4. Call `DELETE /v1beta1/clusters/{clusterId}`.
+  5. When `--wait` is set, call
+     `GET /v1beta1/clusters/{clusterId}` every two seconds until the state is
+     `DELETED`, the resource is no longer accessible, cancellation, polling
+     failure, or the 12-minute deadline.
 
 Available but not part of this lifecycle MVP:
 
@@ -162,16 +176,19 @@ Available but not part of this lifecycle MVP:
 - Mock API tests cover create/list/describe/update/delete.
 - Mock API tests cover wait success, an immediately active create response,
   terminal state, polling failure, timeout, and default non-wait behavior.
+- Delete wait tests cover `DELETING` to `DELETED`, inaccessible-after-delete,
+  timeout, and dry-run wait-plan reporting.
 - Tests cover required `--db-cluster-type starter` on create.
 - Tests cover dry-run request validation and wait-plan reporting without
   sending mutating requests.
 - Tests cover stable JSON output and `--query`.
 - Tests cover delete safety behavior without prompts.
 - `make live-e2e` covers the real cluster lifecycle: create a uniquely named
-  `tdc-e2e-*` Starter cluster with `--wait-until-active` and without a spending
+  `tdc-e2e-*` Starter cluster with `--wait` and without a spending
   limit, verify the create result is `ACTIVE`, read it, update it, read it
-  again, delete it, and verify the cluster becomes deleted or not found. The
-  cleanup path only deletes the cluster created by that test run.
+  again, delete it with `--wait`, and verify the returned state
+  is `DELETED`. The cleanup path only deletes the cluster created by that test
+  run and also uses the wait flag.
 
 ## Out Of Scope
 

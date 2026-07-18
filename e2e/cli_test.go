@@ -199,7 +199,7 @@ func createClusterDryRunArgs() []string {
 		"--db-cluster-name", "demo-cluster",
 		"--db-cluster-type", "starter",
 		"--project-id", "project-1",
-		"--wait-until-active",
+		"--wait",
 		"--dry-run",
 	}
 }
@@ -333,12 +333,14 @@ func TestFSResourceRegistrySelectionAcrossCommandFamilies(t *testing.T) {
 	), "configure", "--profile", "stage", "--non-interactive")
 	configured.wantExitCode(0)
 
-	createWorkspace := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "create-file-system", "--file-system-name", "workspace")
+	createWorkspace := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "create-file-system", "--file-system-name", "workspace", "--wait")
 	createWorkspace.wantExitCode(0)
+	createWorkspace.wantStdoutContains(`"status": "ready"`)
 	createWorkspace.wantStdoutContains(`"credentials_stored": true`)
 	createWorkspace.wantStdoutContains(`"fs_token": "key-workspace"`)
-	createScratch := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "--region", "aws-us-west-2", "fs", "create-file-system", "--file-system-name", "scratch")
+	createScratch := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "--region", "aws-us-west-2", "fs", "create-file-system", "--file-system-name", "scratch", "--wait")
 	createScratch.wantExitCode(0)
+	createScratch.wantStdoutContains(`"status": "ready"`)
 	createScratch.wantStdoutContains(`"credentials_stored": true`)
 
 	list := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "list-file-systems")
@@ -400,6 +402,7 @@ func TestFSResourceRegistrySelectionAcrossCommandFamilies(t *testing.T) {
 
 	deleteScratch := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "delete-file-system", "--file-system-name", "scratch", "--confirm-file-system-name", "scratch")
 	deleteScratch.wantExitCode(0)
+	deleteScratch.wantStdoutContains(`"status": "deleting"`)
 	afterDelete := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "list-file-systems")
 	afterDelete.wantExitCode(0)
 	afterDelete.wantStdoutContains(`"file_system_name": "workspace"`)

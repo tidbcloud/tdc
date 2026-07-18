@@ -90,6 +90,62 @@ func TestDrive9CreateFileSystemStoresRegistryCredentialsAndUsesCanonicalRegion(t
 	}
 }
 
+func TestDrive9CreateFileSystemWaitsUntilReady(t *testing.T) {
+	home := t.TempDir()
+	companion, recordPath := buildFakeDrive9(t)
+	t.Setenv("TDC_FAKE_DRIVE9_RECORD", recordPath)
+	t.Setenv("TDC_FAKE_DRIVE9_STAT_FAILURE_SEQUENCE", filepath.Join(t.TempDir(), "stat-attempted"))
+
+	service := testCompanionService(home, companion)
+	service.FSReadyWaitTimeout = time.Second
+	service.FSReadyWaitPollInterval = time.Millisecond
+	result, err := service.CreateFileSystem(context.Background(), CreateFileSystemOptions{
+		Profile:        testProfile(),
+		FileSystemName: "workspace",
+		WaitUntilReady: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateFileSystem failed: %v", err)
+	}
+	if result.Status != "ready" || !result.CredentialsStored {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	statCalls := 0
+	for _, call := range readFakeDrive9Calls(t, recordPath) {
+		if len(call.Args) >= 2 && call.Args[0] == "fs" && call.Args[1] == "stat" {
+			statCalls++
+			if call.Env["DRIVE9_API_KEY"] != "fs-secret" {
+				t.Fatalf("readiness stat used wrong credentials: %#v", call.Env)
+			}
+		}
+	}
+	if statCalls != 2 {
+		t.Fatalf("readiness stat calls = %d, want 2", statCalls)
+	}
+}
+
+func TestDrive9CreateFileSystemReadyTimeoutPreservesCredentials(t *testing.T) {
+	home := t.TempDir()
+	companion, _ := buildFakeDrive9(t)
+	t.Setenv("TDC_FAKE_DRIVE9_STAT_ALWAYS_FAIL", "1")
+
+	service := testCompanionService(home, companion)
+	service.FSReadyWaitTimeout = 10 * time.Millisecond
+	service.FSReadyWaitPollInterval = time.Millisecond
+	_, err := service.CreateFileSystem(context.Background(), CreateFileSystemOptions{
+		Profile:        testProfile(),
+		FileSystemName: "workspace",
+		WaitUntilReady: true,
+	})
+	if apperr.CodeFor(err) != "fs.ready_wait_timeout" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resource, getErr := fscred.Get(home, "stage", "workspace")
+	if getErr != nil || resource.APIKey != "fs-secret" {
+		t.Fatalf("readiness timeout removed stored credentials: resource=%#v err=%v", resource, getErr)
+	}
+}
+
 func TestDrive9CreateFileSystemFromEnvironmentProfileStoresDefaultProfile(t *testing.T) {
 	home := t.TempDir()
 	companion, recordPath := buildFakeDrive9(t)
@@ -208,7 +264,7 @@ func TestDrive9DeleteFileSystemDeletesOnlySelectedRegistryResource(t *testing.T)
 	if err != nil {
 		t.Fatalf("DeleteFileSystem failed: %v", err)
 	}
-	if !result.CredentialsRemoved || result.Status != "deleted" {
+	if !result.CredentialsRemoved || result.Status != "deleting" || result.RemoteDeletionState != "deleting" {
 		t.Fatalf("unexpected delete result: %#v", result)
 	}
 	deleteCall := requireFakeDrive9Call(t, recordPath, "delete")
@@ -501,6 +557,7 @@ func TestDryRunCreateFileSystemUsesRedactedProvisionShape(t *testing.T) {
 	result, err := Service{Resolver: supportedFSManifestResolver("https://fs.test")}.DryRunCreateFileSystem(context.Background(), "tdc fs create-file-system", CreateFileSystemOptions{
 		Profile:        profile,
 		FileSystemName: "workspace",
+		WaitUntilReady: true,
 	})
 	if err != nil {
 		t.Fatalf("DryRunCreateFileSystem failed: %v", err)
@@ -524,6 +581,9 @@ func TestDryRunCreateFileSystemUsesRedactedProvisionShape(t *testing.T) {
 	}
 	if !hasDryRunCheck(result.Checks, "endpoint_selection", "passed") {
 		t.Fatalf("expected endpoint dry-run check: %#v", result.Checks)
+	}
+	if !hasDryRunCheck(result.Checks, "post_create_wait", "passed") {
+		t.Fatalf("expected readiness wait dry-run check: %#v", result.Checks)
 	}
 }
 
@@ -616,7 +676,7 @@ func main() {
 			"server":         os.Getenv("DRIVE9_SERVER"),
 		})
 	case args[0] == "delete":
-		_ = json.NewEncoder(os.Stdout).Encode(map[string]string{"status": "deleted"})
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]string{"status": "deleting"})
 	case len(args) >= 2 && args[0] == "fs" && args[1] == "cat":
 		fmt.Fprint(os.Stdout, "file bytes")
 	case len(args) >= 2 && args[0] == "fs" && args[1] == "cp" && os.Getenv("TDC_FAKE_DRIVE9_CP_FAILURE_SEQUENCE") != "":
@@ -629,6 +689,17 @@ func main() {
 		fmt.Fprintln(os.Stderr, "fs cp: remote resource not found")
 		os.Exit(1)
 	case len(args) >= 2 && args[0] == "fs" && args[1] == "stat":
+		if os.Getenv("TDC_FAKE_DRIVE9_STAT_ALWAYS_FAIL") == "1" {
+			fmt.Fprintln(os.Stderr, "fs stat: storage backend unavailable; resource is still provisioning")
+			os.Exit(1)
+		}
+		if sequencePath := os.Getenv("TDC_FAKE_DRIVE9_STAT_FAILURE_SEQUENCE"); sequencePath != "" {
+			if _, err := os.Stat(sequencePath); os.IsNotExist(err) {
+				_ = os.WriteFile(sequencePath, []byte("attempted"), 0600)
+				fmt.Fprintln(os.Stderr, "fs stat: storage backend unavailable; resource is still provisioning")
+				os.Exit(1)
+			}
+		}
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"path": ":/", "size": 12, "isdir": false, "revision": 3})
 	default:
 		return

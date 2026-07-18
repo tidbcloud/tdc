@@ -56,7 +56,8 @@ bin/tdc db create-db-cluster \
 
 bin/tdc db create-db-cluster \
   --db-cluster-name "$CLUSTER_NAME" \
-  --db-cluster-type starter
+  --db-cluster-type starter \
+  --wait
 ```
 
 从 JSON 结果中找到 cluster ID：
@@ -67,7 +68,7 @@ export CLUSTER_ID="$(bin/tdc db list-db-clusters | jq -r --arg name "$CLUSTER_NA
 bin/tdc db describe-db-cluster --db-cluster-id "$CLUSTER_ID" --output text
 ```
 
-等待状态变为 `ACTIVE`，然后更新名称并重新读取：
+创建命令返回 `ACTIVE` 后，更新名称并重新读取：
 
 ```bash
 export CLUSTER_RENAMED="${CLUSTER_NAME}-renamed"
@@ -84,7 +85,8 @@ bin/tdc db describe-db-cluster --db-cluster-id "$CLUSTER_ID" --output text
 ```bash
 bin/tdc db create-db-cluster-branch \
   --db-cluster-id "$CLUSTER_ID" \
-  --db-cluster-branch-name demo-branch
+  --db-cluster-branch-name demo-branch \
+  --wait
 
 bin/tdc db list-db-cluster-branches --db-cluster-id "$CLUSTER_ID" --output text
 ```
@@ -153,7 +155,8 @@ bin/tdc fs create-file-system \
   --dry-run
 
 bin/tdc fs create-file-system \
-  --file-system-name tdc-demo-workspace
+  --file-system-name tdc-demo-workspace \
+  --wait
 
 bin/tdc fs list-file-systems --output text
 bin/tdc fs describe-file-system \
@@ -391,7 +394,9 @@ bin/tdc fs delete-file-system \
 删除演示 cluster：
 
 ```bash
-bin/tdc db delete-db-cluster --db-cluster-id "$CLUSTER_ID"
+bin/tdc db delete-db-cluster \
+  --db-cluster-id "$CLUSTER_ID" \
+  --wait
 ```
 
 ## 讲解重点
