@@ -212,6 +212,7 @@ func newDBCreateClusterCommand(info version.Info) *cobra.Command {
 	cmd.Flags().String("db-cluster-type", "", "DB cluster type; must be starter")
 	cmd.Flags().String("project-id", "", "TiDB Cloud project id")
 	cmd.Flags().Int32("monthly-spending-limit-usd-cents", -1, "monthly spending limit in USD cents; omit to use the API default")
+	cmd.Flags().Bool("wait-until-active", false, "wait until the created cluster becomes ACTIVE before returning")
 	markUsageRequired(cmd, "db-cluster-name", "db-cluster-type")
 	return cmd
 }
@@ -654,6 +655,10 @@ func createClusterOptions(ctx commandContext, profile *config.Profile) (db.Creat
 	if err != nil {
 		return db.CreateClusterOptions{}, err
 	}
+	waitUntilActive, err := ctx.BoolFlag("wait-until-active")
+	if err != nil {
+		return db.CreateClusterOptions{}, err
+	}
 	return db.CreateClusterOptions{
 		Profile:                      profile,
 		DisplayName:                  name,
@@ -661,6 +666,7 @@ func createClusterOptions(ctx commandContext, profile *config.Profile) (db.Creat
 		ProjectID:                    projectID,
 		ProjectIDExplicit:            ctx.FlagChanged("project-id"),
 		MonthlySpendingLimitUSDCents: spendingLimit,
+		WaitUntilActive:              waitUntilActive,
 	}, nil
 }
 

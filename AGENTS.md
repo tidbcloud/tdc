@@ -195,9 +195,10 @@ the profile for both focused and complete live targets.
 Live e2e must strictly cover every implemented interface and command for the
 current project stage, including real create/update/delete flows when those
 commands are implemented. For Starter DB clusters, the live suite creates a
-uniquely named `tdc-e2e-*` cluster without a spending limit or explicit
-`--project-id`, verifies its project label matches the configured default, and
-deletes only that cluster. For Starter DB branches, the live suite creates, reads, lists,
+uniquely named `tdc-e2e-*` cluster with `--wait-until-active`, without a
+spending limit or explicit `--project-id`, verifies the returned state is
+`ACTIVE` and its project label matches the configured default, and deletes only
+that cluster. For Starter DB branches, the live suite creates, reads, lists,
 and deletes only a `tdc-e2e-branch-*` branch on the cluster created by the same
 test run. For Starter DB SQL access, the live suite prepares tdc-managed
 read-only, read-write, and admin SQL users on the temporary cluster, verifies
@@ -317,6 +318,10 @@ Follow these rules unless `docs/priciples.md` is updated:
 - Mutating control-plane commands support `--dry-run`.
 - `--dry-run` must validate local config, credentials, provider, and region
   before reporting a planned mutation.
+- `tdc db create-db-cluster --wait-until-active` waits up to 12 minutes for the
+  created cluster to reach `ACTIVE`. It must never delete the cluster on
+  timeout, cancellation, a polling failure, or a terminal state; errors must
+  retain the created cluster ID and provide an inspection command.
 - Read-only commands reject `--dry-run`.
 - Apply `--query` after command execution and before rendering.
 - Users provide cloud placement as one canonical `region_code`, never as
@@ -374,6 +379,7 @@ Implemented command behavior:
 - `tdc organization list-projects --query 'projects[0].id'`
 - `tdc organization list-projects --output text`
 - `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter`
+- `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --wait-until-active`
 - `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --dry-run`
 - `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id>`
 - `tdc db list-db-clusters`

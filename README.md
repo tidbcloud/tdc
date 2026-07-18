@@ -33,29 +33,23 @@ echo "Hello Sandbox Workspace!" >> /path_to_workspace/hello.txt
 tdc fs unmount-file-system --mount-path /path_to_workspace --region <REGION_CODE>
 ```
 
-### Always-on, zero infrastructure MySQL — The 4-Command Superpower
+### Always-on, zero infrastructure MySQL — The 3-Command Superpower
 
-An agent can go from zero to live HTAP SQL (Hybrid Transaction / Analytical Processing) in four commands:
+An agent can go from zero to live HTAP SQL (Hybrid Transaction / Analytical Processing) in three commands:
 
-1. Start provisioning a serverless MySQL-compatible cluster and capture its ID
-
-```shell
-export CLUSTER_ID="$(tdc db create-db-cluster --db-cluster-type starter --db-cluster-name my-app-db --query id --output text)"
-```
-
-2. Wait for the cluster to become active (typically around 30 seconds)
+1. Provision a serverless MySQL-compatible cluster, wait until it is active, and capture its ID
 
 ```shell
-until [ "$(tdc db describe-db-cluster --db-cluster-id "$CLUSTER_ID" --query state --output text)" = "ACTIVE" ]; do sleep 2; done
+export CLUSTER_ID="$(tdc db create-db-cluster --db-cluster-type starter --db-cluster-name my-app-db --wait-until-active --query id --output text)"
 ```
 
-3. Create the SQL users it needs to connect
+2. Create the SQL users it needs to connect
 
 ```shell
 tdc db create-db-sql-users --db-cluster-id "$CLUSTER_ID"
 ```
 
-4. Retrieve the database connection string for your agent and share it across sandboxes as needed
+3. Retrieve the database connection string for your agent and share it across sandboxes as needed
 
 ```shell
 export DATABASE_URL="$(tdc db format-db-connection-string --db-cluster-id "$CLUSTER_ID" --read-write --query connection_string --output text)"
@@ -149,10 +143,12 @@ tdc fs mount-file-system --file-system-name agent-workspace --mount-path /path_t
 ### TiDB Cloud Starter
 
 ```shell
-tdc db create-db-cluster --db-cluster-name my-distributed-mysql --db-cluster-type starter
+tdc db create-db-cluster --db-cluster-name my-distributed-mysql --db-cluster-type starter --wait-until-active
 ```
 
 Cluster creation uses the configured `project_id` by default. Use optional `--project-id <project-id>` to create in another accessible project. An explicit empty `--project-id` is rejected instead of falling back to the profile.
+
+Without `--wait-until-active`, cluster creation returns as soon as TiDB Cloud accepts the asynchronous create request. With the flag, tdc waits up to 12 minutes and returns the final `ACTIVE` cluster. A timeout or interruption leaves the created cluster intact and reports its ID for inspection.
 
 ### Organization Projects
 

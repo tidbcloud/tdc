@@ -1458,6 +1458,7 @@ func TestLiveDBClusterLifecycle(t *testing.T) {
 		"db", "create-db-cluster",
 		"--db-cluster-name", clusterName,
 		"--db-cluster-type", "starter",
+		"--wait-until-active",
 	)
 	create.wantExitCode(0)
 	created := decodeLiveCluster(t, create)
@@ -1467,9 +1468,15 @@ func TestLiveDBClusterLifecycle(t *testing.T) {
 	clusterID = created.ID
 	defer cleanupLiveSQLCredentials(t, clusterID)
 
-	described := waitLiveCluster(t, bin, profileName, clusterID, func(cluster liveCluster) bool {
-		return cluster.ID == clusterID && cluster.DisplayName == clusterName && cluster.State == "ACTIVE"
-	}, 12*time.Minute, "become ACTIVE after create")
+	if created.State != "ACTIVE" {
+		t.Fatalf("--wait-until-active returned cluster in state %q: %#v", created.State, created)
+	}
+	describe := runTDC(t, bin, "--profile", profileName, "db", "describe-db-cluster", "--db-cluster-id", clusterID, "--view", "FULL")
+	describe.wantExitCode(0)
+	described := decodeLiveCluster(t, describe)
+	if described.ID != clusterID || described.DisplayName != clusterName || described.State != "ACTIVE" {
+		t.Fatalf("unexpected described cluster: %#v\n%s", described, describe.stdout)
+	}
 	if described.ClusterPlan != "" && described.ClusterPlan != "STARTER" {
 		t.Fatalf("expected STARTER cluster, got %#v", described)
 	}

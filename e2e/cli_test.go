@@ -163,6 +163,7 @@ func TestOutputQueryAndDryRun(t *testing.T) {
 	dryRun.wantExitCode(0)
 	dryRun.wantStdoutContains(`"dry_run": true`)
 	dryRun.wantStdoutContains(`"would_send_request": true`)
+	dryRun.wantStdoutContains(`"post_create_wait"`)
 
 	regionOverride := runTDCWithInput(t, bin, "", []string{
 		"TDC_PUBLIC_KEY=e2e-public",
@@ -198,6 +199,7 @@ func createClusterDryRunArgs() []string {
 		"--db-cluster-name", "demo-cluster",
 		"--db-cluster-type", "starter",
 		"--project-id", "project-1",
+		"--wait-until-active",
 		"--dry-run",
 	}
 }
