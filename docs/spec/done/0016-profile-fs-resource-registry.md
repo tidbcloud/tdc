@@ -101,7 +101,7 @@ New or changed commands:
 
 ```bash
 tdc fs create-file-system --file-system-name <name> [--set-default] [--wait] [--dry-run]
-tdc fs delete-file-system --file-system-name <name> --confirm-file-system-name <name> [--dry-run]
+tdc fs delete-file-system --file-system-name <name> [--dry-run]
 tdc fs list-file-systems
 tdc fs describe-file-system --file-system-name <name>
 tdc fs check-file-system [--file-system-name <name>]

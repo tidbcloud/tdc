@@ -51,7 +51,7 @@ Implemented:
   `docs/spec/done/0018-fs-token-auth-and-config-free-access.md`
 - install and update distribution from
   `docs/spec/done/0012-install-and-update-distribution.md`
-- English and Chinese PingCAP Preview documentation from
+- English PingCAP Preview documentation from
   `docs/spec/done/0019-pingcap-tdc-documentation.md`
 - `tdc configure`
 - `tdc update --check`
@@ -288,7 +288,6 @@ docs/priciples.md           product principles and MVP scope source of truth
 docs/spec/                  pending requirement specs
 docs/spec/done/             completed requirement specs
 docs/pingcap-docs/docs/     pingcap/docs English documentation submodule
-docs/pingcap-docs/docs-cn/  pingcap/docs-cn Chinese documentation submodule
 ref/                        read-only reference implementations
 ```
 
@@ -344,6 +343,9 @@ Follow these rules unless `docs/priciples.md` is updated:
   credential source.
 - Every command should be usable by scripts and agents without
   terminal-specific assumptions.
+- When creating a pull request, check whether the target repository has a pull
+  request template. If it does, follow that template when writing the pull
+  request description.
 - Help must work as:
   - `tdc help`
   - `tdc <command> help`
@@ -427,8 +429,8 @@ Implemented command behavior:
 - `tdc fs create-file-system --file-system-name workspace --wait`
 - `tdc fs create-file-system --file-system-name workspace --dry-run`
 - `tdc fs create-file-system --file-system-name scratch --set-default`
-- `tdc fs delete-file-system --file-system-name workspace --confirm-file-system-name workspace`
-- `tdc fs delete-file-system --file-system-name workspace --confirm-file-system-name workspace --dry-run`
+- `tdc fs delete-file-system --file-system-name workspace`
+- `tdc fs delete-file-system --file-system-name workspace --dry-run`
 - `tdc fs list-file-systems`
 - `tdc fs describe-file-system --file-system-name workspace`
 - `tdc fs set-default-file-system --file-system-name workspace`
@@ -595,12 +597,12 @@ Registered command surface:
 
 Do not rename commands without updating specs, README, e2e tests, and AGENTS.
 Any code change that changes user-visible behavior must keep README.md in sync.
-It must also update the matching English and Chinese tdc pages under
-`docs/pingcap-docs/` when the published behavior changes. Keep both locale
-trees structurally identical, use globally unique `tdc-` basenames, preserve
-the standard Preview note on every page, and update both `TOC-ai.md` files and
-both `ai/_index.md` pages when adding or removing a document. Validate command
-names and flags against the compiled CLI help, not historical specs or demos.
+It must also update the matching English tdc pages under
+`docs/pingcap-docs/docs/` when the published behavior changes. Use globally
+unique `tdc-` basenames, preserve the standard Preview note on every page, and
+update `TOC-ai.md` and `ai/_index.md` when adding or removing a document.
+Validate command names and flags against the compiled CLI help, not historical
+specs or demos.
 
 ## Configuration And Credentials
 

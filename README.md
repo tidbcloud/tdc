@@ -268,7 +268,6 @@ tdc update --target-version v0.1.1
 ## Documentation
 
 - [English Preview documentation](docs/pingcap-docs/docs/ai/tdc/tdc-overview.md)
-- [中文预览文档](docs/pingcap-docs/docs-cn/ai/tdc/tdc-overview.md)
 
 ## Build from source
 

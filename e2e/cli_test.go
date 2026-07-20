@@ -53,6 +53,11 @@ func TestHelpAndVersion(t *testing.T) {
 	chmodFile.wantExitCode(0)
 	chmodFile.wantStdoutContains("--mode")
 
+	deleteFileSystem := runTDC(t, bin, "fs", "delete-file-system", "help")
+	deleteFileSystem.wantExitCode(0)
+	deleteFileSystem.wantStdoutContains("--file-system-name")
+	deleteFileSystem.wantStdoutNotContains("--confirm-file-system-name")
+
 	packFileSystem := runTDC(t, bin, "fs", "pack-file-system", "help")
 	packFileSystem.wantExitCode(0)
 	packFileSystem.wantStdoutContains("--archive-path")
@@ -117,6 +122,10 @@ func TestErrorsAreRenderedAtCLIBoundary(t *testing.T) {
 	unknown := runTDC(t, bin, "db", "missing-command")
 	unknown.wantExitCode(2)
 	unknown.wantStderrContains(`tdc [ERROR]: unknown command "missing-command" for "tdc db"`)
+
+	removedConfirmation := runTDC(t, bin, "fs", "delete-file-system", "--file-system-name", "workspace", "--confirm-file-system-name", "workspace")
+	removedConfirmation.wantExitCode(2)
+	removedConfirmation.wantStderrContains(`unknown flag: --confirm-file-system-name`)
 
 	releaseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/releases/latest" {
@@ -400,7 +409,7 @@ func TestFSResourceRegistrySelectionAcrossCommandFamilies(t *testing.T) {
 	assertFakeDrive9Call(t, calls, []string{"git", "hydrate"}, "key-scratch", home, "stage", "scratch", "https://fs-west.test", "aws-us-west-2")
 	assertFakeDrive9Call(t, calls, []string{"mount"}, "key-scratch", home, "stage", "scratch", "https://fs-west.test", "aws-us-west-2")
 
-	deleteScratch := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "delete-file-system", "--file-system-name", "scratch", "--confirm-file-system-name", "scratch")
+	deleteScratch := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "delete-file-system", "--file-system-name", "scratch")
 	deleteScratch.wantExitCode(0)
 	deleteScratch.wantStdoutContains(`"status": "deleting"`)
 	afterDelete := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "list-file-systems")

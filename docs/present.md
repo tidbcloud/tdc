@@ -387,8 +387,7 @@ rm -f /tmp/tdc-demo-token.txt
 
 ```bash
 bin/tdc fs delete-file-system \
-  --file-system-name tdc-demo-workspace \
-  --confirm-file-system-name tdc-demo-workspace
+  --file-system-name tdc-demo-workspace
 ```
 
 删除演示 cluster：

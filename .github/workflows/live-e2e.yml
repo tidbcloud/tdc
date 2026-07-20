@@ -107,5 +107,4 @@ jobs:
           fi
           bin/tdc fs delete-file-system \
             --profile live-e2e \
-            --file-system-name "$TDC_LIVE_FS_NAME" \
-            --confirm-file-system-name "$TDC_LIVE_FS_NAME"
+            --file-system-name "$TDC_LIVE_FS_NAME"

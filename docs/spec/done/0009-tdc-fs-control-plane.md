@@ -65,7 +65,7 @@ canonical region:
 tdc fs check-file-system
 tdc fs create-file-system --file-system-name workspace --dry-run
 tdc fs create-file-system --file-system-name workspace
-tdc fs delete-file-system --file-system-name workspace --confirm-file-system-name workspace
+tdc fs delete-file-system --file-system-name workspace
 ```
 
 The user chooses one canonical region code during `tdc configure`; the CLI
@@ -85,8 +85,8 @@ resolves all fs endpoints internally.
   selecting `tidb_cloud_native` entries.
 - `internal/fs/status` defines the structured check response with local config,
   credential, permission, endpoint, and service health entries.
-- Delete safety is implemented through an explicit long flag, initially
-  `--confirm-file-system-name <name>`.
+- Deletion requires an explicit `--file-system-name <name>` and does not add a
+  console-style name confirmation flag.
 
 ## API Call Chain
 
@@ -140,7 +140,7 @@ Command mapping:
      canonical `fs_region_code` in `[profile]` of `~/.tdc/config`.
   5. Store `fs_api_key` in `[profile]` of `~/.tdc/credentials`.
 - `tdc fs delete-file-system`
-  1. Validate `--confirm-file-system-name`.
+  1. Validate `--file-system-name`.
   2. Resolve the tdc fs base URL through the region manifest.
   3. Load the stored resource API key and call `DELETE /v1/tenant` with
      `Authorization: Bearer <api-key>`.
