@@ -36,6 +36,9 @@ func TestRunWritesProfileAndDoesNotPrintSecret(t *testing.T) {
 	if strings.Contains(output.String(), "private-key") {
 		t.Fatalf("configure output leaked private key:\n%s", output.String())
 	}
+	if !strings.Contains(output.String(), "Default region code") {
+		t.Fatalf("configure output missing default region prompt:\n%s", output.String())
+	}
 	if result.ProjectID != "virtual-1" || result.ProjectType != virtualProjectType || !result.CredentialsStored {
 		t.Fatalf("unexpected configure result: %#v", result)
 	}

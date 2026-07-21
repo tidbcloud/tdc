@@ -27,6 +27,7 @@ const usageRequiredFlagAnnotation = "tdc_usage_required"
 
 func init() {
 	cobra.AddTemplateFunc("usageSynopsis", usageSynopsis)
+	cobra.AddTemplateFunc("formattedFlagUsages", formattedFlagUsages)
 }
 
 type Options struct {
@@ -734,6 +735,74 @@ func usageFlagValueType(flag *pflag.Flag) string {
 	}
 }
 
+func formattedFlagUsages(flags *pflag.FlagSet) string {
+	if flags == nil {
+		return ""
+	}
+	type flagUsage struct {
+		label       string
+		description string
+	}
+	lines := make([]flagUsage, 0)
+	maxLabelLength := 0
+	flags.VisitAll(func(flag *pflag.Flag) {
+		if flag == nil || flag.Hidden {
+			return
+		}
+		label := "      " + usageFlagSegment(flag)
+		if usageFlagRequired(flag) {
+			label += " (required)"
+		}
+		_, description := pflag.UnquoteUsage(flag)
+		description += formattedFlagDefault(flag)
+		if flag.Deprecated != "" {
+			description += fmt.Sprintf(" (DEPRECATED: %s)", flag.Deprecated)
+		}
+		lines = append(lines, flagUsage{label: label, description: description})
+		if len(label) > maxLabelLength {
+			maxLabelLength = len(label)
+		}
+	})
+
+	var result strings.Builder
+	for _, line := range lines {
+		fmt.Fprintf(&result, "%-*s   %s\n", maxLabelLength, line.label, line.description)
+	}
+	return result.String()
+}
+
+func formattedFlagDefault(flag *pflag.Flag) string {
+	if flag == nil || flagDefaultIsZero(flag) {
+		return ""
+	}
+	if flag.Value.Type() == "string" {
+		return fmt.Sprintf(" (default %q)", flag.DefValue)
+	}
+	return fmt.Sprintf(" (default %s)", flag.DefValue)
+}
+
+func flagDefaultIsZero(flag *pflag.Flag) bool {
+	if flag == nil || flag.Value == nil {
+		return true
+	}
+	switch flag.Value.Type() {
+	case "bool", "boolfunc":
+		return flag.DefValue == "false" || flag.DefValue == ""
+	case "duration":
+		return flag.DefValue == "0" || flag.DefValue == "0s"
+	case "int", "int8", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "count", "float32", "float64":
+		return flag.DefValue == "0"
+	case "string":
+		return flag.DefValue == ""
+	case "ip", "ipMask", "ipNet":
+		return flag.DefValue == "<nil>"
+	case "intSlice", "stringSlice", "stringArray", "uintSlice", "boolSlice":
+		return flag.DefValue == "[]"
+	default:
+		return flag.DefValue == "false" || flag.DefValue == "<nil>" || flag.DefValue == "" || flag.DefValue == "0"
+	}
+}
+
 const helpTemplate = `{{with (or .Long .Short)}}{{.}}
 
 {{end}}Usage:
@@ -748,10 +817,10 @@ Commands:
 {{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
 
 Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+{{formattedFlagUsages .LocalFlags | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
 
 Global Flags:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}
+{{formattedFlagUsages .InheritedFlags | trimTrailingWhitespaces}}{{end}}
 `
 
 const usageTemplate = `Usage:
@@ -759,8 +828,8 @@ const usageTemplate = `Usage:
   {{.CommandPath}} help [command]{{end}}{{if .HasAvailableLocalFlags}}
 
 Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+{{formattedFlagUsages .LocalFlags | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
 
 Global Flags:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}
+{{formattedFlagUsages .InheritedFlags | trimTrailingWhitespaces}}{{end}}
 `

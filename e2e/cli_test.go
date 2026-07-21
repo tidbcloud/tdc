@@ -29,13 +29,16 @@ func TestHelpAndVersion(t *testing.T) {
 	missingCommand.wantStderrContains("usage: tdc <command> [<subcommand>] [parameters]")
 	missingCommand.wantStderrContains("tdc <command> <subcommand> help")
 	missingCommand.wantStderrNotContains("Commands:")
+	if !strings.HasPrefix(missingCommand.stderr, "\ntdc [ERROR]:") {
+		missingCommand.fail("stderr should start with a blank line followed by the error prefix")
+	}
 
 	root := runTDC(t, bin, "help")
 	root.wantExitCode(0)
 	root.wantStdoutContains("Commands:")
 	root.wantStdoutContains("db")
-	root.wantStdoutContains("--region string")
 	root.wantStdoutNotContains("-h,")
+	root.wantStdoutContains("--region <string>")
 
 	db := runTDC(t, bin, "db", "help")
 	db.wantExitCode(0)
@@ -68,6 +71,18 @@ func TestHelpAndVersion(t *testing.T) {
 	deleteFileSystem.wantExitCode(0)
 	deleteFileSystem.wantStdoutContains("--file-system-name")
 	deleteFileSystem.wantStdoutNotContains("--confirm-file-system-name")
+
+	createDBCluster := runTDC(t, bin, "db", "create-db-cluster", "help")
+	createDBCluster.wantExitCode(0)
+	createDBCluster.wantStdoutContains("--db-cluster-name <string> (required)")
+	createDBCluster.wantStdoutContains("--db-cluster-type <string> (required)")
+	createDBCluster.wantStdoutContains("--project-id <string>")
+	createDBCluster.wantStdoutNotContains("--project-id <string> (required)")
+
+	configure := runTDC(t, bin, "configure", "help")
+	configure.wantExitCode(0)
+	configure.wantStdoutContains("--region-code <string>")
+	configure.wantStdoutContains("Default region code")
 
 	packFileSystem := runTDC(t, bin, "fs", "pack-file-system", "help")
 	packFileSystem.wantExitCode(0)

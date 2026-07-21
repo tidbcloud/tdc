@@ -42,6 +42,8 @@ on.
   with exit code `2` and a compact two-level command synopsis. Users can run
   `tdc help` for the complete command and flag listing.
 - Help text must be deterministic and suitable for agents to parse.
+- Flags and Global Flags sections render value types as `<type>` and append
+  `(required)` after flags declared required by the command contract.
 
 ## Inputs And Config
 

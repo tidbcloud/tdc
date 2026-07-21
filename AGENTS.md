@@ -350,6 +350,9 @@ Follow these rules unless `docs/priciples.md` is updated:
   - `tdc help`
   - `tdc <command> help`
   - `tdc <command> <subcommand> help`
+- In generated Flags and Global Flags sections, render value types as
+  `<type>` and append `(required)` to flags marked with
+  `tdc_usage_required`.
 - Keep the global `--version` behavior intact at every command level. Do not
   add command-specific `--version <value>` flags; use names such as
   `--target-version` when a command needs a version input.

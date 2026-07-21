@@ -76,7 +76,7 @@ func newConfigureCommand(info version.Info) *cobra.Command {
 			return renderStructured(cmd, result)
 		},
 	}, info)
-	cmd.Flags().String("region-code", "", "TiDB Cloud region code, for example aws-us-east-1 or aws-ap-southeast-1.")
+	cmd.Flags().String("region-code", "", "Default region code, for example aws-us-east-1 or aws-ap-southeast-1.")
 	cmd.Flags().String("tdc-public-key", "", "TiDB Cloud API public key.")
 	cmd.Flags().String("tdc-private-key", "", "TiDB Cloud API private key.")
 	cmd.Flags().Bool("non-interactive", false, "Use this option to avoid being prompted for configuration values. You must provide at least three configuration values (--tdc-public-key, --tdc-private-key, and --region-code) when using this option. This is useful when running tdc in a script or automated environment.")
