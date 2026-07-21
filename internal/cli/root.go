@@ -45,7 +45,7 @@ func NewRootCommand(info version.Info) *cobra.Command {
 		Short: "CLI for TiDB Cloud Filesystem (FS) and TiDB Cloud Starter.",
 		Long:  "The TiDB Cloud Command Line Interface is a unified tool to manage your TiDB Cloud Filesystem (FS) and Starter services.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return cmd.Help()
+			return rootCommandRequiredError(cmd)
 		},
 	}, info)
 
@@ -80,6 +80,24 @@ func NewRootCommand(info version.Info) *cobra.Command {
 	applyCommandDefaults(root, info)
 
 	return root
+}
+
+func rootCommandRequiredError(cmd *cobra.Command) error {
+	return apperr.New(
+		"cli.missing_command",
+		"usage",
+		2,
+		fmt.Sprintf(`the following arguments are required: command
+
+%s
+
+usage: tdc <command> <subcommand> [<subcommand> ...] [parameters]
+To see help information, you can run:
+
+  tdc help
+  tdc <command> help
+  tdc <command> <subcommand> help`, cmd.Long),
+	)
 }
 
 func Execute(ctx context.Context, root *cobra.Command, args []string, stdout, stderr io.Writer) error {

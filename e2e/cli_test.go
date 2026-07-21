@@ -19,6 +19,17 @@ import (
 func TestHelpAndVersion(t *testing.T) {
 	bin := tdcBinary(t)
 
+	missingCommand := runTDC(t, bin)
+	missingCommand.wantExitCode(2)
+	if missingCommand.stdout != "" {
+		missingCommand.fail("stdout should be empty")
+	}
+	missingCommand.wantStderrContains("tdc [ERROR]: the following arguments are required: command")
+	missingCommand.wantStderrContains("The TiDB Cloud Command Line Interface is a unified tool")
+	missingCommand.wantStderrContains("usage: tdc <command> <subcommand> [<subcommand> ...] [parameters]")
+	missingCommand.wantStderrContains("tdc <command> <subcommand> help")
+	missingCommand.wantStderrNotContains("Commands:")
+
 	root := runTDC(t, bin, "help")
 	root.wantExitCode(0)
 	root.wantStdoutContains("Commands:")

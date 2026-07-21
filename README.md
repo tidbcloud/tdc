@@ -171,7 +171,7 @@ Each project includes a `type`: `tidbx` identifies a regular project and `tidbx_
 
 ## Commands
 
-Run `tdc help`, `tdc <command> help`, or `tdc <command> <subcommand> help` for flags and examples.
+Running `tdc` without a command returns a usage error and a compact two-level command synopsis. Run `tdc help`, `tdc <command> help`, or `tdc <command> <subcommand> help` for the full command list, flags, and examples.
 
 <details>
 <summary>All commands</summary>

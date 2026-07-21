@@ -376,6 +376,8 @@ Follow these rules unless `docs/priciples.md` is updated:
 
 Implemented command behavior:
 
+- `tdc` without a command returns `cli.missing_command` with exit code `2` and
+  an AWS-style compact two-level usage synopsis on stderr
 - `tdc configure`
 - `tdc configure --non-interactive`
 - `tdc help`
