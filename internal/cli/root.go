@@ -91,7 +91,7 @@ func rootCommandRequiredError(cmd *cobra.Command) error {
 
 %s
 
-usage: tdc <command> <subcommand> [<subcommand> ...] [parameters]
+usage: tdc <command> [<subcommand>] [parameters]
 To see help information, you can run:
 
   tdc help

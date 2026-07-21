@@ -26,7 +26,7 @@ func TestHelpAndVersion(t *testing.T) {
 	}
 	missingCommand.wantStderrContains("tdc [ERROR]: the following arguments are required: command")
 	missingCommand.wantStderrContains("The TiDB Cloud Command Line Interface is a unified tool")
-	missingCommand.wantStderrContains("usage: tdc <command> <subcommand> [<subcommand> ...] [parameters]")
+	missingCommand.wantStderrContains("usage: tdc <command> [<subcommand>] [parameters]")
 	missingCommand.wantStderrContains("tdc <command> <subcommand> help")
 	missingCommand.wantStderrNotContains("Commands:")
 

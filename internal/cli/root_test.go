@@ -82,7 +82,7 @@ func TestRootRequiresCommand(t *testing.T) {
 	for _, want := range []string{
 		"the following arguments are required: command",
 		"The TiDB Cloud Command Line Interface is a unified tool",
-		"usage: tdc <command> <subcommand> [<subcommand> ...] [parameters]",
+		"usage: tdc <command> [<subcommand>] [parameters]",
 		"tdc <command> <subcommand> help",
 	} {
 		if !strings.Contains(message, want) {
