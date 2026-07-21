@@ -86,7 +86,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	}
 
 	defaultRegion := region.DefaultPlacementCode()
-	regionCode, err := valueOrPrompt(ctx, input, opts.Out, valueOrEnv(opts.RegionCode, opts.Env, "TDC_REGION_CODE"), "region code", fmt.Sprintf("Region code (%s): ", defaultRegion), defaultRegion, false, opts.NonInteractive)
+	regionCode, err := valueOrPrompt(ctx, input, opts.Out, valueOrEnv(opts.RegionCode, opts.Env, "TDC_REGION_CODE"), "default region code", fmt.Sprintf("Default region code (%s): ", defaultRegion), defaultRegion, false, opts.NonInteractive)
 	if err != nil {
 		return Result{}, err
 	}

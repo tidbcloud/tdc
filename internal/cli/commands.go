@@ -76,7 +76,7 @@ func newConfigureCommand(info version.Info) *cobra.Command {
 			return renderStructured(cmd, result)
 		},
 	}, info)
-	cmd.Flags().String("region-code", "", "TiDB Cloud region code, for example aws-us-east-1 or aws-ap-southeast-1.")
+	cmd.Flags().String("region-code", "", "Default region code, for example aws-us-east-1 or aws-ap-southeast-1.")
 	cmd.Flags().String("tdc-public-key", "", "TiDB Cloud API public key.")
 	cmd.Flags().String("tdc-private-key", "", "TiDB Cloud API private key.")
 	cmd.Flags().Bool("non-interactive", false, "Use this option to avoid being prompted for configuration values. You must provide at least three configuration values (--tdc-public-key, --tdc-private-key, and --region-code) when using this option. This is useful when running tdc in a script or automated environment.")
@@ -1093,14 +1093,13 @@ func newFSDeleteFileSystemCommand(info version.Info) *cobra.Command {
 			if err != nil {
 				return nil, err
 			}
-			name, confirmName, err := fsDeleteFlags(ctx)
+			name, err := fsDeleteFileSystemName(ctx)
 			if err != nil {
 				return nil, err
 			}
 			return service.DeleteFileSystem(ctx.cmd.Context(), tdcfs.DeleteFileSystemOptions{
-				Profile:               profile,
-				FileSystemName:        name,
-				ConfirmFileSystemName: confirmName,
+				Profile:        profile,
+				FileSystemName: name,
 			})
 		},
 		DryRun: func(ctx commandContext) (dryrun.Result, error) {
@@ -1108,20 +1107,18 @@ func newFSDeleteFileSystemCommand(info version.Info) *cobra.Command {
 			if err != nil {
 				return dryrun.Result{}, err
 			}
-			name, confirmName, err := fsDeleteFlags(ctx)
+			name, err := fsDeleteFileSystemName(ctx)
 			if err != nil {
 				return dryrun.Result{}, err
 			}
 			return service.DryRunDeleteFileSystem(ctx.cmd.Context(), ctx.CommandPath(), tdcfs.DeleteFileSystemOptions{
-				Profile:               profile,
-				FileSystemName:        name,
-				ConfirmFileSystemName: confirmName,
+				Profile:        profile,
+				FileSystemName: name,
 			})
 		},
 	}, info)
 	cmd.Flags().String("file-system-name", "", "tdc fs resource name")
-	cmd.Flags().String("confirm-file-system-name", "", "required exact tdc fs resource name confirmation")
-	markUsageRequired(cmd, "file-system-name", "confirm-file-system-name")
+	markUsageRequired(cmd, "file-system-name")
 	return cmd
 }
 
@@ -2551,16 +2548,12 @@ func fsResolveAuthenticatedProfile(ctx commandContext, profile *config.Profile, 
 	return selected, nil
 }
 
-func fsDeleteFlags(ctx commandContext) (string, string, error) {
+func fsDeleteFileSystemName(ctx commandContext) (string, error) {
 	name, err := ctx.StringFlag("file-system-name")
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
-	confirmName, err := ctx.StringFlag("confirm-file-system-name")
-	if err != nil {
-		return "", "", err
-	}
-	return name, confirmName, nil
+	return name, nil
 }
 
 func newFSVaultCommand(info version.Info) *cobra.Command {

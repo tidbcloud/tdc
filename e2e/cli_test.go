@@ -19,12 +19,26 @@ import (
 func TestHelpAndVersion(t *testing.T) {
 	bin := tdcBinary(t)
 
+	missingCommand := runTDC(t, bin)
+	missingCommand.wantExitCode(2)
+	if missingCommand.stdout != "" {
+		missingCommand.fail("stdout should be empty")
+	}
+	missingCommand.wantStderrContains("tdc [ERROR]: the following arguments are required: command")
+	missingCommand.wantStderrContains("The TiDB Cloud Command Line Interface is a unified tool")
+	missingCommand.wantStderrContains("usage: tdc <command> [<subcommand>] [parameters]")
+	missingCommand.wantStderrContains("tdc <command> <subcommand> help")
+	missingCommand.wantStderrNotContains("Commands:")
+	if !strings.HasPrefix(missingCommand.stderr, "\ntdc [ERROR]:") {
+		missingCommand.fail("stderr should start with a blank line followed by the error prefix")
+	}
+
 	root := runTDC(t, bin, "help")
 	root.wantExitCode(0)
 	root.wantStdoutContains("Commands:")
 	root.wantStdoutContains("db")
-	root.wantStdoutContains("--region string")
 	root.wantStdoutNotContains("-h,")
+	root.wantStdoutContains("--region <string>")
 
 	db := runTDC(t, bin, "db", "help")
 	db.wantExitCode(0)
@@ -52,6 +66,23 @@ func TestHelpAndVersion(t *testing.T) {
 	chmodFile := runTDC(t, bin, "fs", "chmod-file", "help")
 	chmodFile.wantExitCode(0)
 	chmodFile.wantStdoutContains("--mode")
+
+	deleteFileSystem := runTDC(t, bin, "fs", "delete-file-system", "help")
+	deleteFileSystem.wantExitCode(0)
+	deleteFileSystem.wantStdoutContains("--file-system-name")
+	deleteFileSystem.wantStdoutNotContains("--confirm-file-system-name")
+
+	createDBCluster := runTDC(t, bin, "db", "create-db-cluster", "help")
+	createDBCluster.wantExitCode(0)
+	createDBCluster.wantStdoutContains("--db-cluster-name <string> (required)")
+	createDBCluster.wantStdoutContains("--db-cluster-type <string> (required)")
+	createDBCluster.wantStdoutContains("--project-id <string>")
+	createDBCluster.wantStdoutNotContains("--project-id <string> (required)")
+
+	configure := runTDC(t, bin, "configure", "help")
+	configure.wantExitCode(0)
+	configure.wantStdoutContains("--region-code <string>")
+	configure.wantStdoutContains("Default region code")
 
 	packFileSystem := runTDC(t, bin, "fs", "pack-file-system", "help")
 	packFileSystem.wantExitCode(0)
@@ -117,6 +148,10 @@ func TestErrorsAreRenderedAtCLIBoundary(t *testing.T) {
 	unknown := runTDC(t, bin, "db", "missing-command")
 	unknown.wantExitCode(2)
 	unknown.wantStderrContains(`tdc [ERROR]: unknown command "missing-command" for "tdc db"`)
+
+	removedConfirmation := runTDC(t, bin, "fs", "delete-file-system", "--file-system-name", "workspace", "--confirm-file-system-name", "workspace")
+	removedConfirmation.wantExitCode(2)
+	removedConfirmation.wantStderrContains(`unknown flag: --confirm-file-system-name`)
 
 	releaseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/releases/latest" {
@@ -400,7 +435,7 @@ func TestFSResourceRegistrySelectionAcrossCommandFamilies(t *testing.T) {
 	assertFakeDrive9Call(t, calls, []string{"git", "hydrate"}, "key-scratch", home, "stage", "scratch", "https://fs-west.test", "aws-us-west-2")
 	assertFakeDrive9Call(t, calls, []string{"mount"}, "key-scratch", home, "stage", "scratch", "https://fs-west.test", "aws-us-west-2")
 
-	deleteScratch := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "delete-file-system", "--file-system-name", "scratch", "--confirm-file-system-name", "scratch")
+	deleteScratch := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "delete-file-system", "--file-system-name", "scratch")
 	deleteScratch.wantExitCode(0)
 	deleteScratch.wantStdoutContains(`"status": "deleting"`)
 	afterDelete := runTDCWithInput(t, bin, "", baseEnv, "--profile", "stage", "fs", "list-file-systems")

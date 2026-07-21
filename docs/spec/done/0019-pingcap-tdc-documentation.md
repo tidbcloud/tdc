@@ -2,9 +2,9 @@
 
 ## Goal
 
-Publish complete Preview documentation for tdc in the English and Chinese PingCAP documentation repositories. The documentation must help a new user reach a successful result quickly, cover every implemented command, explain the tdc and Drive9 ownership boundary, and provide scenario-based examples for database, filesystem, Git workspace, journal, vault, and ephemeral agent workflows.
+Publish complete Preview documentation for tdc in the English PingCAP Cloud documentation repository. The documentation must help a new user reach a successful result quickly, cover every implemented command, explain the tdc and Drive9 ownership boundary, and provide scenario-based examples for database, filesystem, Git workspace, journal, vault, and ephemeral agent workflows.
 
-The English documentation lives in the `pingcap/docs` submodule at `docs/pingcap-docs/docs/`. The Chinese translation lives in the `pingcap/docs-cn` submodule at `docs/pingcap-docs/docs-cn/`. Both submodules track the `release-8.5` branch and must keep matching document structures and links.
+The documentation lives in the `pingcap/docs` submodule at `docs/pingcap-docs/docs/`. The submodule tracks the `release-8.5` branch. TiDB Cloud documentation is not translated into `pingcap/docs-cn`.
 
 This is a documentation-only requirement. It does not add or change tdc runtime behavior, TiDB Cloud APIs, Drive9 APIs, configuration formats, credentials, commands, or dependencies.
 
@@ -22,15 +22,7 @@ English:
 > tdc is currently in Preview. Its features and command-line interface might change without prior notice.
 ```
 
-Chinese:
-
-```markdown
-> **注意：**
->
-> tdc 当前处于预览（Preview）阶段，其功能和命令行界面可能会发生变更，恕不另行通知。
-```
-
-The tdc section labels in both `TOC-ai.md` files and both AI home pages must also include `(Preview)`.
+The tdc section label in `TOC-ai.md` and the AI home page must also include `(Preview)`.
 
 Product feedback and bug reports must point to:
 
@@ -44,7 +36,7 @@ Do not direct ordinary tdc feedback to the TiDB, Drive9, or PingCAP docs issue t
 
 All new tdc Markdown basenames must be globally unique within each PingCAP documentation repository, even when files are stored in different directories. Every basename must start with the `tdc-` prefix and use the existing PingCAP docs kebab-case naming convention. Do not add a generic `_index.md`, `overview.md`, `quick-start.md`, or `reference.md` under the tdc tree.
 
-The English and Chinese repositories use the same relative paths:
+The English repository uses these relative paths:
 
 ```text
 ai/tdc/
@@ -75,7 +67,7 @@ ai/tdc/
     tdc-troubleshooting.md
 ```
 
-All internal links use absolute PingCAP documentation paths rooted at `/ai/tdc/`. English and Chinese links use the same paths; locale routing is handled by the documentation site.
+All internal links use absolute PingCAP documentation paths rooted at `/ai/tdc/`.
 
 ## Documentation Style
 
@@ -90,7 +82,7 @@ Follow the existing PingCAP documentation templates and AI documentation style:
 - Commands use the installed `tdc` name, never the local development path `bin/tdc`.
 - Examples use placeholders and synthetic resource names. Never include real API keys, FS tokens, SQL passwords, vault tokens, project IDs, cluster IDs, tenant IDs, or customer data.
 - Secrets should be passed through environment variables where possible. If a secret flag must be explained, warn that flags may remain in shell history or process listings.
-- English is the source documentation. Chinese pages preserve the same technical meaning and command blocks but use natural Chinese technical writing rather than literal machine translation.
+- English is the only published language for these TiDB Cloud pages.
 - Product and command names remain in their canonical form: `tdc`, TiDB Cloud Starter, TiDB Cloud Filesystem, `tdc fs`, `tdc fs-git`, `tdc fs-journal`, and `tdc fs-vault`.
 
 Do not document `make build`, `go build`, `go install`, or source compilation as an end-user installation method. Developers who need source builds can use the tdc GitHub repository. Published user installation documentation covers only supported release installers and updates.
@@ -267,20 +259,18 @@ Do not document pending telemetry commands or unimplemented serverless-function/
 
 ## Navigation
 
-Update both files:
+Update:
 
 ```text
 docs/pingcap-docs/docs/TOC-ai.md
-docs/pingcap-docs/docs-cn/TOC-ai.md
 ```
 
 Under Quick Start, Concepts, Guides, Examples, and Reference, add a nested `TiDB Cloud CLI (tdc) (Preview)` group with direct links to all corresponding tdc pages. Do not expose only the overview while leaving the other pages unreachable from the TOC.
 
-Update both AI home pages:
+Update the AI home page:
 
 ```text
 docs/pingcap-docs/docs/ai/_index.md
-docs/pingcap-docs/docs-cn/ai/_index.md
 ```
 
 Add a `TiDB Cloud CLI (tdc) (Preview)` section with concise grouped tables linking directly to every tdc page. `tdc-overview.md` is the tdc landing page; no generic `_index.md` is added under `ai/tdc/`.
@@ -324,12 +314,10 @@ The two documentation directories are independent Git submodules:
 
 1. Create an English docs branch from `release-8.5` in `docs/pingcap-docs/docs`.
 2. Write and validate the English pages, `TOC-ai.md`, and AI home-page updates.
-3. Create a Chinese docs branch from `release-8.5` in `docs/pingcap-docs/docs-cn`.
-4. Translate the final English structure and update the Chinese TOC and AI home page.
-5. Validate both submodule worktrees independently.
-6. Commit changes inside each submodule.
-7. Update the parent tdc repository gitlinks to the reviewed submodule commits.
-8. Update the parent tdc current docs and completed-spec annotations in the same tdc change set.
+3. Validate the documentation submodule worktree.
+4. Commit changes inside the submodule.
+5. Update the parent tdc repository gitlink to the reviewed submodule commit.
+6. Update the parent tdc current docs and completed-spec annotations in the same tdc change set.
 
 Do not make the tdc build, tests, packaging, or release artifacts depend on either documentation submodule. The submodules are documentation source only.
 
@@ -342,17 +330,16 @@ No example may depend on an undocumented endpoint, raw server URL, or direct Dri
 ## Dependencies And Platform
 
 - Depends on all completed MVP command specs through `0018`.
-- Depends on the `pingcap/docs` and `pingcap/docs-cn` submodules tracking `release-8.5`.
+- Depends on the `pingcap/docs` submodule tracking `release-8.5`.
 - Adds no Go package, cgo, runtime, installer, or service dependency.
 - Published installation instructions support release installers only.
 - Platform documentation must be based on current tested behavior and must distinguish macOS WebDAV from optional macFUSE/FUSE.
 
 ## Acceptance Criteria
 
-- Every English tdc page has a matching Chinese page at the same relative path.
 - Every new Markdown basename starts with `tdc-` and is globally unique in its repository.
 - Every page includes valid front matter and the standard Preview note.
-- Both TOC files directly link every tdc page under the correct category.
+- `TOC-ai.md` directly links every tdc page under the correct category.
 - Both AI home pages directly link every tdc page.
 - All internal links resolve to files or approved external URLs.
 - The overview links feedback to `https://github.com/tidbcloud/tdc/issues`.
@@ -365,7 +352,7 @@ No example may depend on an undocumented endpoint, raw server URL, or direct Dri
 - Examples use only synthetic values and never expose a real secret.
 - `docs/priciples.md`, `docs/present.md`, README, AGENTS, and the listed completed specs no longer present superseded behavior as current behavior.
 - Archived README snapshots and historical release notes remain unchanged.
-- English and Chinese Markdown lint and link checks pass using each documentation repository's available validation workflow.
+- English Markdown lint and link checks pass using the documentation repository's available validation workflow.
 - The parent tdc repository records clean submodule gitlinks with no uncommitted documentation changes.
 
 ## Out Of Scope

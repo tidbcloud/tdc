@@ -99,7 +99,7 @@ func TestLiveFSResourceRegistryLifecycle(t *testing.T) {
 			if !created[name] {
 				continue
 			}
-			result := runTDC(t, bin, "--profile", profileName, "fs", "delete-file-system", "--file-system-name", name, "--confirm-file-system-name", name)
+			result := runTDC(t, bin, "--profile", profileName, "fs", "delete-file-system", "--file-system-name", name)
 			if result.exitCode != 0 {
 				t.Logf("cleanup delete failed for tdc fs resource %q: exit=%d stdout=%s stderr=%s", name, result.exitCode, result.stdout, result.stderr)
 			}
@@ -148,7 +148,7 @@ func TestLiveFSResourceRegistryLifecycle(t *testing.T) {
 	explicitCheck.wantExitCode(0)
 	explicitCheck.wantStdoutContains(`"file_system_name": "` + names[1] + `"`)
 
-	deleteFirst := runTDC(t, bin, "--profile", profileName, "fs", "delete-file-system", "--file-system-name", names[0], "--confirm-file-system-name", names[0])
+	deleteFirst := runTDC(t, bin, "--profile", profileName, "fs", "delete-file-system", "--file-system-name", names[0])
 	deleteFirst.wantExitCode(0)
 	deleteFirst.wantStdoutContains(`"status": "deleting"`)
 	deleteFirst.wantStdoutContains(`"remote_deletion_state": "deleting"`)
@@ -157,7 +157,7 @@ func TestLiveFSResourceRegistryLifecycle(t *testing.T) {
 	remaining.wantExitCode(0)
 	remaining.wantStdoutContains(`"file_system_name": "` + names[1] + `"`)
 
-	deleteSecond := runTDC(t, bin, "--profile", profileName, "fs", "delete-file-system", "--file-system-name", names[1], "--confirm-file-system-name", names[1])
+	deleteSecond := runTDC(t, bin, "--profile", profileName, "fs", "delete-file-system", "--file-system-name", names[1])
 	deleteSecond.wantExitCode(0)
 	deleteSecond.wantStdoutContains(`"status": "deleting"`)
 	deleteSecond.wantStdoutContains(`"remote_deletion_state": "deleting"`)
@@ -291,7 +291,7 @@ func TestLiveFSCommandSurface(t *testing.T) {
 	})
 	testLiveMutatingDryRuns(t, bin, profileName, [][]string{
 		{"fs", "create-file-system", "--file-system-name", fileSystemName, "--wait"},
-		{"fs", "delete-file-system", "--file-system-name", fileSystemName, "--confirm-file-system-name", fileSystemName},
+		{"fs", "delete-file-system", "--file-system-name", fileSystemName},
 		{"fs", "create-layer", "--layer-id", "layer-1", "--base-root-path", "/workspace", "--layer-name", "dev"},
 		{"fs", "create-layer-checkpoint", "--layer-id", "layer-1", "--checkpoint-id", "cp-1"},
 		{"fs", "rollback-layer", "--layer-id", "layer-1"}, {"fs", "commit-layer", "--layer-id", "layer-1"},
@@ -1260,7 +1260,7 @@ func TestLiveFSConfigurationFreeAccess(t *testing.T) {
 		if deletedResource {
 			return
 		}
-		cleanup := runTDC(t, bin, "--profile", profileName, "fs", "delete-file-system", "--file-system-name", fileSystemName, "--confirm-file-system-name", fileSystemName)
+		cleanup := runTDC(t, bin, "--profile", profileName, "fs", "delete-file-system", "--file-system-name", fileSystemName)
 		if cleanup.exitCode != 0 {
 			t.Logf("cleanup configuration-free FS resource failed for %q: exit=%d stderr=%s", fileSystemName, cleanup.exitCode, strings.TrimSpace(cleanup.stderr))
 		}
@@ -1363,7 +1363,7 @@ func TestLiveFSConfigurationFreeAccess(t *testing.T) {
 	deleteRemote := runTDC(t, bin, "--profile", profileName, "fs", "delete-file", "--file-system-name", fileSystemName, "--path", remoteRoot, "--recursive")
 	deleteRemote.wantExitCode(0)
 	remoteDeleted = true
-	deleteResource := runTDC(t, bin, "--profile", profileName, "fs", "delete-file-system", "--file-system-name", fileSystemName, "--confirm-file-system-name", fileSystemName)
+	deleteResource := runTDC(t, bin, "--profile", profileName, "fs", "delete-file-system", "--file-system-name", fileSystemName)
 	deleteResource.wantExitCode(0)
 	deleteResource.wantStdoutContains(`"status": "deleting"`)
 	deleteResource.wantStdoutContains(`"remote_deletion_state": "deleting"`)
@@ -2049,7 +2049,6 @@ func cleanupAutoCreatedLiveFSResource() {
 		"--profile", profileName,
 		"fs", "delete-file-system",
 		"--file-system-name", name,
-		"--confirm-file-system-name", name,
 	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -2071,7 +2070,6 @@ func releaseAutoCreatedLiveFSResource(t *testing.T, bin, profileName string) {
 		"--profile", profileName,
 		"fs", "delete-file-system",
 		"--file-system-name", name,
-		"--confirm-file-system-name", name,
 	)
 	result.wantExitCode(0)
 	liveFSResourceAutoCreated = false

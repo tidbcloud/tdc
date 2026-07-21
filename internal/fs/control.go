@@ -47,9 +47,8 @@ type CreateFileSystemOptions struct {
 }
 
 type DeleteFileSystemOptions struct {
-	Profile               *config.Profile
-	FileSystemName        string
-	ConfirmFileSystemName string
+	Profile        *config.Profile
+	FileSystemName string
 }
 
 type CheckFileSystemOptions struct {
@@ -204,7 +203,6 @@ func (s Service) DryRunDeleteFileSystem(ctx context.Context, commandPath string,
 	checks := []dryrun.Check{
 		{Name: "config_and_credentials", Status: "passed", Message: fmt.Sprintf("profile %q loaded", profileName(opts.Profile))},
 		{Name: "permission_requirement", Status: "passed", Message: string(authz.FSVolumeDelete)},
-		{Name: "delete_confirmation", Status: "passed", Message: opts.ConfirmFileSystemName},
 	}
 	if resource := fscred.FromProfile(opts.Profile); resource.HasAPIKey {
 		checks = append(checks, dryrun.Check{Name: "fs_resource_credentials", Status: "passed", Message: name})
@@ -236,7 +234,7 @@ func (s Service) DryRunDeleteFileSystem(ctx context.Context, commandPath string,
 			Method:      http.MethodDelete,
 			Path:        "/v1/tenant",
 			Body:        redactedDeprovisionRequest(body),
-			Description: "normal execution verifies --confirm-file-system-name and uses the stored tdc fs API key before deleting",
+			Description: "normal execution uses the stored tdc fs API key before deleting",
 		},
 		checks...,
 	), nil
@@ -288,12 +286,6 @@ func (s Service) deleteDryRunInputs(opts DeleteFileSystemOptions) (string, endpo
 	name, err := fileSystemName(opts.FileSystemName)
 	if err != nil {
 		return "", endpoints.Endpoint{}, nil, err
-	}
-	if strings.TrimSpace(opts.ConfirmFileSystemName) == "" {
-		return "", endpoints.Endpoint{}, nil, apperr.New("fs.missing_confirmation", "usage", 2, "--confirm-file-system-name is required")
-	}
-	if strings.TrimSpace(opts.ConfirmFileSystemName) != name {
-		return "", endpoints.Endpoint{}, nil, apperr.New("fs.delete_confirmation_mismatch", "usage", 2, fmt.Sprintf("--confirm-file-system-name must match --file-system-name %q", name))
 	}
 	if opts.Profile.FSResourceName != name {
 		return "", endpoints.Endpoint{}, nil, resourceMismatch(opts.Profile.FSResourceName, name)

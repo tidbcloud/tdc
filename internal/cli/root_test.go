@@ -61,6 +61,36 @@ func TestHelpCommands(t *testing.T) {
 	}
 }
 
+func TestRootRequiresCommand(t *testing.T) {
+	stdout, stderr, err := executeForTest()
+	if err == nil {
+		t.Fatal("expected root command without arguments to fail")
+	}
+	if stdout != "" {
+		t.Fatalf("expected no stdout, got %q", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("expected CLI boundary to leave error rendering to main, got %q", stderr)
+	}
+	if got := apperr.CodeFor(err); got != "cli.missing_command" {
+		t.Fatalf("expected cli.missing_command, got %q", got)
+	}
+	if got := apperr.ExitCodeFor(err); got != 2 {
+		t.Fatalf("expected exit code 2, got %d", got)
+	}
+	message := apperr.MessageFor(err)
+	for _, want := range []string{
+		"the following arguments are required: command",
+		"The TiDB Cloud Command Line Interface is a unified tool",
+		"usage: tdc <command> [<subcommand>] [parameters]",
+		"tdc <command> <subcommand> help",
+	} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("expected root usage error to contain %q, got:\n%s", want, message)
+		}
+	}
+}
+
 func TestVersionWorksAtEveryLevel(t *testing.T) {
 	tests := [][]string{
 		{"--version"},
@@ -185,7 +215,7 @@ func TestHelpOutputDoesNotExposeShortFlags(t *testing.T) {
 	if strings.Contains(stdout, "-h,") || strings.Contains(stdout, "-v,") {
 		t.Fatalf("help output exposes a short flag:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "--region string") {
+	if !strings.Contains(stdout, "--region <string>") {
 		t.Fatalf("help output does not include global --region flag:\n%s", stdout)
 	}
 }
@@ -229,6 +259,19 @@ func TestHelpUsageShowsRequiredFirstAndOptionalBracketed(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "    [--wait]") {
 		t.Fatalf("expected --wait to be optional, got:\n%s", stdout)
+	}
+	for _, want := range []string{
+		"--db-cluster-name <string> (required)",
+		"--db-cluster-type <string> (required)",
+		"--project-id <string>",
+		"--monthly-spending-limit-usd-cents <int32>",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("expected formatted flag %q, got:\n%s", want, stdout)
+		}
+	}
+	if strings.Contains(stdout, "--project-id <string> (required)") {
+		t.Fatalf("optional --project-id must not be marked required, got:\n%s", stdout)
 	}
 
 	stdout, _, err = executeForTest("db", "delete-db-cluster", "help")

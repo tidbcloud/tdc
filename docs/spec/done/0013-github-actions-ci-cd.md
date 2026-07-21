@@ -81,7 +81,7 @@ Then it runs:
 FS_NAME="tdc-live-e2e-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 bin/tdc fs create-file-system --profile live-e2e --file-system-name "$FS_NAME"
 make live-e2e
-bin/tdc fs delete-file-system --profile live-e2e --file-system-name "$FS_NAME" --confirm-file-system-name "$FS_NAME"
+bin/tdc fs delete-file-system --profile live-e2e --file-system-name "$FS_NAME"
 ```
 
 The workflow must not commit or upload `~/.tdc/` as an artifact.

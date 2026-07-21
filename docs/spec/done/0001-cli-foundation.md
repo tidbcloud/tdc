@@ -38,7 +38,12 @@ on.
   include component-specific version details when a component has them.
 - Unknown commands and flags must return non-zero exit codes with actionable
   errors.
+- Running `tdc` without a command returns the `cli.missing_command` usage error
+  with exit code `2` and a compact two-level command synopsis. Users can run
+  `tdc help` for the complete command and flag listing.
 - Help text must be deterministic and suitable for agents to parse.
+- Flags and Global Flags sections render value types as `<type>` and append
+  `(required)` after flags declared required by the command contract.
 
 ## Inputs And Config
 
@@ -112,7 +117,7 @@ rendering are local-only.
 - `tdc help`, root/command/subcommand `--version`, and nested help commands
   work.
 - No command exposes short flags.
-- Tests cover unknown command handling and help availability.
+- Tests cover missing and unknown command handling and help availability.
 
 ## Out Of Scope
 

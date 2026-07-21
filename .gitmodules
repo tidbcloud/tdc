@@ -11,7 +11,3 @@
 	path = docs/pingcap-docs/docs
 	url = git@github.com:pingcap/docs.git
 	branch = release-8.5
-[submodule "docs/pingcap-docs/docs-cn"]
-	path = docs/pingcap-docs/docs-cn
-	url = git@github.com:pingcap/docs-cn.git
-	branch = release-8.5

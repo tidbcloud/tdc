@@ -257,9 +257,8 @@ func TestDrive9DeleteFileSystemDeletesOnlySelectedRegistryResource(t *testing.T)
 	profile.FSDefaultFileSystemName = "workspace"
 
 	result, err := testCompanionService(home, companion).DeleteFileSystem(context.Background(), DeleteFileSystemOptions{
-		Profile:               profile,
-		FileSystemName:        "workspace",
-		ConfirmFileSystemName: "workspace",
+		Profile:        profile,
+		FileSystemName: "workspace",
 	})
 	if err != nil {
 		t.Fatalf("DeleteFileSystem failed: %v", err)
@@ -595,9 +594,8 @@ func TestDryRunDeleteFileSystemReportsRegistryFiles(t *testing.T) {
 	}
 	profile.FSDefaultFileSystemName = "workspace"
 	result, err := (Service{HomeDir: home, Resolver: supportedFSManifestResolver("https://fs.test")}).DryRunDeleteFileSystem(context.Background(), "tdc fs delete-file-system", DeleteFileSystemOptions{
-		Profile:               profile,
-		FileSystemName:        "workspace",
-		ConfirmFileSystemName: "workspace",
+		Profile:        profile,
+		FileSystemName: "workspace",
 	})
 	if err != nil {
 		t.Fatalf("DryRunDeleteFileSystem failed: %v", err)
