@@ -981,7 +981,7 @@ func newFSCreateFileSystemCommand(info version.Info) *cobra.Command {
 			})
 		},
 	}, info)
-	cmd.Flags().String("file-system-name", "", "tdc fs resource name")
+	cmd.Flags().String("file-system-name", "", "File system name.")
 	cmd.Flags().Bool("set-default", false, "make the created file system the profile default")
 	cmd.Flags().Bool("wait", false, "wait until the created file system data plane is ready")
 	markUsageRequired(cmd, "file-system-name")
@@ -991,7 +991,7 @@ func newFSCreateFileSystemCommand(info version.Info) *cobra.Command {
 func newFSListFileSystemsCommand(info version.Info) *cobra.Command {
 	return newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "list-file-systems",
-		Short:      "List locally registered tdc fs resources.",
+		Short:      "List locally registered file systems. (preview)",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSVolumeRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1026,7 +1026,7 @@ func newFSDescribeFileSystemCommand(info version.Info) *cobra.Command {
 func newFSSetDefaultFileSystemCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "set-default-file-system",
-		Short:      "Set the default tdc fs resource for a profile.",
+		Short:      "Set the default file system for a specific profile.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVolumeRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1052,7 +1052,7 @@ func newFSSetDefaultFileSystemCommand(info version.Info) *cobra.Command {
 func newFSUnsetDefaultFileSystemCommand(info version.Info) *cobra.Command {
 	return newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "unset-default-file-system",
-		Short:      "Clear the default tdc fs resource for a profile.",
+		Short:      "Unset the default file system for a specific profile.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSVolumeRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1193,7 +1193,7 @@ func newFSReadFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "read-file",
 		Aliases:    []string{"cat"},
-		Short:      "Read a file from tdc fs.",
+		Short:      "Read a file from a specific file system or the default file system.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1241,7 +1241,7 @@ func newFSListFilesCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "list-files",
 		Aliases:    []string{"ls"},
-		Short:      "List files in tdc fs.",
+		Short:      "List files in a specific file system.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1294,7 +1294,7 @@ func newFSMoveFileCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "move-file",
 		Aliases:    []string{"mv"},
-		Short:      "Move a tdc fs file.",
+		Short:      "Move a file to a new location on the file system.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
 		Run: func(ctx commandContext) (any, error) {
@@ -1486,7 +1486,7 @@ func newFSSearchFileContentCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "search-file-content",
 		Aliases:    []string{"grep"},
-		Short:      "Search file content in tdc fs.",
+		Short:      "Search file content in a specific file system or the default file system.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1531,7 +1531,7 @@ func newFSFindFilesCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "find-files",
 		Aliases:    []string{"find"},
-		Short:      "Find files in tdc fs.",
+		Short:      "Find files using optional conditions.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1613,7 +1613,7 @@ func newFSCreateLayerCommand(info version.Info) *cobra.Command {
 func newFSListLayersCommand(info version.Info) *cobra.Command {
 	return newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "list-layers",
-		Short:      "List tdc fs layers.",
+		Short:      "List file system layers for a specific file system.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1652,7 +1652,7 @@ func newFSDescribeLayerCommand(info version.Info) *cobra.Command {
 func newFSDiffLayerCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "diff-layer",
-		Short:      "Show changed entries in a tdc fs layer.",
+		Short:      "Show changed entries in a file system layer.",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1715,7 +1715,7 @@ func newFSCreateLayerCheckpointCommand(info version.Info) *cobra.Command {
 func newFSRollbackLayerCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "rollback-layer",
-		Short:      "Rollback a tdc fs layer.",
+		Short:      "Rollback a file system layer. (preview)",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
 		Run: func(ctx commandContext) (any, error) {
@@ -1783,7 +1783,7 @@ func newFSCommitLayerCommand(info version.Info) *cobra.Command {
 func newFSPackFileSystemCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "pack-file-system",
-		Short:      "Pack local tdc fs overlay state into a remote archive.",
+		Short:      "Pack local overlay state into a remote archive for future unpacking.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
 		Run: func(ctx commandContext) (any, error) {
@@ -1821,7 +1821,7 @@ func newFSPackFileSystemCommand(info version.Info) *cobra.Command {
 func newFSUnpackFileSystemCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "unpack-file-system",
-		Short:      "Restore a tdc fs pack archive into local overlay state.",
+		Short:      "Restore local overlay state from a packed archive.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1860,7 +1860,7 @@ func newFSMountFileSystemCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "mount-file-system",
 		Aliases:    []string{"mount"},
-		Short:      "Mount a tdc fs resource locally.",
+		Short:      "Mount a file system to a local path.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSMount,
 		Run: func(ctx commandContext) (any, error) {
@@ -1911,7 +1911,7 @@ func newFSUnmountFileSystemCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "unmount-file-system",
 		Aliases:    []string{"umount"},
-		Short:      "Unmount a tdc fs resource.",
+		Short:      "Unmount a file system from a local path.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSMount,
 		Run: func(ctx commandContext) (any, error) {
@@ -1987,7 +1987,7 @@ func newFSDrainFileSystemCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "drain-file-system",
 		Aliases:    []string{"drain"},
-		Short:      "Flush dirty FUSE mount state for a tdc fs resource.",
+		Short:      "Flush dirty FUSE mount state for a mounted file system.",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSMount,
 		Run: func(ctx commandContext) (any, error) {

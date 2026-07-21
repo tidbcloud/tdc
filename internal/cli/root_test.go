@@ -44,7 +44,7 @@ func TestHelpCommands(t *testing.T) {
 		{
 			name: "subcommand help",
 			args: []string{"fs", "mount-file-system", "help"},
-			want: "Mount a tdc fs resource locally.",
+			want: "Mount a file system to a local path.",
 		},
 	}
 

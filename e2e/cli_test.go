@@ -34,7 +34,7 @@ func TestHelpAndVersion(t *testing.T) {
 
 	subcommand := runTDC(t, bin, "fs", "mount-file-system", "help")
 	subcommand.wantExitCode(0)
-	subcommand.wantStdoutContains("Mount a tdc fs resource locally.")
+	subcommand.wantStdoutContains("Mount a file system to a local path.")
 	subcommand.wantStdoutContains("--mount-path")
 	subcommand.wantStdoutContains("--foreground")
 	subcommand.wantStdoutContains("--mount-profile")
