@@ -13,6 +13,7 @@ import (
 	"github.com/tidbcloud/tdc/internal/api/endpoints"
 	"github.com/tidbcloud/tdc/internal/apperr"
 	"github.com/tidbcloud/tdc/internal/config"
+	"github.com/tidbcloud/tdc/internal/db/validate"
 )
 
 func TestCreateCluster(t *testing.T) {
@@ -518,17 +519,35 @@ func TestDryRunDeleteClusterDescribesWait(t *testing.T) {
 	}
 }
 
-func TestCreateRequiresStarterType(t *testing.T) {
-	_, err := Service{}.DryRunCreateCluster(context.Background(), "tdc db create-db-cluster", CreateClusterOptions{
+func TestCreateDefaultsToStarterType(t *testing.T) {
+	result, err := Service{}.DryRunCreateCluster(context.Background(), "tdc db create-db-cluster", CreateClusterOptions{
 		Profile:     testProfile(),
 		DisplayName: "demo-cluster",
 		ProjectID:   "project-1",
 	})
-	if err == nil {
-		t.Fatal("expected missing cluster type to fail")
+	if err != nil {
+		t.Fatalf("expected missing cluster type to default to starter: %v", err)
 	}
-	if got := apperr.ExitCodeFor(err); got != 2 {
-		t.Fatalf("expected exit code 2, got %d", got)
+	found := false
+	for _, check := range result.Checks {
+		if check.Name == "cluster_type" && check.Message == validate.ClusterTypeStarter {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected dry-run checks to use starter, got %#v", result.Checks)
+	}
+}
+
+func TestCreateRejectsUnsupportedClusterType(t *testing.T) {
+	_, err := Service{}.DryRunCreateCluster(context.Background(), "tdc db create-db-cluster", CreateClusterOptions{
+		Profile:     testProfile(),
+		DisplayName: "demo-cluster",
+		ClusterType: "essential",
+		ProjectID:   "project-1",
+	})
+	if apperr.CodeFor(err) != "db.unsupported_cluster_type" {
+		t.Fatalf("expected unsupported cluster type error, got %v", err)
 	}
 }
 

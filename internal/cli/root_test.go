@@ -262,7 +262,8 @@ func TestHelpUsageShowsRequiredFirstAndOptionalBracketed(t *testing.T) {
 	}
 	for _, want := range []string{
 		"--db-cluster-name <string> (required)",
-		"--db-cluster-type <string> (required)",
+		"[--db-cluster-type <string>]",
+		"--db-cluster-type <string>",
 		"--project-id <string>",
 		"--monthly-spending-limit-usd-cents <int32>",
 	} {
@@ -272,6 +273,12 @@ func TestHelpUsageShowsRequiredFirstAndOptionalBracketed(t *testing.T) {
 	}
 	if strings.Contains(stdout, "--project-id <string> (required)") {
 		t.Fatalf("optional --project-id must not be marked required, got:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "--db-cluster-type <string> (required)") {
+		t.Fatalf("defaulted --db-cluster-type must not be marked required, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `--db-cluster-type <string>`) || !strings.Contains(stdout, `(default "starter")`) {
+		t.Fatalf("expected --db-cluster-type to show the starter default, got:\n%s", stdout)
 	}
 
 	stdout, _, err = executeForTest("db", "delete-db-cluster", "help")
@@ -635,7 +642,7 @@ func TestControlPlaneCommandSpecUsesCustomDryRun(t *testing.T) {
 func TestMutatingControlPlaneDryRunRendersJSON(t *testing.T) {
 	withConfigEnv(t)
 
-	stdout, _, err := executeForTest("db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--db-cluster-type", "starter", "--project-id", "project-1", "--wait", "--dry-run")
+	stdout, _, err := executeForTest("db", "create-db-cluster", "--db-cluster-name", "demo-cluster", "--project-id", "project-1", "--wait", "--dry-run")
 	if err != nil {
 		t.Fatalf("expected dry-run to succeed, got %v", err)
 	}

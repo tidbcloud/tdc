@@ -17,15 +17,15 @@ Initial command set:
 Primary create shape:
 
 ```bash
-tdc db create-db-cluster --db-cluster-name <name> --db-cluster-type starter
-tdc db create-db-cluster --db-cluster-name <name> --db-cluster-type starter --wait
+tdc db create-db-cluster --db-cluster-name <name>
+tdc db create-db-cluster --db-cluster-name <name> --wait
 ```
 
 ## Behavior
 
 - `tdc db` manages TiDB Cloud Starter database clusters.
-- Require `--db-cluster-type starter` for create to preserve future tier
-  compatibility.
+- Default `--db-cluster-type` to `starter`. The optional flag remains available
+  for an explicit declaration and rejects unsupported values.
 - Use long flags only.
 - Mutating commands support `--dry-run`.
 - Commands must not prompt.
@@ -81,10 +81,10 @@ Users can create and manage Starter clusters in the configured cloud provider
 and region:
 
 ```bash
-tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --dry-run
-tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter
-tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --wait
-tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id>
+tdc db create-db-cluster --db-cluster-name demo --dry-run
+tdc db create-db-cluster --db-cluster-name demo
+tdc db create-db-cluster --db-cluster-name demo --wait
+tdc db create-db-cluster --db-cluster-name demo --project-id <project-id>
 tdc db list-db-clusters --query 'clusters[].id'
 tdc db describe-db-cluster --db-cluster-id <id>
 tdc db delete-db-cluster --db-cluster-id <id>
@@ -124,7 +124,8 @@ Command mapping:
      `pageToken`, `orderBy`, and `skip`.
   3. Filter or validate Starter-only behavior using returned cluster metadata.
 - `tdc db create-db-cluster`
-  1. Validate `--db-cluster-type starter`.
+  1. Default an omitted `--db-cluster-type` to `starter` and reject any other
+     explicit value.
   2. Resolve explicit `--project-id` or the profile's configured `project_id`
      and set label `tidb.cloud/project`.
   3. Call `POST /v1beta1/clusters` with `displayName`, project label, region
@@ -178,7 +179,8 @@ Available but not part of this lifecycle MVP:
   terminal state, polling failure, timeout, and default non-wait behavior.
 - Delete wait tests cover `DELETING` to `DELETED`, inaccessible-after-delete,
   timeout, and dry-run wait-plan reporting.
-- Tests cover required `--db-cluster-type starter` on create.
+- Tests cover the default `starter` type and rejection of unsupported explicit
+  cluster types.
 - Tests cover dry-run request validation and wait-plan reporting without
   sending mutating requests.
 - Tests cover stable JSON output and `--query`.

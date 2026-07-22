@@ -209,11 +209,11 @@ func newDBCreateClusterCommand(info version.Info) *cobra.Command {
 		},
 	}, info)
 	cmd.Flags().String("db-cluster-name", "", "Starter DB cluster display name")
-	cmd.Flags().String("db-cluster-type", "", "DB cluster type; must be starter")
+	cmd.Flags().String("db-cluster-type", "starter", "DB cluster type; must be starter")
 	cmd.Flags().String("project-id", "", "TiDB Cloud project id")
 	cmd.Flags().Int32("monthly-spending-limit-usd-cents", -1, "monthly spending limit in USD cents; omit to use the API default")
 	cmd.Flags().Bool("wait", false, "wait until the created cluster becomes ACTIVE before returning")
-	markUsageRequired(cmd, "db-cluster-name", "db-cluster-type")
+	markUsageRequired(cmd, "db-cluster-name")
 	return cmd
 }
 

@@ -75,7 +75,8 @@ func TestHelpAndVersion(t *testing.T) {
 	createDBCluster := runTDC(t, bin, "db", "create-db-cluster", "help")
 	createDBCluster.wantExitCode(0)
 	createDBCluster.wantStdoutContains("--db-cluster-name <string> (required)")
-	createDBCluster.wantStdoutContains("--db-cluster-type <string> (required)")
+	createDBCluster.wantStdoutContains("[--db-cluster-type <string>]")
+	createDBCluster.wantStdoutNotContains("--db-cluster-type <string> (required)")
 	createDBCluster.wantStdoutContains("--project-id <string>")
 	createDBCluster.wantStdoutNotContains("--project-id <string> (required)")
 
@@ -232,7 +233,6 @@ func createClusterDryRunArgs() []string {
 	return []string{
 		"db", "create-db-cluster",
 		"--db-cluster-name", "demo-cluster",
-		"--db-cluster-type", "starter",
 		"--project-id", "project-1",
 		"--wait",
 		"--dry-run",
