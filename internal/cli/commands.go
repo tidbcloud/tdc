@@ -903,7 +903,7 @@ func addFSSelectorFlags(commands []*cobra.Command, excluded ...string) {
 			continue
 		}
 		if command.Flags().Lookup("file-system-name") == nil {
-			command.Flags().String("file-system-name", "", "tdc fs resource name; defaults to the profile default or only configured resource")
+			command.Flags().String("file-system-name", "", "The name of the file system.")
 		}
 	}
 }
@@ -918,7 +918,7 @@ func addFSAuthFlags(commands []*cobra.Command, excluded ...string) {
 			continue
 		}
 		if command.Flags().Lookup("fs-token") == nil {
-			command.Flags().String("fs-token", "", "tdc fs owner token; prefer TDC_FS_TOKEN for automation")
+			command.Flags().String("fs-token", "", "File system user token. Default: value taken from the TDC_FS_TOKEN environment variable if not provided.")
 		}
 	}
 }
@@ -981,9 +981,9 @@ func newFSCreateFileSystemCommand(info version.Info) *cobra.Command {
 			})
 		},
 	}, info)
-	cmd.Flags().String("file-system-name", "", "File system name.")
-	cmd.Flags().Bool("set-default", false, "make the created file system the profile default")
-	cmd.Flags().Bool("wait", false, "wait until the created file system data plane is ready")
+	cmd.Flags().String("file-system-name", "", "The name of the file system.")
+	cmd.Flags().Bool("set-default", false, "Make the created file system the profile default.")
+	cmd.Flags().Bool("wait", false, "Wait until the created file system is active.")
 	markUsageRequired(cmd, "file-system-name")
 	return cmd
 }
@@ -1170,19 +1170,19 @@ func newFSCopyFileCommand(info version.Info) *cobra.Command {
 		},
 	}, info)
 	cmd.Flags().String("from-local", "", "The local source path.")
-	cmd.Flags().String("from-remote", "", "The TiDB Cloud file system source path.")
-	cmd.Flags().String("to-local", "", "The local target path.")
-	cmd.Flags().String("to-remote", "", "The TiDB Cloud file system target path.")
-	cmd.Flags().Bool("from-stdin", false, "Read from stdin and upload to --to-remote.")
+	cmd.Flags().String("from-remote", "", "The source path in the TiDB Cloud file system.")
+	cmd.Flags().String("to-local", "", "The local destination path.")
+	cmd.Flags().String("to-remote", "", "The destination path in the TiDB Cloud file system.")
+	cmd.Flags().Bool("from-stdin", false, "Read from stdin and write to --to-remote.")
 	cmd.Flags().Bool("to-stdout", false, "Write --from-remote to stdout.")
-	cmd.Flags().Bool("overwrite", false, "Replace an existing target.")
+	cmd.Flags().Bool("overwrite", false, "Replace an existing destination file.")
 	cmd.Flags().Bool("create-parents", false, "Create missing local parent directories when copying from a TiDB Cloud file system.")
-	cmd.Flags().Bool("append", false, "Append a local file to a remote file in TiDB Cloud file system.")
-	cmd.Flags().Bool("recursive", false, "Copy directory contents recursively.")
-	cmd.Flags().Bool("resume", false, "Resume an active local-to-remote upload or a partial remote-to-local download.")
-	cmd.Flags().String("layer-id", "", "Write the copy target into a file system layer instead of the base file system.")
-	cmd.Flags().StringArray("tag", nil, "Create tag(s) key=value for uploads; repeatable.")
-	cmd.Flags().String("description", "", "The file description for local or stdin uploads.")
+	cmd.Flags().Bool("append", false, "Append a local file content to a file in the TiDB Cloudfile system.")
+	cmd.Flags().Bool("recursive", false, "Copy directory structure recursively.")
+	cmd.Flags().Bool("resume", false, "Resume an active copy operation.")
+	cmd.Flags().String("layer-id", "", "Write the copied file content into a file system layer instead of the base file system.")
+	cmd.Flags().StringArray("tag", nil, "Create tag(s) key=value for --to-remote operation; repeatable.")
+	cmd.Flags().String("description", "", "The file description for --to-remote operation.")
 	return cmd
 }
 
@@ -1386,8 +1386,8 @@ func newFSCreateDirectoryCommand(info version.Info) *cobra.Command {
 			})
 		},
 	}, info)
-	cmd.Flags().String("path", "", "tdc fs directory path")
-	cmd.Flags().String("mode", "", "directory mode as an octal value such as 0755")
+	cmd.Flags().String("path", "", "The file system path of the directory to create.")
+	cmd.Flags().String("mode", "", "The directory mode as an octal value such as 0755.")
 	markUsageRequired(cmd, "path")
 	return cmd
 }
@@ -1473,8 +1473,8 @@ func newFSHardlinkFileCommand(info version.Info) *cobra.Command {
 			return service.HardlinkFile(ctx.cmd.Context(), tdcfs.HardlinkFileOptions{Profile: profile, Source: source, Link: link})
 		},
 	}, info)
-	cmd.Flags().String("source-path", "", "existing tdc fs source file path")
-	cmd.Flags().String("link-path", "", "tdc fs path for the created hard link")
+	cmd.Flags().String("source-path", "", "The existing file path in the TiDB Cloud file system.")
+	cmd.Flags().String("link-path", "", "The file path for the hard link being created in the TiDB Cloud file system.")
 	markUsageRequired(cmd, "source-path", "link-path")
 	return cmd
 }
@@ -1559,7 +1559,7 @@ func newFSFindFilesCommand(info version.Info) *cobra.Command {
 func newFSCreateLayerCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-layer",
-		Short:      "Create a file system layer.",
+		Short:      "Create a file system layer. (preview)",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
 		Run: func(ctx commandContext) (any, error) {
@@ -1597,8 +1597,8 @@ func newFSCreateLayerCommand(info version.Info) *cobra.Command {
 			return service.DryRunLayerMutation(ctx.cmd.Context(), ctx.CommandPath(), "create_layer", "POST", "/v1/layers", body, profile, authz.FSFileWrite)
 		},
 	}, info)
-	cmd.Flags().String("layer-id", "", "optional stable layer id")
-	cmd.Flags().String("base-root-path", "", "base tdc fs root path for the layer")
+	cmd.Flags().String("layer-id", "", "Stable layer ID")
+	cmd.Flags().String("base-root-path", "", "Base TiDB Cloud file system root path for the layer.")
 	cmd.Flags().String("layer-name", "", "human-readable layer name")
 	cmd.Flags().StringArray("tag", nil, "layer tag key=value; repeatable")
 	cmd.Flags().String("durability-mode", "", "layer durability mode, for example restore-safe")
@@ -1610,7 +1610,7 @@ func newFSCreateLayerCommand(info version.Info) *cobra.Command {
 func newFSListLayersCommand(info version.Info) *cobra.Command {
 	return newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "list-layers",
-		Short:      "List file system layers for a specific file system.",
+		Short:      "List file system layers for a specific file system. (preview)",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1626,7 +1626,7 @@ func newFSListLayersCommand(info version.Info) *cobra.Command {
 func newFSDescribeLayerCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "describe-layer",
-		Short:      "Describe a specified file system layer.",
+		Short:      "Describe a specified file system layer. (preview)",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1641,7 +1641,7 @@ func newFSDescribeLayerCommand(info version.Info) *cobra.Command {
 			return service.DescribeLayer(ctx.cmd.Context(), tdcfs.DescribeLayerOptions{Profile: profile, LayerID: layerID})
 		},
 	}, info)
-	cmd.Flags().String("layer-id", "", "tdc fs layer id")
+	cmd.Flags().String("layer-id", "", "The ID of the specified file system layer.")
 	markUsageRequired(cmd, "layer-id")
 	return cmd
 }
@@ -1649,7 +1649,7 @@ func newFSDescribeLayerCommand(info version.Info) *cobra.Command {
 func newFSDiffLayerCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "diff-layer",
-		Short:      "Show changed entries in a file system layer.",
+		Short:      "Show changed entries in a file system layer. (preview)",
 		Mutation:   readOnlyCommand,
 		Permission: authz.FSFileRead,
 		Run: func(ctx commandContext) (any, error) {
@@ -1673,7 +1673,7 @@ func newFSDiffLayerCommand(info version.Info) *cobra.Command {
 func newFSCreateLayerCheckpointCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "create-layer-checkpoint",
-		Short:      "Create a layer checkpoint.",
+		Short:      "Create a layer checkpoint. (preview)",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
 		Run: func(ctx commandContext) (any, error) {
@@ -1746,7 +1746,7 @@ func newFSRollbackLayerCommand(info version.Info) *cobra.Command {
 func newFSCommitLayerCommand(info version.Info) *cobra.Command {
 	cmd := newControlPlaneCommand(controlPlaneCommandSpec{
 		Use:        "commit-layer",
-		Short:      "Commit a layer into the base file system.",
+		Short:      "Commit a layer into the base file system. (preview)",
 		Mutation:   mutatingCommand,
 		Permission: authz.FSFileWrite,
 		Run: func(ctx commandContext) (any, error) {
@@ -1883,7 +1883,7 @@ func newFSMountFileSystemCommand(info version.Info) *cobra.Command {
 			return service.DryRunMountFileSystem(ctx.cmd.Context(), ctx.CommandPath(), opts)
 		},
 	}, info)
-	cmd.Flags().String("file-system-name", "", "tdc fs resource name; defaults to the profile default or only configured resource")
+	cmd.Flags().String("file-system-name", "", "The name of the file system. Default: the name of the default file system in the profile.")
 	cmd.Flags().String("mount-path", "", "local mount path")
 	cmd.Flags().String("remote-path", "/", "tdc fs remote root path to expose")
 	cmd.Flags().String("driver", "auto", "mount driver: auto, fuse, or webdav")
