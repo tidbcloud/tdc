@@ -1464,7 +1464,6 @@ func TestLiveDBClusterLifecycle(t *testing.T) {
 		"--profile", profileName,
 		"db", "create-db-cluster",
 		"--db-cluster-name", clusterName,
-		"--db-cluster-type", "starter",
 		"--wait",
 	)
 	create.wantExitCode(0)

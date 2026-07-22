@@ -25,10 +25,8 @@ func Required(flagName, value string) error {
 }
 
 func ClusterType(value string) error {
-	if err := Required("--db-cluster-type", value); err != nil {
-		return err
-	}
-	if strings.TrimSpace(value) != ClusterTypeStarter {
+	trimmed := strings.TrimSpace(value)
+	if trimmed != "" && trimmed != ClusterTypeStarter {
 		return apperr.New(
 			"db.unsupported_cluster_type",
 			"usage",

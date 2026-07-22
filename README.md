@@ -40,7 +40,7 @@ An agent can go from zero to live HTAP SQL (Hybrid Transaction / Analytical Proc
 1. Provision a serverless MySQL-compatible cluster, wait until it is active, and capture its ID
 
 ```shell
-export CLUSTER_ID="$(tdc db create-db-cluster --db-cluster-type starter --db-cluster-name my-app-db --wait --query id --output text)"
+export CLUSTER_ID="$(tdc db create-db-cluster --db-cluster-name my-app-db --wait --query id --output text)"
 ```
 
 2. Create the SQL users it needs to connect
@@ -145,7 +145,7 @@ tdc fs mount-file-system --file-system-name agent-workspace --mount-path /path_t
 ### TiDB Cloud Starter
 
 ```shell
-tdc db create-db-cluster --db-cluster-name my-distributed-mysql --db-cluster-type starter --wait
+tdc db create-db-cluster --db-cluster-name my-distributed-mysql --wait
 ```
 
 Cluster creation uses the configured `project_id` by default. Use optional `--project-id <project-id>` to create in another accessible project. An explicit empty `--project-id` is rejected instead of falling back to the profile.

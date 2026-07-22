@@ -42,9 +42,8 @@ The English repository uses these relative paths:
 ai/tdc/
   tdc-overview.md
   tdc-quick-start.md
-  concepts/
-    tdc-concepts-and-architecture.md
-  guides/
+  reference/
+    tdc-cli-reference.md
     tdc-install-configure-update.md
     tdc-organization.md
     tdc-starter-database.md
@@ -52,7 +51,6 @@ ai/tdc/
     tdc-filesystem-git.md
     tdc-filesystem-journal.md
     tdc-filesystem-vault.md
-  examples/
     tdc-agent-sandbox-example.md
     tdc-daily-workflow-example.md
     tdc-query-sql-with-roles-example.md
@@ -60,8 +58,9 @@ ai/tdc/
     tdc-git-workspace-for-agents-example.md
     tdc-journal-agent-workflow-example.md
     tdc-vault-agent-secrets-example.md
-  reference/
-    tdc-cli-reference.md
+    tdc-ci-artifact-handoff-example.md
+    tdc-persistent-agent-state-example.md
+    tdc-parallel-agent-dataset-example.md
     tdc-configuration-and-credentials.md
     tdc-regions-security-and-limitations.md
     tdc-troubleshooting.md
@@ -76,7 +75,7 @@ Follow the existing PingCAP documentation templates and AI documentation style:
 - Every page has YAML front matter with an SEO-oriented `title` and `summary`.
 - The front matter title and the page H1 are identical.
 - Task pages use a short introduction, prerequisites, numbered steps, expected results, cleanup where resources are created, and a "What's next" section.
-- Concept and reference pages use the corresponding PingCAP concept/reference templates.
+- Reference pages use the corresponding PingCAP reference templates.
 - Notes and warnings use the standard blockquote format used by the PingCAP docs repositories.
 - Prose is concise and task-oriented. Do not add manual line breaks inside ordinary paragraphs without a semantic reason.
 - Commands use the installed `tdc` name, never the local development path `bin/tdc`.
@@ -126,33 +125,9 @@ The Filesystem quick path uses data-plane commands to write and read one file. I
 
 The database quick path creates or selects a Starter cluster, prepares SQL users when needed, and executes a small verification query with an explicit role. Keep resource-ID extraction and cleanup understandable; do not require users to understand every output/query option before their first successful operation.
 
-## Concepts
+## Command References
 
-`tdc-concepts-and-architecture.md` explains only concepts needed to understand later guides:
-
-- tdc as the TiDB Cloud CLI for Starter databases and TiDB Cloud Filesystem;
-- the two-level command model and agent-friendly deterministic behavior;
-- profile namespace, canonical region code, and default virtual project;
-- one profile to many Filesystem resources;
-- TiDB Cloud API keys versus generated DB SQL credentials;
-- read-only, read-write, and admin SQL roles;
-- FS owner token versus delegated vault token;
-- local config, credentials, resource registry, DB user credentials, mount state, and operation logs;
-- tdc and Drive9 companion responsibilities.
-
-tdc bundles and invokes the Drive9 companion as `tdc-drive9`. tdc owns profile selection, credential resolution, region routing, resource selection, output, and error behavior. Drive9 owns Filesystem data-plane semantics, FUSE/WebDAV mount runtime, layers, pack/unpack, Git workspace, journal, and vault behavior.
-
-Link the Drive9 name to its GitHub repository:
-
-```text
-https://github.com/mem9-ai/drive9
-```
-
-Users must not be instructed to install, configure, authenticate, or invoke standalone Drive9 for normal tdc workflows.
-
-## Guides
-
-The guides cover every implemented command, grouped by the existing top-level command families.
+The command references cover every implemented command, grouped by the existing top-level command families. Each family page includes a tree of its commands and documents every command with its purpose, key inputs, and one or two valid examples.
 
 ### Install, configure, and update tdc
 
@@ -221,9 +196,9 @@ The guide must also provide a concise platform matrix for macOS, Linux, and Wind
 
 `tdc-filesystem-vault.md` covers secret create, replace, read, list, and delete; delegated grants; grant revocation; audit events; environment injection; read-only vault mount; and unmount. It distinguishes owner FS credentials from delegated vault tokens and must not print a token in an example output.
 
-## Examples
+## Scenario References
 
-Examples are end-to-end scenarios rather than command catalogs. Every example includes prerequisites, commands, expected verification, security notes, and cleanup.
+Scenario references are end-to-end workflows rather than command catalogs. Every scenario includes prerequisites, commands, expected verification, security notes, and cleanup.
 
 - `tdc-agent-sandbox-example.md`: provision on a trusted machine, pass `TDC_FS_TOKEN`, `TDC_REGION_CODE`, and `TDC_FS_FILE_SYSTEM_NAME` to a clean sandbox, then use FS, mount, Git, journal, or vault without TiDB Cloud API keys.
 - `tdc-daily-workflow-example.md`: install, configure, inspect projects, manage one Starter cluster and one Filesystem resource, update tdc, and clean up.
@@ -232,12 +207,15 @@ Examples are end-to-end scenarios rather than command catalogs. Every example in
 - `tdc-git-workspace-for-agents-example.md`: mount a Filesystem, clone or hydrate a repository, create a worktree, use ordinary Git, and remove the worktree safely.
 - `tdc-journal-agent-workflow-example.md`: create a journal, append agent events, search them, and verify the hash chain.
 - `tdc-vault-agent-secrets-example.md`: create a secret, delegate a limited field to an agent, inject it into a process, inspect audit events, revoke access, and clean up.
+- `tdc-ci-artifact-handoff-example.md`: persist build output under a run-specific path and consume it from another isolated CI job.
+- `tdc-persistent-agent-state-example.md`: preserve task plans, checkpoints, results, and journal history across disposable sandboxes.
+- `tdc-parallel-agent-dataset-example.md`: expose one shared unstructured dataset through read-only mounts to parallel agent workers.
 
 Examples that mount on macOS default to WebDAV unless the example specifically demonstrates the optional macFUSE/FUSE path.
 
-## Reference
+## Supporting Reference
 
-`tdc-cli-reference.md` documents global flags, long-flag rules, required-before-optional help ordering, JSON/text output, JMESPath queries, dry-run behavior, help/version forms, stable error prefix, exit behavior, and FS alias mapping.
+`tdc-cli-reference.md` documents the complete command tree, global flags, long-flag rules, required-before-optional help ordering, JSON/text output, JMESPath queries, dry-run behavior, help/version forms, stable error prefix, exit behavior, and FS alias mapping.
 
 `tdc-configuration-and-credentials.md` documents:
 
@@ -265,7 +243,7 @@ Update:
 docs/pingcap-docs/docs/TOC-ai.md
 ```
 
-Under Quick Start, Concepts, Guides, Examples, and Reference, add a nested `TiDB Cloud CLI (tdc) (Preview)` group with direct links to all corresponding tdc pages. Do not expose only the overview while leaving the other pages unreachable from the TOC.
+Keep tdc Quick Start under Quick Start. Put the overview, every command-family reference, every scenario reference, configuration, regions, security, limitations, and troubleshooting under a nested `TiDB Cloud CLI (tdc)` group in Reference. Do not add tdc pages under Concepts, Guides, or Examples.
 
 Update the AI home page:
 
@@ -345,11 +323,11 @@ No example may depend on an undocumented endpoint, raw server URL, or direct Dri
 - The overview links feedback to `https://github.com/tidbcloud/tdc/issues`.
 - Drive9 references link to `https://github.com/mem9-ai/drive9` and explain the bundled companion boundary.
 - Quick Start reaches a successful DB or FS operation without introducing advanced features.
-- Guides cover every current implemented command and every FS alias.
-- No guide includes `tdc fs-git restore-git-workspace` or another absent command.
+- Command references cover every current implemented command and every FS alias, with command trees and examples.
+- No reference includes `tdc fs-git restore-git-workspace` or another absent command.
 - No published page documents source compilation as an installation method.
 - FS documentation states that macOS defaults to WebDAV and explains how installing macFUSE and explicitly selecting FUSE enables the complete mount experience.
-- Examples use only synthetic values and never expose a real secret.
+- Scenario references use only synthetic values and never expose a real secret.
 - `docs/priciples.md`, `docs/present.md`, README, AGENTS, and the listed completed specs no longer present superseded behavior as current behavior.
 - Archived README snapshots and historical release notes remain unchanged.
 - English Markdown lint and link checks pass using the documentation repository's available validation workflow.

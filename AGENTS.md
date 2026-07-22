@@ -397,10 +397,10 @@ Implemented command behavior:
 - `tdc organization list-projects`
 - `tdc organization list-projects --query 'projects[0].id'`
 - `tdc organization list-projects --output text`
-- `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter`
-- `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --wait`
-- `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --dry-run`
-- `tdc db create-db-cluster --db-cluster-name demo --db-cluster-type starter --project-id <project-id>`
+- `tdc db create-db-cluster --db-cluster-name demo`
+- `tdc db create-db-cluster --db-cluster-name demo --wait`
+- `tdc db create-db-cluster --db-cluster-name demo --dry-run`
+- `tdc db create-db-cluster --db-cluster-name demo --project-id <project-id>`
 - `tdc db list-db-clusters`
 - `tdc db list-db-clusters --query 'clusters[].id'`
 - `tdc db describe-db-cluster --db-cluster-id <cluster-id>`
