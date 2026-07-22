@@ -1018,7 +1018,7 @@ func newFSDescribeFileSystemCommand(info version.Info) *cobra.Command {
 			return service.DescribeFileSystem(ctx.cmd.Context(), profile)
 		},
 	}, info)
-	cmd.Flags().String("file-system-name", "", "tdc fs resource name")
+	cmd.Flags().String("file-system-name", "", "The name of the file system.")
 	markUsageRequired(cmd, "file-system-name")
 	return cmd
 }
@@ -1044,7 +1044,7 @@ func newFSSetDefaultFileSystemCommand(info version.Info) *cobra.Command {
 			return localFSDefaultDryRun(ctx.CommandPath(), profile, profile.FSResourceName), nil
 		},
 	}, info)
-	cmd.Flags().String("file-system-name", "", "tdc fs resource name")
+	cmd.Flags().String("file-system-name", "", "The name of the file system.")
 	markUsageRequired(cmd, "file-system-name")
 	return cmd
 }
@@ -1117,7 +1117,7 @@ func newFSDeleteFileSystemCommand(info version.Info) *cobra.Command {
 			})
 		},
 	}, info)
-	cmd.Flags().String("file-system-name", "", "tdc fs resource name")
+	cmd.Flags().String("file-system-name", "", "The name of the file system.")
 	markUsageRequired(cmd, "file-system-name")
 	return cmd
 }
@@ -1256,7 +1256,7 @@ func newFSListFilesCommand(info version.Info) *cobra.Command {
 			})
 		},
 	}, info)
-	cmd.Flags().String("path", "/", "tdc fs directory path")
+	cmd.Flags().String("path", "/", "File system directory path.")
 	return cmd
 }
 
@@ -1282,7 +1282,7 @@ func newFSDescribeFileCommand(info version.Info) *cobra.Command {
 			})
 		},
 	}, info)
-	cmd.Flags().String("path", "", "tdc fs file or directory path")
+	cmd.Flags().String("path", "", "File or directory path in the TiDB Cloud file system.")
 	markUsageRequired(cmd, "path")
 	return cmd
 }
@@ -1319,9 +1319,9 @@ func newFSMoveFileCommand(info version.Info) *cobra.Command {
 			})
 		},
 	}, info)
-	cmd.Flags().String("from-remote", "", "tdc fs source path")
-	cmd.Flags().String("to-remote", "", "tdc fs target path")
-	cmd.Flags().Bool("overwrite", false, "replace an existing remote target")
+	cmd.Flags().String("from-remote", "", "Source file path.")
+	cmd.Flags().String("to-remote", "", "Destination file path.")
+	cmd.Flags().Bool("overwrite", false, "Replace an existing destination file.")
 	markUsageRequired(cmd, "from-remote", "to-remote")
 	return cmd
 }
@@ -1353,8 +1353,8 @@ func newFSDeleteFileCommand(info version.Info) *cobra.Command {
 			})
 		},
 	}, info)
-	cmd.Flags().String("path", "", "tdc fs file or directory path")
-	cmd.Flags().Bool("recursive", false, "delete a directory recursively")
+	cmd.Flags().String("path", "", "File or directory path in the TiDB Cloud file system.")
+	cmd.Flags().Bool("recursive", false, "Delete a directory recursively.")
 	markUsageRequired(cmd, "path")
 	return cmd
 }
@@ -1415,8 +1415,8 @@ func newFSChmodFileCommand(info version.Info) *cobra.Command {
 			return service.ChmodFile(ctx.cmd.Context(), tdcfs.ChmodFileOptions{Profile: profile, Path: path, Mode: mode})
 		},
 	}, info)
-	cmd.Flags().String("path", "", "tdc fs file or directory path")
-	cmd.Flags().String("mode", "", "octal permission mode such as 0644")
+	cmd.Flags().String("path", "", "File or directory path.")
+	cmd.Flags().String("mode", "", "The permission mode as an octal value such as 0644.")
 	markUsageRequired(cmd, "path", "mode")
 	return cmd
 }
@@ -1444,8 +1444,8 @@ func newFSSymlinkFileCommand(info version.Info) *cobra.Command {
 			return service.SymlinkFile(ctx.cmd.Context(), tdcfs.SymlinkFileOptions{Profile: profile, Target: target, Link: link})
 		},
 	}, info)
-	cmd.Flags().String("target", "", "symbolic link target string")
-	cmd.Flags().String("link-path", "", "tdc fs path for the created symlink")
+	cmd.Flags().String("target", "", "The actual file path being linked to.")
+	cmd.Flags().String("link-path", "", "The file path for the created symbolic link.")
 	markUsageRequired(cmd, "target", "link-path")
 	return cmd
 }
@@ -1516,10 +1516,10 @@ func newFSSearchFileContentCommand(info version.Info) *cobra.Command {
 			})
 		},
 	}, info)
-	cmd.Flags().String("path", "/", "tdc fs path prefix")
-	cmd.Flags().String("pattern", "", "content search pattern")
-	cmd.Flags().Int32("limit", 0, "maximum number of search results; 0 uses the service default")
-	cmd.Flags().String("layer-id", "", "search through a tdc fs layer overlay")
+	cmd.Flags().String("path", "/", "File path prefix to be searched.")
+	cmd.Flags().String("pattern", "", "Content search matching pattern.")
+	cmd.Flags().Int32("limit", 0, "Maximum number of search results; 0 uses the service default.")
+	cmd.Flags().String("layer-id", "", "Search within a file system layer.")
 	markUsageRequired(cmd, "pattern")
 	return cmd
 }
@@ -1543,16 +1543,16 @@ func newFSFindFilesCommand(info version.Info) *cobra.Command {
 			return service.FindFiles(ctx.cmd.Context(), opts)
 		},
 	}, info)
-	cmd.Flags().String("path", "/", "tdc fs path prefix")
-	cmd.Flags().String("file-name-pattern", "", "file name pattern such as *.md")
-	cmd.Flags().String("resource-type", "", "resource type filter: file or directory")
-	cmd.Flags().String("tag", "", "tag filter")
-	cmd.Flags().String("layer-id", "", "find through a tdc fs layer overlay")
-	cmd.Flags().String("newer", "", "only return files newer than this service-supported time expression")
-	cmd.Flags().String("older", "", "only return files older than this service-supported time expression")
-	cmd.Flags().Int64("min-size-bytes", 0, "minimum file size in bytes")
-	cmd.Flags().Int64("max-size-bytes", 0, "maximum file size in bytes")
-	cmd.Flags().Int32("limit", 0, "maximum number of results; 0 uses the service default")
+	cmd.Flags().String("path", "/", "File path prefix.")
+	cmd.Flags().String("file-name-pattern", "", "File name pattern filter, such as *.md.")
+	cmd.Flags().String("resource-type", "", "Resource type filter: file or directory.")
+	cmd.Flags().String("tag", "", "Tag filter.")
+	cmd.Flags().String("layer-id", "", "Search files and directorieswithin a specific file system layer.")
+	cmd.Flags().String("newer", "", "Only return files newer than the filter.")
+	cmd.Flags().String("older", "", "Only return files older than the filter.")
+	cmd.Flags().Int64("min-size-bytes", 0, "Minimum file size in bytes.")
+	cmd.Flags().Int64("max-size-bytes", 0, "Maximum file size in bytes.")
+	cmd.Flags().Int32("limit", 0, "Maximum number of results; 0 uses the service default.")
 	return cmd
 }
 
@@ -1597,12 +1597,12 @@ func newFSCreateLayerCommand(info version.Info) *cobra.Command {
 			return service.DryRunLayerMutation(ctx.cmd.Context(), ctx.CommandPath(), "create_layer", "POST", "/v1/layers", body, profile, authz.FSFileWrite)
 		},
 	}, info)
-	cmd.Flags().String("layer-id", "", "Stable layer ID")
-	cmd.Flags().String("base-root-path", "", "Base TiDB Cloud file system root path for the layer.")
-	cmd.Flags().String("layer-name", "", "human-readable layer name")
-	cmd.Flags().StringArray("tag", nil, "layer tag key=value; repeatable")
-	cmd.Flags().String("durability-mode", "", "layer durability mode, for example restore-safe")
-	cmd.Flags().String("actor-id", "", "actor id recorded on layer events")
+	cmd.Flags().String("layer-id", "", "The layer ID. Normally it is generated by the service automatically.")
+	cmd.Flags().String("base-root-path", "", "Base root path in the TiDB Cloud file system.")
+	cmd.Flags().String("layer-name", "", "The name of the layer.")
+	cmd.Flags().StringArray("tag", nil, "Tag(s) for the layer, key=value; repeatable.")
+	cmd.Flags().String("durability-mode", "", "Layer durability mode, must be restore-safe.")
+	cmd.Flags().String("actor-id", "", "Actor ID identifying the layer owner (for example, the agent name).")
 	markUsageRequired(cmd, "base-root-path")
 	return cmd
 }
@@ -1664,8 +1664,8 @@ func newFSDiffLayerCommand(info version.Info) *cobra.Command {
 			return service.DiffLayer(ctx.cmd.Context(), opts)
 		},
 	}, info)
-	cmd.Flags().String("layer-id", "", "tdc fs layer id")
-	cmd.Flags().Int64("max-seq", 0, "highest layer sequence to include; 0 includes all entries")
+	cmd.Flags().String("layer-id", "", "The ID of the layer.")
+	cmd.Flags().Int64("max-seq", 0, "The highest layer sequence to include; 0 includes all layers.")
 	markUsageRequired(cmd, "layer-id")
 	return cmd
 }
@@ -1702,9 +1702,9 @@ func newFSCreateLayerCheckpointCommand(info version.Info) *cobra.Command {
 			}, profile, authz.FSFileWrite)
 		},
 	}, info)
-	cmd.Flags().String("layer-id", "", "tdc fs layer id")
-	cmd.Flags().String("checkpoint-id", "", "optional stable checkpoint id")
-	cmd.Flags().String("label", "", "checkpoint label")
+	cmd.Flags().String("layer-id", "", "The layer ID identifying the layer.")
+	cmd.Flags().String("checkpoint-id", "", "Checkpoint ID. Normally it is generated by the service automatically.")
+	cmd.Flags().String("label", "", "The checkpoint label.")
 	markUsageRequired(cmd, "layer-id")
 	return cmd
 }
@@ -1738,7 +1738,7 @@ func newFSRollbackLayerCommand(info version.Info) *cobra.Command {
 			return service.DryRunLayerMutation(ctx.cmd.Context(), ctx.CommandPath(), "rollback_layer", "POST", "/v1/layers/"+layerID+"/rollback", nil, profile, authz.FSFileWrite)
 		},
 	}, info)
-	cmd.Flags().String("layer-id", "", "tdc fs layer id")
+	cmd.Flags().String("layer-id", "", "The ID of the layer.")
 	markUsageRequired(cmd, "layer-id")
 	return cmd
 }
@@ -1806,12 +1806,12 @@ func newFSPackFileSystemCommand(info version.Info) *cobra.Command {
 			return service.DryRunPackFileSystem(ctx.cmd.Context(), ctx.CommandPath(), opts)
 		},
 	}, info)
-	cmd.Flags().String("local-root", "", "local overlay root containing the overlay directory")
-	cmd.Flags().String("remote-root", "/", "tdc fs remote root represented by the local overlay")
-	cmd.Flags().String("mount-path", "", "mounted path whose state provides local-root, remote-root, and mount profile")
-	cmd.Flags().String("mount-profile", "", "mount profile: coding-agent, portable, or none")
-	cmd.Flags().String("archive-path", "", "tdc fs archive path; defaults to a stable hidden pack path")
-	cmd.Flags().StringArray("path", nil, "local overlay path to pack; repeatable")
+	cmd.Flags().String("local-root", "", "Local overlay root containing the overlay directory.")
+	cmd.Flags().String("remote-root", "/", "The TiDB Cloudfile system root represented by the local overlay.")
+	cmd.Flags().String("mount-path", "", "The local mounted path.")
+	cmd.Flags().String("mount-profile", "", "The mount profile: coding-agent, portable, or none. Default: none.")
+	cmd.Flags().String("archive-path", "", "The path for the packed archive.")
+	cmd.Flags().StringArray("path", nil, "Local overlay path(s) for packing.")
 	return cmd
 }
 
@@ -1844,12 +1844,12 @@ func newFSUnpackFileSystemCommand(info version.Info) *cobra.Command {
 			return service.DryRunUnpackFileSystem(ctx.cmd.Context(), ctx.CommandPath(), opts)
 		},
 	}, info)
-	cmd.Flags().String("local-root", "", "local overlay root to restore into")
-	cmd.Flags().String("remote-root", "/", "tdc fs remote root used when --archive-path is omitted")
-	cmd.Flags().String("mount-path", "", "mounted path whose state provides local-root, remote-root, and mount profile")
-	cmd.Flags().String("mount-profile", "", "mount profile: coding-agent, portable, or none")
-	cmd.Flags().String("archive-path", "", "tdc fs archive path; defaults to a stable hidden pack path")
-	cmd.Flags().Bool("no-replace", false, "merge archive entries without removing manifest replacement paths first")
+	cmd.Flags().String("local-root", "", "The local overlay root to restore into.")
+	cmd.Flags().String("remote-root", "/", "Find the packed archive under the specified root path when --archive-path is omitted.")
+	cmd.Flags().String("mount-path", "", "The local mounted path.")
+	cmd.Flags().String("mount-profile", "", "Mount profile: coding-agent, portable, or none. Default: none.")
+	cmd.Flags().String("archive-path", "", "The path for the packed archive.")
+	cmd.Flags().Bool("no-replace", false, "Merge archive entries instead of replacing them.")
 	return cmd
 }
 
@@ -1884,22 +1884,22 @@ func newFSMountFileSystemCommand(info version.Info) *cobra.Command {
 		},
 	}, info)
 	cmd.Flags().String("file-system-name", "", "The name of the file system. Default: the name of the default file system in the profile.")
-	cmd.Flags().String("mount-path", "", "local mount path")
-	cmd.Flags().String("remote-path", "/", "tdc fs remote root path to expose")
-	cmd.Flags().String("driver", "auto", "mount driver: auto, fuse, or webdav")
-	cmd.Flags().Bool("foreground", false, "run mount runtime in the foreground until interrupted")
-	cmd.Flags().Bool("read-only", false, "mount as read-only")
-	cmd.Flags().Duration("ready-timeout", 30*time.Second, "time to wait for a background mount to become ready")
-	cmd.Flags().String("cache-dir", "", "local FUSE cache directory; defaults to ~/.tdc/cache/mounts/<mount-hash>")
-	cmd.Flags().Int64("read-cache-size-mb", 128, "FUSE aggregate read cache size in MiB; 0 uses the default")
-	cmd.Flags().Int64("read-cache-max-file-mb", 4, "largest file admitted to the FUSE read cache in MiB; 0 uses the default")
-	cmd.Flags().Duration("read-cache-ttl", 30*time.Second, "FUSE read cache TTL")
-	cmd.Flags().Bool("write-back-cache", true, "persist FUSE writes locally before uploading them on flush")
-	cmd.Flags().String("mount-profile", "", "mount profile: coding-agent, portable, or none")
-	cmd.Flags().String("local-root", "", "local overlay root; defaults to ~/.tdc/local/fs/<mount-hash>")
-	cmd.Flags().StringArray("pack-path", nil, "local overlay path included by automatic or manual pack; repeatable")
-	cmd.Flags().String("unpack-archive-path", "", "tdc fs pack archive to restore before mounting")
-	cmd.Flags().Bool("no-auto-unpack", false, "skip default portable-profile auto-unpack before mounting")
+	cmd.Flags().String("mount-path", "", "Local mount path.")
+	cmd.Flags().String("remote-path", "/", "The TiDB Cloud file system root path to mount.")
+	cmd.Flags().String("driver", "auto", "Mount driver: auto, fuse, or webdav.")
+	cmd.Flags().Bool("foreground", false, "Run the mount runtime in the foreground until interrupted.")
+	cmd.Flags().Bool("read-only", false, "Read-only mount mode.")
+	cmd.Flags().Duration("ready-timeout", 30*time.Second, "Time to wait for a background mount to become ready.")
+	cmd.Flags().String("cache-dir", "", "Local FUSE cache directory. Default: ~/.tdc/cache/mounts/<mount-hash>.")
+	cmd.Flags().Int64("read-cache-size-mb", 128, "FUSE read cache size in MiB. 0 uses the default.")
+	cmd.Flags().Int64("read-cache-max-file-mb", 4, "Maximumfile size admitted to the FUSE read cache in MiB. 0 uses the default.")
+	cmd.Flags().Duration("read-cache-ttl", 30*time.Second, "FUSE read cache Time-to-Live.")
+	cmd.Flags().Bool("write-back-cache", true, "Persist FUSE writes locally before writing them to the file system on flush.")
+	cmd.Flags().String("mount-profile", "", "Mount profile: coding-agent, portable, or none. Default: none.")
+	cmd.Flags().String("local-root", "", "Local overlay root. Default: ~/.tdc/local/fs/<mount-hash>.")
+	cmd.Flags().StringArray("pack-path", nil, "Local overlay path included by automatic or manual pack. Repeatable.")
+	cmd.Flags().String("unpack-archive-path", "", "Restore the pack archive before mounting.")
+	cmd.Flags().Bool("no-auto-unpack", false, "Skip default auto-unpack for portable mount profile before mounting.")
 	markUsageRequired(cmd, "mount-path")
 	return cmd
 }
@@ -1934,12 +1934,12 @@ func newFSUnmountFileSystemCommand(info version.Info) *cobra.Command {
 			return service.DryRunUnmountFileSystem(ctx.cmd.Context(), ctx.CommandPath(), opts)
 		},
 	}, info)
-	cmd.Flags().String("mount-path", "", "local mount path")
-	cmd.Flags().Duration("timeout", 30*time.Second, "time to wait for the mount process to exit")
-	cmd.Flags().Bool("force", false, "force-kill the mount process if graceful unmount times out")
-	cmd.Flags().Bool("ignore-absent", false, "return success when no tdc fs mount state exists for the path")
-	cmd.Flags().String("pack-archive-path", "", "tdc fs pack archive to write after unmount")
-	cmd.Flags().Bool("no-auto-pack", false, "skip default portable-profile auto-pack after unmount")
+	cmd.Flags().String("mount-path", "", "The local mounted path.")
+	cmd.Flags().Duration("timeout", 30*time.Second, "Time to wait for the mount process to exit.")
+	cmd.Flags().Bool("force", false, "Kill the mount process if graceful unmount times out.")
+	cmd.Flags().Bool("ignore-absent", false, "Return success when no file system mount state exists for the specified path.")
+	cmd.Flags().String("pack-archive-path", "", "Pack archive to write after unmount")
+	cmd.Flags().Bool("no-auto-pack", false, "Skip the portable mount profile's default auto-pack action.")
 	markUsageRequired(cmd, "mount-path")
 	return cmd
 }
@@ -2026,8 +2026,8 @@ func newFSDrainFileSystemCommand(info version.Info) *cobra.Command {
 			})
 		},
 	}, info)
-	cmd.Flags().String("mount-path", "", "local FUSE mount path")
-	cmd.Flags().Duration("timeout", 30*time.Second, "time to wait for dirty handles and pending writes to drain")
+	cmd.Flags().String("mount-path", "", "Local FUSE mount path.")
+	cmd.Flags().Duration("timeout", 30*time.Second, "The time to wait for dirty handles and pending writes to drain.")
 	markUsageRequired(cmd, "mount-path")
 	return cmd
 }
