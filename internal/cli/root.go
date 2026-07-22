@@ -399,7 +399,7 @@ func newControlPlaneCommand(spec controlPlaneCommandSpec, info version.Info) *co
 		},
 	}, info)
 	if spec.Mutation == mutatingCommand {
-		cmd.Flags().Bool("dry-run", false, "validate the request without creating, updating, or deleting remote resources")
+		cmd.Flags().Bool("dry-run", false, "Validate the request without doing the actual changes.")
 	}
 	return cmd
 }

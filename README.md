@@ -1,41 +1,41 @@
 # tdc
 
-`tdc` is the command-line interface for TiDB Cloud Filesystem and TiDB Cloud Starter.
+tdc ([TiDB Cloud](https://tidbcloud.com) CLI) is a unified tool to manage your TiDB Cloud Filesystem (FS) and Starter services.
 
-> tdc is currently in Preview. Its features and command-line interface might change without prior notice.
+- TiDB Cloud Filesystem is a serverless distributed file system designed specifically for AI coding agent workloads.
+- TiDB Cloud Starter provides serverless distributed database clusters that are fully compatible with MySQL.
 
-- TiDB Cloud Filesystem is a distributed file system designed specifically for AI coding agent workloads, with zero infrastructure.
-- TiDB Cloud Starter provides distributed database clusters that are fully compatible with MySQL, with zero infrastructure.
+> `tdc` is currently in preview. Subcommands labeled as preview are subject to change without prior notice.
 
-## Your Agent's Toolbelt
+## 3-Command Superpower for Your Agent
 
-### Always-on, zero infrastructure file system for sandboxes — The 3-Command Superpower
+### Always-On File System for Sandboxes — Zero Infrastructure Required
 
-An agent can persist state between sessions, share files across sandboxes, snapshot its workspace before attempting a risky operation, and roll back on failure — all through a CLI with POSIX compatibility.
+With `tdc`, an agent can persist state between sessions, share files across sandboxes, snapshot its workspace before attempting a risky operation, and roll back on failure — all through a CLI with POSIX compatibility.
 
-1. Create a filesystem resource and get the returning token (one-time, out of the sandbox)
+1. Create a file system and obtain the file system token (performed once, outside the sandbox).
 
 ```shell
 export TDC_FS_TOKEN="$(tdc fs create-file-system --file-system-name agent-workspace --region <REGION_CODE> --wait --query fs_token --output text)"
 ```
 
-2. Mount the filesystem and use just like any regular POSIX-compliant filesystem (inside the sandbox environment)
+2. Mount the filesystem to a local path and use it as a normal POSIX-compliant filesystem (performed within the sandbox)
 
 ```shell
 export TDC_FS_TOKEN="<FS_TOKEN>"
-tdc fs mount-file-system --file-system-name agent-workspace --mount-path /path_to_workspace --region <REGION_CODE>
-echo "Hello Sandbox Workspace!" >> /path_to_workspace/hello.txt
+tdc fs mount-file-system --file-system-name agent-workspace --mount-path /path-to-workspace --region <REGION_CODE>
+echo "Hello Sandbox Workspace!" >> /path-to-workspace/hello.txt
 ```
 
-3. Unmount to safely release the workspace before handing off to another sandbox (inside the sandbox environment)
+3. Unmount the file system to release the workspace before passing it to another sandbox (performed within the sandbox).
 
 ```shell
-tdc fs unmount-file-system --mount-path /path_to_workspace --region <REGION_CODE>
+tdc fs unmount-file-system --mount-path /path-to-workspace --region <REGION_CODE>
 ```
 
-### Always-on, zero infrastructure MySQL — The 3-Command Superpower
+### Always-On MySQL — Zero Infrastructure Required
 
-An agent can go from zero to live HTAP SQL (Hybrid Transaction / Analytical Processing) in three commands:
+With `tdc`, an agent can go from zero to live HTAP SQL (Hybrid Transaction / Analytical Processing) in three commands:
 
 1. Provision a serverless MySQL-compatible cluster, wait until it is active, and capture its ID
 
@@ -93,28 +93,31 @@ Add `$HOME\.tdc\bin` to your user `PATH` to keep tdc available in new PowerShell
 
 ### Configure
 
-Configure `tdc` with a TiDB Cloud Public Key and Private Key from the [TiDB Cloud](https://tidbcloud.com/org-settings/api-keys) console. Supported region codes are `aws-us-east-1`, `aws-us-west-2`, `aws-eu-central-1`, `aws-ap-northeast-1`, `aws-ap-southeast-1`, and `ali-ap-southeast-1`.
+- Authentication: a TiDB Cloud Public Key and a Private Key from the [TiDB Cloud API Keys](https://tidbcloud.com/org-settings/api-keys) console.
+- Default region: one of aws-us-east-1, aws-us-west-2, aws-eu-central-1, aws-ap-northeast-1, aws-ap-southeast-1, or ali-ap-southeast-1.
+    - Regions support TiDB Cloud Filesystem: aws-us-east-1, aws-ap-southeast-1.
+    - Regions support TiDB Cloud Starter: aws-us-east-1, aws-us-west-2, aws-eu-central-1, aws-ap-northeast-1, aws-ap-southeast-1, or ali-ap-southeast-1.
+
+Set up a default profile with one command:
 
 ```shell
 tdc configure --non-interactive --region-code <TDC_REGION_CODE> --tdc-public-key <TDC_PUBLIC_KEY> --tdc-private-key <TDC_PRIVATE_KEY>
 ```
 
-Configure verifies the API key by listing all accessible projects, requires exactly one project with `type = "tidbx_virtual"`, and stores its ID as the profile's default `project_id` in `~/.tdc/config`. API credentials remain in `~/.tdc/credentials`. Configuration fails without changing the profile when project discovery fails.
+Alternatively, set up a default profile interactively by running the command below. You will be prompted to enter your TiDB Cloud Public Key, Private Key, and the default region:
 
-```toml
-[default]
-region_code = "aws-us-east-1"
-project_id = "1372813089454645969"
+```shell
+tdc configure
 ```
 
-### TiDB Cloud Filesystem
+`tdc configure` stores non-sensitive settings in `~/.tdc/config` and API credentials to `~/.tdc/credentials`.
 
-Supported regions: `aws-us-east-1` and `aws-ap-southeast-1`.
+### TiDB Cloud Filesystem
 
 ```shell
 mkdir ~/my-workspace
 tdc fs create-file-system --file-system-name my-workspace --wait
-tdc fs mount-file-system --mount-path ~/my-workspace
+tdc fs mount-file-system --file-system-name my-workspace --mount-path ~/my-workspace
 ```
 
 Automatic mounting uses FUSE on Linux and WebDAV on macOS and Windows. macOS users can install macFUSE and explicitly add `--driver fuse` for the full FUSE experience.
@@ -133,8 +136,6 @@ tdc fs describe-file-system --file-system-name scratch
 export TDC_FS_TOKEN="$(tdc fs create-file-system --file-system-name agent-workspace --wait --query fs_token --output text)"
 ```
 
-Without `--wait`, file system creation returns after Drive9 accepts provisioning. With the flag, tdc waits up to 10 minutes until the file system root is readable through the public Drive9 data-plane CLI. A timeout or interruption leaves the file system and its locally stored credentials intact.
-
 An agent sandbox can then use that existing file system without running `tdc configure` or providing TiDB Cloud API keys:
 
 ```shell
@@ -142,36 +143,20 @@ export TDC_FS_TOKEN="<FS_TOKEN>"
 tdc fs mount-file-system --file-system-name agent-workspace --mount-path /path_to_workspace --region aws-us-east-1
 ```
 
+> **Preview Note:** Creating a new file system automatically provisions and manages a TiDB Cloud Starter database cluster (name prefix `tidbcloud-fs-`) in your TiDB Cloud organization. This is temporary behavior; in future releases, this backend database cluster will no longer be displayed or count against your TiDB Cloud Starter slot limits.
+
 ### TiDB Cloud Starter
 
 ```shell
 tdc db create-db-cluster --db-cluster-name my-distributed-mysql --db-cluster-type starter --wait
 ```
 
-Cluster creation uses the configured `project_id` by default. Use optional `--project-id <project-id>` to create in another accessible project. An explicit empty `--project-id` is rejected instead of falling back to the profile.
+## Get Help
 
-Without `--wait`, cluster creation returns as soon as TiDB Cloud accepts the asynchronous create request. With the flag, tdc waits up to 12 minutes and returns the final `ACTIVE` cluster. A timeout or interruption leaves the created cluster intact and reports its ID for inspection.
-
-Branch creation and cluster deletion have equivalent explicit wait modes:
-
-```shell
-tdc db create-db-cluster-branch --db-cluster-id <CLUSTER_ID> --db-cluster-branch-name development --wait
-tdc db delete-db-cluster --db-cluster-id <CLUSTER_ID> --wait
-```
-
-Branch waiting lasts up to 5 minutes. Cluster deletion waiting lasts up to 12 minutes and succeeds when the API reports `DELETED` or the deleted cluster is no longer accessible.
-
-### Organization Projects
-
-```shell
-tdc organization list-projects
-```
-
-Each project includes a `type`: `tidbx` identifies a regular project and `tidbx_virtual` identifies a virtual project.
-
-## Commands
-
-Running `tdc` without a command returns a usage error and a compact two-level command synopsis. Run `tdc help`, `tdc <command> help`, or `tdc <command> <subcommand> help` for the full command list, flags, and examples. Help displays flag value types in angle brackets and marks required flags with `(required)`.
+- `tdc`
+- `tdc help`
+- `tdc <command> help`
+- `tdc <command> <subcommand> help`
 
 <details>
 <summary>All commands</summary>
@@ -267,9 +252,9 @@ tdc update --target-version v0.1.1
 
 ## Documentation
 
-- [English Preview documentation](docs/pingcap-docs/docs/ai/tdc/tdc-overview.md)
+- [Preview Documentation](docs/pingcap-docs/docs/ai/tdc/tdc-overview.md)
 
-## Build from source
+## Build From Source
 
 Requirements:
 
