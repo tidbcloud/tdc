@@ -3063,7 +3063,7 @@ func vaultToken(ctx commandContext) (string, error) {
 }
 
 func newFSGitCommand(info version.Info) *cobra.Command {
-	cmd := newParentCommand("fs-git", "Manage FS git workspaces.", info)
+	cmd := newParentCommand("fs-git", "Manage TiDB Cloud Filesystem git workspaces.", info)
 	commands := []*cobra.Command{
 		newGitCloneWorkspaceCommand(info),
 		newGitHydrateWorkspaceCommand(info),

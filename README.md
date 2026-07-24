@@ -143,8 +143,6 @@ export TDC_FS_TOKEN="<FS_TOKEN>"
 tdc fs mount-file-system --file-system-name agent-workspace --mount-path /path_to_workspace --region aws-us-east-1
 ```
 
-> **Preview Note:** Creating a new file system automatically provisions and manages a TiDB Cloud Starter database cluster (name prefix `tidbcloud-fs-`) in your TiDB Cloud organization. This is temporary behavior; in future releases, this backend database cluster will no longer be displayed or count against your TiDB Cloud Starter slot limits.
-
 ### TiDB Cloud Starter
 
 ```shell
