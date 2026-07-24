@@ -52,3 +52,6 @@ jobs:
 
       - name: Build
         run: make build
+
+      - name: Build telemetry backend
+        run: make build-telemetry-backend

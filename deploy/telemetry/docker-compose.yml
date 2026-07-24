@@ -1,0 +1,57 @@
+name: tdc-telemetry
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/telemetry/Dockerfile
+    env_file:
+      - ${TELEMETRY_ENV_FILE:-.env}
+    expose:
+      - "8080"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    networks:
+      - telemetry
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      TELEMETRY_PUBLIC_HOST: ${TELEMETRY_PUBLIC_HOST:?set TELEMETRY_PUBLIC_HOST in deploy/telemetry/.env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    networks:
+      - telemetry
+
+networks:
+  telemetry:
+
+volumes:
+  caddy_data:
+  caddy_config:

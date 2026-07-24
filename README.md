@@ -272,6 +272,14 @@ The binary is written to:
 bin/tdc
 ```
 
+Build the independently deployed telemetry ingestion service:
+
+```bash
+make build-telemetry-backend
+```
+
+The backend binary is written to `bin/tdc-telemetry-backend`. Its API, privacy contract, TiDB/PostHog batching behavior, and Docker deployment are documented in [Telemetry Backend Design](docs/telemetry-backend-design.md).
+
 ## Test
 
 Run local unit and black-box tests without live cloud credentials:

@@ -2,230 +2,218 @@
 
 ## Goal
 
-Collect minimal, privacy-preserving CLI telemetry that helps improve tdc
-reliability and command UX without capturing sensitive user data.
+Collect minimal, privacy-preserving CLI telemetry that helps improve tdc reliability and command UX without capturing sensitive user data or adding telemetry management commands to the public CLI surface.
 
-Telemetry is routed through a product-owned HTTPS backend. The CLI must never
-send events directly to PostHog or any other third-party analytics endpoint.
+Telemetry is routed only through a product-owned HTTPS backend. The CLI never sends events directly to PostHog or another third-party analytics endpoint.
 
-## User-facing Commands
+## Product Decisions
 
-Telemetry is a `tdc cli` concern:
-
-- `tdc cli describe-telemetry`
-- `tdc cli disable-telemetry`
-- `tdc cli enable-telemetry`
-
-These commands are non-interactive and must follow the shared output/query
-contracts for structured commands.
-
-## Behavior
-
-- Release builds send telemetry by default only after the product-owned
-  telemetry endpoint is configured for the build.
+- Release builds enable telemetry by default only when a product-owned telemetry endpoint is configured in the build.
 - Development, test, and CI executions do not send telemetry by default.
-- Telemetry is best-effort. Slow or failed delivery must not affect command
-  stdout, stderr, exit code, or user-visible result.
-- Telemetry is emitted after command execution so the event can include duration
-  and stable exit/error codes.
-- The CLI sends at most one `tdc.command.finished` event for one command
-  invocation in the MVP.
-- The CLI sends events only to the tdc telemetry backend, for example
-  `https://telemetry.tidbcloud.com/v1/telemetry/batch`. The final host is a
-  release/build configuration value, not a user-facing config key.
-- The backend validates an allowlisted schema and forwards accepted anonymous
-  events to PostHog. PostHog project tokens stay on the backend.
-- The backend may drop telemetry when PostHog is unavailable. No MQ is required
-  for MVP because telemetry is lossy and low volume.
-- Installers must clearly explain telemetry after installation and show how to
-  disable it.
-- `tdc configure` may show the same one-time telemetry notice for users who
-  build or copy the binary without the installer.
+- Users control telemetry through `~/.tdc/telemetry/config` or the process-scoped `TDC_TELEMETRY` environment variable.
+- Do not add `tdc cli describe-telemetry`, `tdc cli enable-telemetry`, `tdc cli disable-telemetry`, or another telemetry command.
+- `tdc update`, help, version, and commandless usage invocations never send telemetry.
+- Telemetry is best-effort and lossy. Delivery must not change command stdout, stderr, output format, exit code, or user-visible result.
+- The backend returns `202 Accepted` after validated events enter its bounded in-memory batcher. This does not guarantee that TiDB or PostHog has completed its sink write.
+- No local durable queue, MQ, Kafka, SQS, Pub/Sub, or TiDB-to-PostHog consumer is required for MVP.
 
-## Inputs And Config
+## Eligible Commands
 
-Telemetry may read:
+One eligible command invocation emits at most one `tdc.command.finished` event after command execution and error-to-exit-code mapping.
 
-- command path
-- flag names, never flag values
-- stable exit code
-- stable application error code
-- execution duration
-- cloud provider
-- region code
-- CLI version
-- OS and architecture
-- install source
-- profile source category: `default`, `explicit`, `env`, or `unknown`
+An invocation that fails before Cobra resolves a registered canonical command is excluded. Do not derive telemetry command paths from unknown command text or other unparsed user input. Missing required flags and other validation errors remain eligible only after a registered canonical command has been resolved.
+
+The following invocations are always excluded, even when `TDC_TELEMETRY=on`:
+
+```text
+tdc
+tdc help
+tdc --help
+tdc --version
+tdc <command> help
+tdc <command> --help
+tdc <command> --version
+tdc <command> <subcommand> help
+tdc <command> <subcommand> --help
+tdc <command> <subcommand> --version
+tdc update
+tdc update --check
+tdc update --dry-run
+tdc update --target-version <version>
+```
+
+All `tdc update` modes remain outside telemetry because update promises not to read, modify, or upload tdc local configuration and credentials. Do not weaken this boundary to collect update events. The update path must not read `~/.tdc/config`, `~/.tdc/credentials`, `~/.tdc/telemetry/config`, DB credentials, FS credentials, SQL text, or file contents.
+
+## Local Telemetry Configuration
+
+Telemetry state is global and not profile-scoped:
+
+```text
+~/.tdc/telemetry/config
+```
+
+The file is TOML without a section header:
+
+```toml
+schema_version = 1
+enabled = true
+installation_id = "tdc_01j0a0n8m9f4q2x6cn0b9q3k3z"
+```
+
+The supported fields are:
+
+| Field | Type | Required | Behavior |
+| --- | --- | --- | --- |
+| `schema_version` | integer | no | Defaults to `1`; unsupported versions disable sending. |
+| `enabled` | boolean | yes | Persistent user decision. |
+| `installation_id` | string | conditional | Required only when telemetry is enabled and an event is sent. |
+
+Do not store telemetry state under `[telemetry]` in the main `~/.tdc/config`. The main profile parser, `tdc configure`, and profile persistence do not own telemetry state.
+
+On the first telemetry-eligible invocation of a release build:
+
+1. If `~/.tdc/telemetry/config` does not exist and the effective build default is enabled, generate a cryptographically random installation ID.
+2. Atomically create the directory and config with `schema_version = 1`, `enabled = true`, and the generated ID.
+3. Use the same ID for subsequent eligible events from that tdc home.
+
+Users disable telemetry by editing the file:
+
+```toml
+schema_version = 1
+enabled = false
+installation_id = "tdc_01j0a0n8m9f4q2x6cn0b9q3k3z"
+```
+
+The installation ID may remain while telemetry is disabled. It is local pseudonymous state and must not be sent when disabled. Deleting `~/.tdc/telemetry/config` resets the local telemetry state; a later eligible release invocation applies the release default and generates a new ID.
+
+Users may pre-create a minimal opt-out file:
+
+```toml
+enabled = false
+```
+
+When this file exists, tdc must not generate or write an installation ID.
+
+If telemetry is enabled and the file has no installation ID, tdc generates one and atomically writes it while preserving supported user settings. Concurrent first invocations must not leave a partial TOML file. If two processes race, later events must converge on the installation ID stored in the completed config.
+
+Use these permissions where POSIX mode bits are meaningful:
+
+```text
+~/.tdc/telemetry/          0700
+~/.tdc/telemetry/config    0600
+```
+
+Windows uses the same logical path and best-effort owner-private file handling.
+
+If the telemetry config is unreadable, malformed, has an unsupported schema version, or contains an invalid value, fail closed: do not send telemetry, do not overwrite the file, and emit only a redacted debug diagnostic when `--debug` is enabled. Telemetry configuration failures never fail the user command.
+
+## Resolution And Defaults
+
+Resolve telemetry in this order:
+
+1. Excluded command check. Excluded commands return disabled without reading telemetry state.
+2. `TDC_TELEMETRY`, when explicitly set.
+3. `~/.tdc/telemetry/config`.
+4. Build and execution default.
+5. Endpoint availability.
+
+Accepted environment values:
+
+- `off`, `false`, or `0`: disable telemetry for the current process and do not create or read telemetry state.
+- `on`, `true`, or `1`: enable telemetry for the current process when the invocation is eligible and the build has a configured endpoint.
+
+An invalid `TDC_TELEMETRY` value disables sending and produces only a debug diagnostic. Explicit environment enablement may override `enabled = false`, but it must not make an excluded command eligible.
+
+Release builds default to enabled. Development builds, test binaries, and executions with a recognized CI environment default to disabled and must not create `~/.tdc/telemetry/` unless explicitly enabled. A build without a configured product-owned endpoint never sends, regardless of environment or config.
+
+## Installation ID
+
+`installation_id` is a random local pseudonymous identifier used to correlate reliability trends from one tdc installation. It must:
+
+- start with `tdc_`;
+- contain at least 128 bits of cryptographic randomness;
+- contain no hostname, username, machine ID, MAC address, IP address, TiDB Cloud identity, profile name, project ID, cluster ID, tenant ID, or FS token material;
+- never appear in command output, local operation logs, debug logs, error messages, or telemetry backend operational logs;
+- be sent only as the documented telemetry event field.
+
+## Collected And Prohibited Data
+
+Telemetry may collect:
+
+- canonical command path;
+- explicitly supplied flag names, never flag values;
+- stable exit code;
+- stable application error code;
+- execution duration;
+- cloud provider;
+- canonical region code;
+- CLI version;
+- OS and architecture;
+- install source;
+- profile source category: `default`, `explicit`, `env`, or `unknown`.
 
 Telemetry must not read or send:
 
-- TiDB Cloud public or private API keys
-- `tdc fs` resource API keys
-- generated DB SQL usernames and passwords
-- fs file paths or file contents
-- SQL text
-- local file paths or file contents
-- command output
-- query output
-- raw API payloads or response bodies
-- flag values
-- raw error messages
-- profile names
-- project IDs, cluster IDs, branch IDs, tenant IDs, or other cloud resource IDs
+- TiDB Cloud public or private API keys;
+- FS owner tokens, scoped tokens, or vault tokens;
+- generated DB SQL usernames or passwords;
+- SQL text;
+- FS paths, local paths, or file contents;
+- command output or query output;
+- raw API payloads or response bodies;
+- flag values;
+- raw error messages;
+- profile names;
+- project IDs, cluster IDs, branch IDs, tenant IDs, token IDs, journal IDs, layer IDs, or other cloud resource identifiers;
+- hostnames, usernames, machine IDs, MAC addresses, or client IP addresses.
 
-Telemetry state is global, not profile-scoped:
+The CLI constructs events from an explicit allowlisted model. It must not serialize Cobra command objects, arbitrary error objects, config structs, API requests, API responses, or command results.
 
-```toml
-# ~/.tdc/config
-[telemetry]
-enabled = false
-anonymous_installation_id = "tdc_01j..."
-```
+## User Notice
 
-Config rules:
-
-- `tdc cli disable-telemetry` writes `[telemetry].enabled = false`, removes any
-  local unsent telemetry queue if a queue is added later, and deletes
-  `anonymous_installation_id`.
-- `tdc cli enable-telemetry` writes `[telemetry].enabled = true` and generates a
-  new random `anonymous_installation_id` if missing.
-- `tdc cli describe-telemetry` reports whether telemetry is enabled, the
-  effective decision source, the backend endpoint hostname, the collected field
-  names, the never-collected data classes, and disable instructions.
-- `TDC_TELEMETRY=off`, `false`, or `0` disables telemetry for the current
-  process.
-- `TDC_TELEMETRY=on`, `true`, or `1` enables telemetry for the current process
-  when the build has a configured endpoint.
-- Environment variables take precedence over `~/.tdc/config`; config takes
-  precedence over the build default.
-- Invalid `TDC_TELEMETRY` values disable sending and produce a debug-only
-  diagnostic when `--debug` is enabled.
-
-The `anonymous_installation_id` is a random local identifier generated by tdc.
-It must not include hostnames, usernames, machine IDs, TiDB Cloud IDs, or
-profile names. Re-enabling telemetry after disabling creates a new identifier.
-
-## Output And Errors
-
-- Telemetry does not produce normal command output.
-- Telemetry delivery failures are debug-only diagnostics and must be redacted.
-- `tdc cli describe-telemetry` returns structured JSON by default and supports
-  `--output text`.
-- `tdc cli enable-telemetry` and `tdc cli disable-telemetry` return structured
-  status and must not call the remote telemetry backend.
-
-Example `describe-telemetry` JSON:
-
-```json
-{
-  "enabled": true,
-  "decision_source": "config",
-  "endpoint_host": "telemetry.tidbcloud.com",
-  "collected_fields": [
-    "command_path",
-    "flag_names",
-    "exit_code",
-    "error_code",
-    "duration_ms",
-    "cloud_provider",
-    "region_code",
-    "cli_version",
-    "os",
-    "arch",
-    "install_source",
-    "profile_source"
-  ],
-  "never_collected": [
-    "credentials",
-    "sql_text",
-    "file_paths",
-    "file_contents",
-    "command_output",
-    "api_payloads",
-    "flag_values",
-    "raw_error_messages",
-    "profile_names",
-    "cloud_resource_ids"
-  ],
-  "disable_command": "tdc cli disable-telemetry"
-}
-```
-
-## After This Spec
-
-Users can inspect and control telemetry:
-
-```bash
-tdc cli describe-telemetry
-tdc cli disable-telemetry
-tdc cli enable-telemetry
-TDC_TELEMETRY=off tdc db list-db-clusters
-```
-
-Release users see a clear installer notice:
+Installer scripts must explain telemetry after installation without prompting for a telemetry choice:
 
 ```text
-tdc collects privacy-preserving CLI telemetry in release builds to improve
-reliability and command UX.
+tdc collects anonymous command usage and reliability telemetry in release builds.
 
 Collected:
-- command names
-- flag names, never values
-- exit codes and stable error codes
-- execution duration
-- cloud provider and region
-- tdc version, OS, architecture
+- command and flag names, never flag values
+- exit and stable error codes
+- duration, region, tdc version, OS, and architecture
 
 Never collected:
-- API keys or credentials
+- credentials or tokens
 - SQL text
-- file paths or file contents
-- command output
-- API response payloads
-- flag values
+- file paths or contents
+- command output or API response payloads
+- cloud resource IDs
 
-Disable anytime:
-  tdc cli disable-telemetry
-  or set TDC_TELEMETRY=off
+To disable telemetry, create or edit ~/.tdc/telemetry/config:
+
+  enabled = false
+
+For one process:
+
+  TDC_TELEMETRY=off tdc ...
 ```
 
-Telemetry helps identify failing command categories, command usage, version
-regressions, and region/provider usage without recording command results,
-secrets, customer resource IDs, or user-controlled payloads.
+`tdc configure` may show the same notice for users who build or copy the binary without the installer. It must not ask a telemetry question and must not create the telemetry config.
 
-## Implementation Design
+The first release that enables telemetry by default must state this in its release notes. A successful update to that release may print the same static notice, but update must not read telemetry state or send an event.
 
-- `internal/telemetry` owns event models, field allowlists, redaction, config
-  evaluation, anonymous installation ID generation, no-op behavior, and
-  best-effort sender logic.
-- `internal/cli` starts telemetry timing after command parsing and finalizes the
-  event after execution and error-to-exit-code mapping.
-- `internal/cli` registers `tdc cli describe-telemetry`,
-  `tdc cli disable-telemetry`, and `tdc cli enable-telemetry`.
-- `internal/apperr` exposes stable error codes for telemetry without exposing
-  raw error messages.
-- `internal/config/store` must support the global `[telemetry]` table in
-  `~/.tdc/config` without treating it as a profile.
-- Install scripts and `tdc configure` surface the telemetry notice without
-  prompting for telemetry choices.
-- The sender uses a short timeout and one request attempt. It does not retry in
-  the foreground path.
-- MVP does not persist a local telemetry queue. If a queue is added later, it
-  must live under `~/.tdc/telemetry/`, have a small bounded size, and be cleared
-  by `tdc cli disable-telemetry`.
+## CLI Event And Delivery
 
-Event model sent by the CLI to the tdc backend:
+Event model sent to the product-owned backend:
 
 ```json
 {
   "schema_version": 1,
-  "sent_at": "2026-07-08T12:00:00Z",
+  "sent_at": "2026-07-24T12:00:00Z",
   "events": [
     {
       "event_id": "018f7e67-8fe4-7cc2-9ca5-2d3536c7fb44",
       "event_name": "tdc.command.finished",
-      "occurred_at": "2026-07-08T12:00:00Z",
+      "occurred_at": "2026-07-24T12:00:00Z",
       "anonymous_installation_id": "tdc_01j0a0n8m9f4q2x6cn0b9q3k3z",
       "command_path": "tdc fs create-file-system",
       "flag_names": ["file-system-name", "output"],
@@ -233,8 +221,8 @@ Event model sent by the CLI to the tdc backend:
       "error_code": "",
       "duration_ms": 182,
       "cloud_provider": "aws",
-      "region_code": "us-east-1",
-      "cli_version": "0.1.0",
+      "region_code": "aws-us-east-1",
+      "cli_version": "0.2.0",
       "os": "darwin",
       "arch": "arm64",
       "install_source": "github-release",
@@ -244,73 +232,89 @@ Event model sent by the CLI to the tdc backend:
 }
 ```
 
+Delivery behavior:
+
+- Post only to the build-configured product endpoint, for example `https://telemetry.tidbcloud.com/v1/telemetry/batch`.
+- Do not add a user-facing telemetry endpoint or server URL setting.
+- Use the Go standard HTTP client with a short hard timeout and one attempt.
+- Send after command completion so the event includes duration and final stable exit/error codes.
+- Accept `202 Accepted` as successful ingestion.
+- Treat network errors, timeouts, `4xx`, and `5xx` as dropped telemetry.
+- Never retry in the foreground command path.
+- Never print a delivery result during normal execution.
+- Delivery failures are redacted debug diagnostics only.
+- Do not persist an unsent queue.
+
 ## API Call Chain
 
-Runtime call chain:
+1. Cobra resolves the canonical command and whether the invocation is excluded.
+2. Excluded invocations execute without reading telemetry environment or files.
+3. For an eligible invocation, `internal/telemetry` evaluates `TDC_TELEMETRY`, the independent telemetry config, execution defaults, and endpoint availability.
+4. If telemetry is effectively enabled, the package loads or creates the random installation ID before command execution timing begins.
+5. The command executes normally.
+6. The CLI boundary maps the result to stable exit and application error codes.
+7. The telemetry package constructs one allowlisted event and posts it to `POST /v1/telemetry/batch`.
+8. The backend validates the schema, enqueues accepted events, and returns `202 Accepted`.
+9. The backend flush loop independently writes the same sanitized batch to TiDB and PostHog.
+10. The CLI ignores the delivery result except for optional redacted debug diagnostics.
 
-1. Cobra parses the command and flags.
-2. The telemetry span records the canonical command path and normalized flag
-   names only.
-3. The command executes normally.
-4. The CLI boundary maps the returned error to a stable exit code and stable
-   telemetry error code.
-5. `internal/telemetry` evaluates `TDC_TELEMETRY`, `[telemetry].enabled`, build
-   defaults, dev/test/CI mode, and endpoint availability.
-6. If enabled, tdc posts the event batch to the product-owned ingestion endpoint
-   with a short timeout.
-7. The telemetry backend validates schema, redacts by allowlist, rate limits,
-   and forwards anonymous events to PostHog `/batch/`.
-8. CLI ignores delivery failures.
+## Package Design
 
-Backend contract is documented in `docs/telemetry-backend-design.md`.
+- `internal/telemetry` owns eligibility, defaults, event models, field allowlists, installation ID generation, independent TOML state, atomic writes, and best-effort delivery.
+- `internal/cli` identifies excluded help/version/update invocations, starts timing for eligible commands, and finalizes events after exit-code mapping.
+- `internal/apperr` exposes stable error codes without exposing raw errors.
+- `internal/config` and `internal/config/store` do not parse, write, or preserve telemetry state.
+- Install scripts and `tdc configure` display the static notice without prompting.
+- `internal/update` remains telemetry-free and independent from all tdc local state.
 
-The backend forwards to PostHog with `$process_person_profile = false` so events
-remain anonymous/personless. PostHog capture API requests require a project
-token, `event`, and `distinct_id`; the project token is injected by the backend,
-never shipped in the CLI.
+Use the existing `github.com/pelletier/go-toml/v2` dependency for the telemetry config and Go standard packages for HTTP, runtime metadata, time, context, filesystem operations, and cryptographic randomness. Do not add cgo or a platform-specific telemetry dependency.
 
-## Dependencies And Platform
+## Backend Contract
 
-- No new third-party dependency is required for the MVP telemetry client.
-- Use standard library `net/http`, `runtime`, `time`, `context`, and
-  cryptographic randomness.
-- No cgo is required.
-- Platform-neutral.
-- The backend service is deployed separately from the CLI and may use its own
-  runtime/dependencies.
+The backend contract, implementation layout, and deployment model are documented in `docs/telemetry-backend-design.md`. The backend is built as the independent `tdc-telemetry-backend` process. It shares the repository and Go module for versioned schema changes and CI coverage, but it is not imported by or run inside the `tdc` CLI process.
 
-## Dependencies
+The CLI depends on these guarantees:
 
-- `0001-cli-foundation.md`.
-- `0002-local-config-and-credentials.md`.
-- `0003-output-error-query-dry-run.md`.
-- `0012-install-and-update-distribution.md` for installer notices.
+- valid event batches are acknowledged with `202 Accepted` after entering a bounded in-memory buffer;
+- unknown or prohibited fields are rejected;
+- accepted events are best-effort and may be lost before sink flush;
+- TiDB and PostHog receive the same sanitized event batch through independent sink attempts;
+- PostHog person profiles are disabled with `$process_person_profile = false`;
+- no CLI-shipped backend credential is required.
 
 ## Acceptance Criteria
 
-- Tests verify captured event fields contain flag names but never flag values.
-- Tests verify credentials, SQL text, file paths, command output, API payloads,
-  raw error messages, profile names, and cloud resource IDs are absent.
-- Tests verify telemetry send failures do not alter command stdout, stderr, or
-  exit status.
-- Tests verify development, test, and CI modes do not send telemetry by default.
-- Tests verify `TDC_TELEMETRY=off` disables sending even when config enables it.
-- Tests verify `TDC_TELEMETRY=on` enables sending only when a telemetry endpoint
-  is configured for the build.
-- Tests verify `tdc cli disable-telemetry` writes global config, removes the
-  anonymous installation ID, and does not call the remote backend.
-- Tests verify `tdc cli enable-telemetry` writes global config and creates a new
-  anonymous installation ID when missing.
-- Tests verify `tdc cli describe-telemetry --output json` reports collected and
-  never-collected field classes.
-- E2E tests cover the three telemetry CLI commands using a temp `HOME`.
-- Installer tests or golden output tests cover the post-install telemetry notice.
+- Release builds with a configured endpoint default to enabled for eligible commands.
+- Development, test, and CI executions default to disabled and do not create telemetry state.
+- No telemetry management command is registered.
+- Tests verify every help/version/commandless/update form is excluded before telemetry config access.
+- Tests verify `tdc update` does not read or write telemetry state and never sends telemetry.
+- Tests verify `TDC_TELEMETRY=off` short-circuits before filesystem access.
+- Tests verify `TDC_TELEMETRY=on` enables only eligible commands when an endpoint is configured.
+- Tests verify a missing config in an eligible release execution creates a valid TOML file with mode `0600`, a parent directory with mode `0700`, and a random installation ID.
+- Tests verify a pre-created `enabled = false` file is not modified and does not gain an installation ID.
+- Tests verify enabled config without an ID gains one through an atomic write.
+- Tests cover concurrent first use without partial TOML or unstable persisted identity.
+- Tests verify malformed, unreadable, or unsupported telemetry config fails closed without being overwritten.
+- Tests verify captured events contain flag names but never flag values.
+- Tests verify credentials, SQL text, paths, file contents, command output, API payloads, raw errors, profile names, host identity, and cloud resource IDs are absent.
+- Tests verify telemetry network failures and non-`202` responses do not alter command stdout, stderr, or exit status.
+- Tests verify installer and configure notice text names the config path and process-scoped environment override.
+- Black-box e2e tests use a temporary HOME and a local fake ingestion server; live cloud credentials are not required.
+
+## Dependencies
+
+- `0001-cli-foundation.md`
+- `0002-local-config-and-credentials.md`
+- `0003-output-error-query-dry-run.md`
+- `0012-install-and-update-distribution.md`
 
 ## Out Of Scope
 
+- Telemetry management commands.
 - Product analytics dashboards.
-- Implementing the telemetry backend inside the tdc CLI repository.
-- Capturing command output, API response bodies, SQL text, file paths, or
-  user-controlled payloads.
+- Running the telemetry backend inside the `tdc` CLI process.
+- User-configurable telemetry endpoints.
+- Capturing command output, API response bodies, SQL text, paths, file contents, credentials, flag values, raw errors, host identity, or cloud resource IDs.
 - Local durable telemetry queues.
-- MQ, Kafka, SQS, Pub/Sub, or warehouse fan-out in the MVP.
+- MQ, Kafka, SQS, Pub/Sub, durable outbox tables, or TiDB-to-PostHog consumer workflows.

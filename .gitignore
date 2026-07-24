@@ -1,5 +1,6 @@
 /bin/
 /dist/
 /tdc
+/deploy/telemetry/.env
 
 .DS_Store
