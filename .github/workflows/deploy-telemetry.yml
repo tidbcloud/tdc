@@ -1,0 +1,55 @@
+name: deploy-telemetry
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telemetry-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy telemetry backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: telemetry-production
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USERNAME }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.DEPLOY_PATH }}"
+            git fetch --prune origin
+            git checkout main
+            git pull --ff-only origin main
+            test -f deploy/telemetry/.env
+            test ! -L deploy/telemetry/.env
+            docker compose \
+              --env-file deploy/telemetry/.env \
+              -f deploy/telemetry/docker-compose.yml \
+              config --quiet
+            docker compose \
+              --env-file deploy/telemetry/.env \
+              -f deploy/telemetry/docker-compose.yml \
+              build api
+            docker compose \
+              --env-file deploy/telemetry/.env \
+              -f deploy/telemetry/docker-compose.yml \
+              up -d --no-build --remove-orphans
+            docker compose \
+              --env-file deploy/telemetry/.env \
+              -f deploy/telemetry/docker-compose.yml \
+              restart caddy
+            docker compose \
+              --env-file deploy/telemetry/.env \
+              -f deploy/telemetry/docker-compose.yml \
+              ps

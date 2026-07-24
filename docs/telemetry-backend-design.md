@@ -5,12 +5,12 @@
 The tdc telemetry backend is a small product-owned HTTPS ingestion service between the tdc CLI, TiDB, and PostHog.
 
 ```text
-tdc CLI -> telemetry backend -> in-memory batcher 
+tdc CLI -> telemetry backend -> in-memory batcher
   |-> TiDB
   |-> PostHog /batch/
 ```
 
-The backend exists so the CLI never sends directly to PostHog, never embeds a PostHog project token, and never relies on PostHog as the only telemetry data store. The backend enforces the privacy schema, rate limits abuse, drops unknown fields, batches valid events in memory, then best-effort writes the same sanitized batch to TiDB and PostHog.
+The backend exists so the CLI never sends directly to PostHog, never embeds a PostHog project token, and never relies on PostHog as the only telemetry data store. The backend enforces the privacy schema, rate limits abuse, rejects unknown fields, batches valid events in memory, then best-effort writes the same sanitized batch to TiDB and PostHog.
 
 TiDB is the tdc-owned telemetry store and future migration/analysis base. PostHog is an analytics destination. TiDB is not an outbox queue in MVP, and the backend must not consume events from TiDB to forward them to PostHog.
 
@@ -25,7 +25,7 @@ TiDB is the tdc-owned telemetry store and future migration/analysis base. PostHo
 
 ## Runtime Configuration
 
-The application reads runtime configuration from process environment variables. Deployment may inject those variables through a checked-out server `.env` file, Docker Compose `env_file`, Kubernetes Secret, systemd `EnvironmentFile`, or a cloud secret manager.
+The application reads runtime configuration from process environment variables populated by a server-side `.env` file through Docker Compose `env_file`. The production `.env` file is created and maintained directly on the server, is excluded from git, survives application deploys, and is never copied from GitHub Actions. Other deployment systems may use an equivalent server-local secret source such as Kubernetes Secret, systemd `EnvironmentFile`, or a cloud secret manager.
 
 ```bash
 TELEMETRY_BIND_ADDR=:8080
@@ -38,15 +38,16 @@ TELEMETRY_FLUSH_MAX_EVENTS=100
 TELEMETRY_FLUSH_MAX_BYTES=262144
 TELEMETRY_FLUSH_INTERVAL=5s
 TELEMETRY_SHUTDOWN_DRAIN_TIMEOUT=5s
-TELEMETRY_SINK_TIMEOUT=2s
+TELEMETRY_SINK_TIMEOUT=5s
 TELEMETRY_RATE_LIMIT_PER_MINUTE=60
 TELEMETRY_RATE_LIMIT_BURST=120
+TELEMETRY_TRUSTED_PROXY_CIDRS=172.16.0.0/12
 TIDB_DSN=tdc_telemetry:password@tcp(gateway01.us-east-1.prod.aws.tidbcloud.com:4000)/tdc_telemetry?tls=true&parseTime=true
 POSTHOG_API_HOST=https://us.i.posthog.com
 POSTHOG_PROJECT_TOKEN=phc_xxx
 ```
 
-`TIDB_DSN` and `POSTHOG_PROJECT_TOKEN` must never be committed to git and must never be logged. For TiDB Cloud, the DSN must enable TLS with certificate and identity verification. For EU PostHog Cloud, use `https://eu.i.posthog.com`. For self-hosted PostHog, use the ingestion host for that instance.
+`TIDB_DSN` and `POSTHOG_PROJECT_TOKEN` are application credentials. They must remain only in the server-side `.env`, must never be stored in GitHub repository or Environment secrets, must never be committed to git, and must never be logged. GitHub may store only deployment transport credentials such as the SSH host, username, and key. For TiDB Cloud, the DSN must enable TLS with certificate and identity verification. For EU PostHog Cloud, use `https://eu.i.posthog.com`. For self-hosted PostHog, use the ingestion host for that instance.
 
 ## HTTP API
 
@@ -76,9 +77,15 @@ Response:
 }
 ```
 
+### `GET /metrics`
+
+Prometheus text-format process counters for accepted, rejected, rate-limited, buffered, dropped, and flushed events plus per-sink success/failure totals. This endpoint contains no event values or identifiers. It is available only on the private API container network; the production Caddy configuration returns `404` for `/metrics`.
+
 ### `POST /v1/telemetry/batch`
 
 Accepts one small request batch of sanitized tdc CLI telemetry events, validates it, enqueues valid events into the bounded in-memory batcher, and returns immediately. The response means the backend accepted the events into memory; it does not mean TiDB and PostHog have already flushed the batch.
+
+The only success status for this endpoint is `202 Accepted`. Do not return `200 OK` for an accepted batch because the asynchronous TiDB and PostHog sink writes are not complete.
 
 Required request headers:
 
@@ -115,7 +122,7 @@ Request body:
       "error_code": "",
       "duration_ms": 182,
       "cloud_provider": "aws",
-      "region_code": "us-east-1",
+      "region_code": "aws-us-east-1",
       "cli_version": "0.1.0",
       "os": "darwin",
       "arch": "arm64",
@@ -179,16 +186,16 @@ Allowed event fields:
 | `event_name` | string | yes | MVP allows only `tdc.command.finished`. |
 | `occurred_at` | RFC3339 string | yes | Command completion time. |
 | `anonymous_installation_id` | string | yes | Random local ID, regex `^tdc_[a-zA-Z0-9_-]{16,96}$`. |
-| `command_path` | string | yes | Must start with `tdc ` or equal `tdc`; max 128 bytes. |
+| `command_path` | string | yes | `tdc` plus at most two lowercase kebab-case command levels; max 128 bytes. |
 | `flag_names` | string array | yes | Each entry regex `^[a-z][a-z0-9-]{0,63}$`. |
 | `exit_code` | integer | yes | 0 to 255. |
 | `error_code` | string | no | Stable code only, max 64 bytes; empty string allowed. |
 | `duration_ms` | integer | yes | 0 to 86,400,000. |
 | `cloud_provider` | string | no | `aws`, `alibaba_cloud`, `unknown`, or empty. |
 | `region_code` | string | no | Known tdc region code, `unknown`, or empty. |
-| `cli_version` | string | yes | Max 64 bytes. |
-| `os` | string | yes | Go `runtime.GOOS`, max 32 bytes. |
-| `arch` | string | yes | Go `runtime.GOARCH`, max 32 bytes. |
+| `cli_version` | string | yes | Version-safe characters only, max 64 bytes. |
+| `os` | string | yes | Known Go `runtime.GOOS` value. |
+| `arch` | string | yes | Known Go `runtime.GOARCH` value. |
 | `install_source` | string | no | `github-release`, `homebrew`, `scoop`, `source`, `dev`, `unknown`, or empty. |
 | `profile_source` | string | no | `default`, `explicit`, `env`, `unknown`, or empty. |
 
@@ -203,7 +210,7 @@ Accepted events are appended to a bounded in-memory batcher. The batcher has exa
 - `TELEMETRY_FLUSH_INTERVAL`, default 5 seconds.
 - Shutdown drain, capped by `TELEMETRY_SHUTDOWN_DRAIN_TIMEOUT`.
 
-The flush loop writes the same sanitized batch to TiDB and PostHog. These writes are independent best-effort sink writes. A TiDB failure must not prevent the PostHog attempt, and a PostHog failure must not prevent the TiDB attempt. Failures are logged as aggregate operational errors and exported as metrics; they are not reported back to the CLI because the CLI already received `202 Accepted`.
+The flush loop writes the same sanitized batch to TiDB and PostHog. These writes are independent best-effort sink writes. A TiDB failure must not prevent the PostHog attempt, and a PostHog failure must not prevent the TiDB attempt. Failures are logged as aggregate operational errors and exported through the private `/metrics` endpoint; they are not reported back to the CLI because the CLI already received `202 Accepted`.
 
 The batcher may do a small in-memory retry for sink failures, but it must not write retry state to disk and must not replay from TiDB. A process crash can lose accepted-but-unflushed events. That is acceptable for MVP telemetry because the data is best-effort and lossy by design.
 
@@ -245,10 +252,20 @@ TiDB write behavior:
 
 - Use batch `INSERT` for each flush.
 - Use an idempotent write strategy such as `INSERT IGNORE` on `event_id` to handle rare duplicate flush attempts.
-- Set a short sink timeout, default `TELEMETRY_SINK_TIMEOUT=2s`.
+- Set a bounded sink timeout, default `TELEMETRY_SINK_TIMEOUT=5s`.
 - Do not write raw request bodies.
 - Do not add triggers, procedures, events, UDFs, geometry/spatial types, or other unsupported/non-portable MySQL features.
 - If the future workload requires large analytical scans, add TiFlash or downstream OLAP later; do not add that complexity to MVP.
+
+Before the first deployment, create the database and a dedicated least-privilege service user from an administrative TiDB session:
+
+```sql
+CREATE DATABASE IF NOT EXISTS `tdc_telemetry`;
+CREATE USER IF NOT EXISTS 'tdc_telemetry'@'%' IDENTIFIED BY 'replace-with-a-generated-password';
+GRANT CREATE, INSERT ON `tdc_telemetry`.* TO 'tdc_telemetry'@'%';
+```
+
+The backend runs `CREATE TABLE IF NOT EXISTS` during startup and then uses only batch `INSERT IGNORE` statements. Operators and analytics jobs should use separate read-only identities; do not grant analytics permissions to the ingestion identity.
 
 ## PostHog Forwarding
 
@@ -280,7 +297,7 @@ PostHog request body:
         "error_code": "",
         "duration_ms": 182,
         "cloud_provider": "aws",
-        "region_code": "us-east-1",
+        "region_code": "aws-us-east-1",
         "cli_version": "0.1.0",
         "os": "darwin",
         "arch": "arm64",
@@ -310,6 +327,7 @@ PostHog's capture docs state that `/i/v0/e` and `/batch` are the primary event i
 The endpoint is public because the CLI cannot safely hold a secret. Protect it with cheap server-side controls:
 
 - Per-IP token bucket, default 60 requests/minute with burst 120.
+- Bounded rate-limit bucket registry; reject new source buckets when the registry is full until stale buckets expire.
 - Max body size 64 KiB.
 - Max events per request 20.
 - Bounded in-memory buffer, default 10,000 events.
@@ -318,7 +336,7 @@ The endpoint is public because the CLI cannot safely hold a secret. Protect it w
 - Reject suspicious field names.
 - Optional CDN/WAF rule for obvious non-CLI abuse.
 
-When behind Caddy or another reverse proxy, trust `X-Forwarded-For` only from the local proxy. Otherwise rate limit by remote address.
+When behind Caddy or another reverse proxy, set `TELEMETRY_TRUSTED_PROXY_CIDRS` to the private network ranges from which the proxy reaches the API. The backend trusts `X-Forwarded-For` only when the direct peer matches one of those CIDRs. The default trusts loopback only. When the peer is not trusted, the backend ignores forwarding headers and rate limits by the direct remote address.
 
 ## Logging And Metrics
 
@@ -343,34 +361,40 @@ Never log:
 - raw client IP beyond normal reverse proxy access logs, unless required for abuse handling
 - rejected field values
 
-Useful backend metrics:
+Exported backend metrics:
 
-- `telemetry_requests_total{status}`
 - `telemetry_events_accepted_total`
-- `telemetry_events_rejected_total{reason}`
+- `telemetry_requests_rejected_total`
 - `telemetry_buffer_events`
-- `telemetry_buffer_dropped_total{reason}`
-- `telemetry_flush_total{trigger}`
+- `telemetry_buffer_dropped_total`
 - `telemetry_flush_events_total`
 - `telemetry_sink_total{sink,result}`
-- `telemetry_sink_latency_ms{sink}`
 - `telemetry_rate_limited_total`
 
 ## Docker Deployment
 
-Recommended production layout:
+Implemented production layout:
 
 ```text
-telemetry-backend/
+cmd/tdc-telemetry-backend/
+internal/telemetrybackend/
+deploy/telemetry/
   .env
-  cmd/api/...
-  deploy/
-    Dockerfile
-    docker-compose.yml
-    Caddyfile
+  .env.example
+  Dockerfile
+  docker-compose.yml
+  Caddyfile
 ```
 
-`.env` on the server:
+Create the server-local file from `deploy/telemetry/.env.example`, then replace the placeholder credentials:
+
+```bash
+cd /srv/tdc
+cp deploy/telemetry/.env.example deploy/telemetry/.env
+chmod 600 deploy/telemetry/.env
+```
+
+The resulting `deploy/telemetry/.env` contains:
 
 ```bash
 TELEMETRY_BIND_ADDR=:8080
@@ -383,103 +407,44 @@ TELEMETRY_FLUSH_MAX_EVENTS=100
 TELEMETRY_FLUSH_MAX_BYTES=262144
 TELEMETRY_FLUSH_INTERVAL=5s
 TELEMETRY_SHUTDOWN_DRAIN_TIMEOUT=5s
-TELEMETRY_SINK_TIMEOUT=2s
+TELEMETRY_SINK_TIMEOUT=5s
 TELEMETRY_RATE_LIMIT_PER_MINUTE=60
 TELEMETRY_RATE_LIMIT_BURST=120
+TELEMETRY_TRUSTED_PROXY_CIDRS=172.16.0.0/12
 TIDB_DSN=tdc_telemetry:password@tcp(gateway01.us-east-1.prod.aws.tidbcloud.com:4000)/tdc_telemetry?tls=true&parseTime=true
 POSTHOG_API_HOST=https://us.i.posthog.com
 POSTHOG_PROJECT_TOKEN=phc_xxx
 ```
 
-Example `deploy/docker-compose.yml`:
+The checked-in Compose definition is `deploy/telemetry/docker-compose.yml`. It builds `cmd/tdc-telemetry-backend`, runs the API as a non-root user with a read-only root filesystem, exposes the API only to the private Compose network, and publishes only Caddy on ports 80 and 443. The checked-in Caddy configuration does not enable access logging, so client IP addresses are not persisted by default.
 
-```yaml
-name: tdc-telemetry
-
-services:
-  api:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
-    env_file:
-      - ../.env
-    expose:
-      - "8080"
-    restart: unless-stopped
-    read_only: true
-    tmpfs:
-      - /tmp
-    security_opt:
-      - no-new-privileges:true
-    pids_limit: 128
-    networks:
-      - telemetry
-
-  caddy:
-    image: caddy:2
-    depends_on:
-      - api
-    env_file:
-      - ../.env
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    restart: unless-stopped
-    networks:
-      - telemetry
-
-networks:
-  telemetry:
-
-volumes:
-  caddy_data:
-  caddy_config:
-```
-
-Example `deploy/Caddyfile`:
-
-```caddyfile
-{$TELEMETRY_PUBLIC_HOST} {
-  encode zstd gzip
-
-  header {
-    Strict-Transport-Security "max-age=31536000; includeSubDomains"
-    X-Content-Type-Options "nosniff"
-    Referrer-Policy "no-referrer"
-  }
-
-  reverse_proxy api:8080
-}
-```
-
-Example one-command manual deploy from the server:
+Manual deploy from the server:
 
 ```bash
 set -euo pipefail
-cd /srv/tdc-telemetry
+cd /srv/tdc
 git fetch --prune origin
 git checkout main
 git pull --ff-only origin main
-docker compose -f deploy/docker-compose.yml build api
-docker compose -f deploy/docker-compose.yml up -d --no-build --remove-orphans
-docker compose -f deploy/docker-compose.yml restart caddy
-docker compose -f deploy/docker-compose.yml ps
+test -f deploy/telemetry/.env
+docker compose --env-file deploy/telemetry/.env -f deploy/telemetry/docker-compose.yml build api
+docker compose --env-file deploy/telemetry/.env -f deploy/telemetry/docker-compose.yml up -d --no-build --remove-orphans
+docker compose --env-file deploy/telemetry/.env -f deploy/telemetry/docker-compose.yml restart caddy
+docker compose --env-file deploy/telemetry/.env -f deploy/telemetry/docker-compose.yml ps
 ```
 
 ## GitHub Actions SSH Deploy
 
-Repository secrets:
+Create a GitHub Environment named `telemetry-production` and configure required reviewers or the applicable production deployment protection rules. The deploy job must bind to that Environment so a manual workflow dispatch cannot reach the server until the deployment is approved.
+
+Deployment secrets available to the `telemetry-production` job:
 
 - `DEPLOY_HOST`
 - `DEPLOY_USERNAME`
 - `DEPLOY_SSH_KEY`
 - `DEPLOY_PATH`
 
-Keep `TIDB_DSN` and `POSTHOG_PROJECT_TOKEN` in the server-side `.env` file rather than passing them through the GitHub Action on every deploy.
+These are deployment transport credentials only. Keep `TIDB_DSN`, `POSTHOG_PROJECT_TOKEN`, and all other application credentials exclusively in the server-side `.env`; do not duplicate them in GitHub repository secrets, GitHub Environment secrets, workflow inputs, artifacts, or SSH script arguments.
 
 Example workflow:
 
@@ -494,6 +459,8 @@ jobs:
     name: Deploy
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment:
+      name: telemetry-production
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -508,12 +475,16 @@ jobs:
             git fetch --prune origin
             git checkout main
             git pull --ff-only origin main
-            test -f .env
-            docker compose -f deploy/docker-compose.yml build api
-            docker compose -f deploy/docker-compose.yml up -d --no-build --remove-orphans
-            docker compose -f deploy/docker-compose.yml restart caddy
-            docker compose -f deploy/docker-compose.yml ps
+            test -f deploy/telemetry/.env
+            test ! -L deploy/telemetry/.env
+            docker compose --env-file deploy/telemetry/.env -f deploy/telemetry/docker-compose.yml config --quiet
+            docker compose --env-file deploy/telemetry/.env -f deploy/telemetry/docker-compose.yml build api
+            docker compose --env-file deploy/telemetry/.env -f deploy/telemetry/docker-compose.yml up -d --no-build --remove-orphans
+            docker compose --env-file deploy/telemetry/.env -f deploy/telemetry/docker-compose.yml restart caddy
+            docker compose --env-file deploy/telemetry/.env -f deploy/telemetry/docker-compose.yml ps
 ```
+
+The repository ignores `deploy/telemetry/.env`. Deployment fails before replacing containers when the server file is missing. The workflow must not print the `.env` file, interpolate its values into the GitHub Actions log, or upload it as an artifact.
 
 ## Smoke Test
 
@@ -524,24 +495,24 @@ curl -fsS https://telemetry.example.com/healthz
 curl -fsS https://telemetry.example.com/readyz
 curl -fsS -X POST https://telemetry.example.com/v1/telemetry/batch \
   -H 'Content-Type: application/json' \
-  -H 'User-Agent: tdc/0.1.0' \
+  -H 'User-Agent: tdc/0.2.0' \
   --data '{
     "schema_version": 1,
-    "sent_at": "2026-07-08T12:00:00Z",
+    "sent_at": "2026-07-24T12:00:00Z",
     "events": [
       {
         "event_id": "018f7e67-8fe4-7cc2-9ca5-2d3536c7fb44",
         "event_name": "tdc.command.finished",
-        "occurred_at": "2026-07-08T12:00:00Z",
+        "occurred_at": "2026-07-24T12:00:00Z",
         "anonymous_installation_id": "tdc_01j0a0n8m9f4q2x6cn0b9q3k3z",
-        "command_path": "tdc help",
+        "command_path": "tdc db list-db-clusters",
         "flag_names": [],
         "exit_code": 0,
         "error_code": "",
         "duration_ms": 12,
-        "cloud_provider": "",
-        "region_code": "",
-        "cli_version": "0.1.0",
+        "cloud_provider": "aws",
+        "region_code": "aws-us-east-1",
+        "cli_version": "0.2.0",
         "os": "linux",
         "arch": "amd64",
         "install_source": "github-release",
@@ -577,7 +548,8 @@ Until then, in-memory batching plus independent best-effort TiDB/PostHog sink wr
 
 ## Backend Acceptance Checklist
 
-- `POST /v1/telemetry/batch` accepts the documented valid request and enqueues it without synchronously writing TiDB or PostHog.
+- `POST /v1/telemetry/batch` accepts the documented valid request, enqueues it without synchronously writing TiDB or PostHog, and returns `202 Accepted`.
+- The ingestion endpoint never returns `200 OK` for a successfully enqueued batch.
 - Unknown fields are rejected.
 - Disallowed field names are rejected.
 - Request bodies over the configured limit are rejected.
@@ -594,5 +566,7 @@ Until then, in-memory batching plus independent best-effort TiDB/PostHog sink wr
 - Full request bodies are not logged.
 - Sink failures do not crash the service.
 - `GET /healthz` and `GET /readyz` work behind Caddy.
+- Private `GET /metrics` exposes aggregate counters without event values, and Caddy does not expose it publicly.
 - Docker Compose deploy starts both `api` and `caddy`.
-- GitHub Actions SSH deploy can rebuild and restart the service with one manual workflow dispatch.
+- GitHub Actions SSH deploy can rebuild and restart the service with one manual workflow dispatch after approval through the `telemetry-production` Environment.
+- `TIDB_DSN`, `POSTHOG_PROJECT_TOKEN`, and other application credentials exist only in the server-side `.env` and are absent from GitHub secrets, workflow inputs, logs, and artifacts.

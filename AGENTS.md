@@ -130,6 +130,8 @@ Implemented:
   hydrate, add-worktree, and remove-worktree workflows
 - GoReleaser/GitHub Releases install and update workflow
 - Makefile build/test/e2e workflow
+- independent telemetry ingestion backend with strict schema validation,
+  bounded in-memory batching, TiDB storage, and personless PostHog forwarding
 
 There are no registered placeholder commands at the current stage. Implemented
 mutating commands support `--dry-run` where their command contract declares
@@ -165,6 +167,7 @@ Use the Makefile targets:
 
 ```bash
 make build
+make build-telemetry-backend
 make test
 make e2e
 make live-e2e-configure
@@ -180,6 +183,8 @@ make clean
 ```
 
 `make build` writes the binary to `bin/tdc`.
+`make build-telemetry-backend` writes the independent ingestion service to
+`bin/tdc-telemetry-backend`.
 
 `make test` runs ordinary Go tests and must not require live cloud credentials.
 `make e2e` builds `bin/tdc` and runs black-box tests against the real binary via
@@ -250,6 +255,7 @@ Current layout:
 
 ```text
 cmd/tdc/                    CLI entrypoint
+cmd/tdc-telemetry-backend/  independent telemetry ingestion service entrypoint
 internal/api/               shared HTTP API client and service clients
 internal/api/endpoints/     provider/region endpoint resolver
 internal/api/transport/     Digest/Bearer/debug HTTP transports
@@ -280,9 +286,11 @@ internal/output/            structured JSON/text/raw rendering
 internal/organization/      organization project command use cases
 internal/query/             JMESPath query application
 internal/secretinput/       no-echo secret input helper
+internal/telemetrybackend/  telemetry API, batcher, TiDB, and PostHog sinks
 internal/update/            GitHub Releases update checks and self-update logic
 internal/version/           build version metadata
 scripts/                    installer scripts
+deploy/telemetry/           telemetry Docker Compose and Caddy deployment
 e2e/                        black-box tests against the compiled binary
 docs/priciples.md           product principles and MVP scope source of truth
 docs/spec/                  pending requirement specs
@@ -936,7 +944,9 @@ boundary writes to stdout/stderr and maps errors to exit codes.
 
 ## Telemetry Rules
 
-Telemetry is not implemented yet. When implemented, it must be opt-aware and
+The product-owned telemetry backend is implemented as the independent
+`tdc-telemetry-backend` process. The CLI collection and delivery path remains
+governed by `docs/spec/0020-telemetry.md`. Telemetry must be opt-aware and
 privacy-preserving. Allowed fields:
 
 - command and subcommand invoked

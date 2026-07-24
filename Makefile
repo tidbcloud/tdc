@@ -4,6 +4,7 @@ MODULE := github.com/tidbcloud/tdc
 BINARY_NAME := tdc
 BIN_DIR := bin
 TDC_BIN := $(BIN_DIR)/$(BINARY_NAME)
+TELEMETRY_BACKEND_BIN := $(BIN_DIR)/tdc-telemetry-backend
 LIVE_E2E_PROFILE ?= live-e2e
 LIVE_E2E_RUN = TDC_E2E_BIN="$(abspath $(TDC_BIN))" TDC_LIVE=1 TDC_PROFILE="$(LIVE_E2E_PROFILE)" $(GO) test ./e2e -count=1 -v -timeout 30m
 
@@ -18,13 +19,17 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/version.installSource=local \
 	-X $(MODULE)/internal/version.releaseChannel=stable
 
-.PHONY: all build test e2e live-e2e live-e2e-configure live-e2e-organization live-e2e-db live-e2e-fs live-e2e-fs-git live-e2e-fs-journal live-e2e-fs-vault release-snapshot clean
+.PHONY: all build build-telemetry-backend test e2e live-e2e live-e2e-configure live-e2e-organization live-e2e-db live-e2e-fs live-e2e-fs-git live-e2e-fs-journal live-e2e-fs-vault release-snapshot clean
 
 all: build
 
 build:
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(TDC_BIN) ./cmd/tdc
+
+build-telemetry-backend:
+	@mkdir -p $(BIN_DIR)
+	$(GO) build -trimpath -o $(TELEMETRY_BACKEND_BIN) ./cmd/tdc-telemetry-backend
 
 test:
 	$(GO) test ./...
